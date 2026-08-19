@@ -29,35 +29,53 @@ existierende Pfade pro Segment Nummer, Name oder `Nummer-Name` (spezifiziert in
 
 `specctl.py` ist implementiert (Add je Ebene, Status inkl. ADR-Pflicht ab
 `stable`, `set-adr`, `set-description`, `rename`, `reorder`, `show`, `list`,
-`history`, `render`) — **nur Single-File-Mode**, wie in `design-specctl.md`
-("Implementation status") festgelegt. Es nutzt bewusst *nicht* `lib/cliapp.py`
-und `lib/objectfile.py`/`lib/singlefile.py`/`lib/store.py`: deren generisches
-Objektformat (Signature-Heading, `## Meta`-Bulletliste, `> `-Zitatblöcke,
-Metagroup getrennt vom Objekt) passt nicht zu specctls leichtgewichtigem
-Format und kollabiertem Metagroup-=-Objekt-Modell — eigene Module
-`lib/spec_model.py`, `lib/spec_comment.py`, `lib/spec_document.py`,
-`lib/spec_store.py`, `lib/spec_render.py`. Wiederverwendet werden die
-tatsächlich generischen Bausteine: `lib/locking.py`, `lib/atomicio.py`,
-`lib/clock.py`, `lib/numbering.py`, `lib/history.py`, `lib/text.py`
-(`escape_signature_text`), `lib/metagroup.py` (`resolve_segment`,
-`assign_leaf_name`) sowie `lib/abbrev.py`, das dafür um die 4-/5-Ebenen-Breiten
-aus `design-specctl.md` ("Object Type") generalisiert wurde, ohne das
-Verhalten für die anderen drei Tools zu ändern (deren Breiten summierten
-schon vorher zu 6).
+`history`, `render`) — **sowohl Single-File- als auch Directory-Mode**
+(`design-specctl.md`, "Object Format"). Es nutzt bewusst *nicht*
+`lib/cliapp.py` und `lib/objectfile.py`/`lib/singlefile.py`/`lib/store.py`:
+deren generisches Objektformat (Signature-Heading, `## Meta`-Bulletliste,
+`> `-Zitatblöcke, Metagroup getrennt vom Objekt) passt nicht zu specctls
+leichtgewichtigem Format und kollabiertem Metagroup-=-Objekt-Modell —
+eigene Module `lib/spec_model.py`, `lib/spec_comment.py`,
+`lib/spec_document.py`, `lib/spec_store.py`, `lib/spec_render.py`.
+Wiederverwendet werden die tatsächlich generischen Bausteine:
+`lib/locking.py`, `lib/atomicio.py`, `lib/clock.py`, `lib/numbering.py`,
+`lib/history.py`, `lib/text.py` (`escape_signature_text`, `slugify` —
+Letzteres seit specctl auch von `lib/store.py` genutzt statt eines eigenen
+privaten Duplikats), `lib/metagroup.py` (`resolve_segment`,
+`assign_leaf_name`) sowie `lib/store.py`s `detect_mode` (Datei- vs.
+Directory-Erkennung anhand Dateiendung) und `lib/abbrev.py`, das dafür um
+die 4-/5-Ebenen-Breiten aus `design-specctl.md` ("Object Type")
+generalisiert wurde, ohne das Verhalten für die anderen drei Tools zu
+ändern (deren Breiten summierten schon vorher zu 6).
 
-86 Unit-/Integrationstests für specctl kommen zu den 214 der anderen drei
-Tools hinzu (300 insgesamt) unter `tests/`
+specctls Directory-Mode weicht vom allgemeinen Modell ab: **jede Section ist
+ein Verzeichnis** (`<nr>-<type>-<id>-<slug>/`, nicht nur Blätter), mit einer
+`_content.md` für Heading+Kommentar+Description; kein `.index.md`/
+`.index.json` (das Object Type steckt bereits pro Section in `_content.md`,
+ein Index wäre reine Duplikation); die Dokument-Präambel liegt optional in
+`_preamble.md` im Wurzelverzeichnis. Ein Schreibvorgang leert und baut den
+gesamten Baum aus der In-Memory-Liste neu auf (wie das komplette Neu-Schreiben
+der Datei im Single-File-Mode) — nicht atomar über mehrere Dateien hinweg,
+dieselbe bereits im allgemeinen Modell akzeptierte Einschränkung bei einer
+unterbrochenen Reorder-Kaskade. Beide Modi konvertieren in dieselbe flache,
+präorder `list[SpecSection]`-Repräsentation, sodass sämtliche CRUD-Methoden
+(`add`, `set_status`, `rename`, `reorder`, ...) modusunabhängig bleiben —
+nur `_read`/`_write` verzweigen.
+
+89 Unit-/Integrationstests für specctl (Single-File- und Directory-Mode)
+kommen zu den 221 der anderen drei Tools/geteilten Module hinzu (214 plus 7
+neue Tests für die 4-/5-Ebenen-Generalisierung von `lib/abbrev.py`) — 310
+insgesamt, unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`).
 
 Noch offen:
 - `tasklist` (rulectl/adrctl) ist absichtlich nur als Stub vorhanden
   (Exit 1, "not yet specified") — Verhalten laut Design-Dokumenten separat
   zu spezifizieren.
-- specctl: Directory-Mode (`design-specctl.md`, Object Format) und die
-  bidirektionale adrctl-Verknüpfung (`spec-ref`-Metainfo bei adrctl,
-  `lib/spec_link.py`, Auto-Propagation — `design-specctl.md`, "ADR Linkage")
-  sind spezifiziert, aber bewusst noch nicht implementiert; `adr` wird bis
-  dahin nur manuell über `set-status --adr` / `set-adr` gepflegt.
+- specctl: die bidirektionale adrctl-Verknüpfung (`spec-ref`-Metainfo bei
+  adrctl, `lib/spec_link.py`, Auto-Propagation — `design-specctl.md`, "ADR
+  Linkage") ist spezifiziert, aber bewusst noch nicht implementiert; `adr`
+  wird bis dahin nur manuell über `set-status --adr` / `set-adr` gepflegt.
 - specctl: `move` (Wechsel der Metagroup-Ebene/des Elternpfads eines
   bestehenden Sections, inkl. kaskadierender Neuableitung des Object Type für
   den gesamten verschobenen Teilbaum) ist nicht implementiert — nur `add`

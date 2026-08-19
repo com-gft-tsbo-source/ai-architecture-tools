@@ -172,12 +172,51 @@ class TestMultiRootMergedReadOnly(unittest.TestCase):
             self.assertIn("read-only", err)
 
 
-class TestDirectoryModeRejected(unittest.TestCase):
-    def test_directory_root_rejected(self):
+class TestDirectoryMode(unittest.TestCase):
+    def test_nested_add_and_show(self):
         with tempfile.TemporaryDirectory() as tmp:
-            code, _out, err = run(["--root", tmp, "list"])
+            root = str(Path(tmp) / "design")
+            self.assertEqual(
+                run(["--root", root, "add-part", "Concurrency", "--description", "Intro."])[0], 0
+            )
+            self.assertEqual(
+                run(["--root", root, "add-chapter", "Concurrency/Locking", "--description", "A lock."])[0],
+                0,
+            )
+            code, out, _err = run(["--root", root, "--json", "show", "001-Concurrency/1"])
+            self.assertEqual(code, 0)
+            data = json.loads(out)
+            self.assertEqual(data["name"], "Locking")
+            self.assertEqual(data["content"]["Description"], "A lock.")
+
+    def test_creates_directory_tree_on_disk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "design"
+            run(["--root", str(root), "add-part", "Concurrency"])
+            self.assertTrue(root.is_dir())
+            children = [p for p in root.iterdir() if p.is_dir()]
+            self.assertEqual(len(children), 1)
+            self.assertTrue((children[0] / "_content.md").is_file())
+
+    def test_status_rename_reorder_render(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design")
+            run(["--root", root, "add-part", "A"])
+            _c, out, _e = run(["--root", root, "--json", "add-part", "B"])
+            b_id = json.loads(out)["id"]
+
+            code, _out, err = run(["--root", root, "set-status", b_id, "stable"])
             self.assertEqual(code, 1)
-            self.assertIn("single-file mode only", err)
+            self.assertIn("adr", err)
+            self.assertEqual(run(["--root", root, "set-status", b_id, "stable", "--adr", "b1c2d3"])[0], 0)
+
+            self.assertEqual(run(["--root", root, "rename", b_id, "B Renamed"])[0], 0)
+            _c, out, _e = run(["--root", root, "list"])
+            self.assertIn("B_Renamed", out)
+
+            _c, out, _e = run(["--root", root, "render"])
+            self.assertNotIn("<!--", out)
+            self.assertIn("## A", out)
 
 
 if __name__ == "__main__":

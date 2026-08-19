@@ -1,7 +1,6 @@
 """specctl storage orchestration: locking, CRUD, --id resolution
-(design-specctl.md). Single-file mode only for v1 -- directory mode and the
-adrctl `spec-ref` auto-propagation are deferred (design-specctl.md,
-"Implementation status" notes).
+(design-specctl.md). The adrctl `spec-ref` auto-propagation is still
+deferred (design-specctl.md, "ADR Linkage", Implementation status).
 
 Unlike lib/store.py, there is no separate metagroup-declaration layer: a
 SpecSection's position *is* its classification (design-specctl.md,
@@ -11,24 +10,46 @@ section must cascade into every descendant's `ancestor_levels` (its own
 "<nr>-<name>" segment is embedded there) -- the specctl analogue of
 lib/store.py's "changing an object's metagroup re-derives everything
 downstream" (design-decisions.md).
+
+Both modes convert to/from the exact same flat, pre-order `list[SpecSection]`
+representation (`_read`/`_write`, dispatching on `self.mode`) -- every CRUD
+method below (add, set_status, rename, reorder, ...) operates purely on
+that in-memory list and knows nothing about single-file vs. directory
+storage. Directory mode has no `.index.md`/`.index.json`: unlike the
+general model, where those cache an Object Type *shared* by every object
+under one metagroup leaf, a specctl Section already carries its own Object
+Type directly (design-specctl.md, "Object Format": stored in the metadata
+comment, not re-derived) -- a parallel index would just duplicate it.
 """
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 from lib import abbrev, locking, metagroup, numbering
+from lib import store as generic_store
 from lib.atomicio import atomic_write_text
 from lib.clock import now_iso
 from lib.history import HistoryEntry
 from lib.model import derive_id, validate_free_form_id
-from lib.spec_document import SpecDocumentError, parse_document, render_document
+from lib.spec_document import (
+    SpecDocumentError,
+    check_duplicate_ids,
+    parse_document,
+    parse_section_block,
+    render_document,
+    render_section_block,
+)
 from lib.spec_model import LEVEL_TYPES, MAX_LEVEL, STATUS_CODES, STATUS_INITIAL, SpecSection
+from lib.text import slugify
 
 _ADR_REQUIRING_STATUSES = ("stable", "deprecated")
 _FORWARD_TRANSITIONS = {"draft": "stable", "stable": "deprecated"}
+_CONTENT_FILENAME = "_content.md"
+_PREAMBLE_FILENAME = "_preamble.md"
 
 
 class SpecStoreError(Exception):
@@ -99,12 +120,9 @@ class SpecStore:
             self._sub_stores = [SpecStore(r) for r in roots]
             return
         self.root = roots[0]
-        if self.root.is_dir():
-            raise SpecStoreError(
-                "specctl v1 supports single-file mode only -- directory mode is designed "
-                "but not yet implemented (design-specctl.md, 'Object Format', Implementation status)"
-            )
-        self.mode = "file"
+        self.mode = generic_store.detect_mode(self.root)
+        if self.mode == "directory":
+            self.root.mkdir(parents=True, exist_ok=True)
 
     def lock(self) -> locking.FileLock:
         return locking.FileLock(self.root)
@@ -118,6 +136,15 @@ class SpecStore:
     # -- read/write -----------------------------------------------------
 
     def _read(self) -> tuple[str, list[SpecSection]]:
+        return self._dir_read() if self.mode == "directory" else self._file_read()
+
+    def _write(self, preamble: str, sections: list[SpecSection]) -> None:
+        if self.mode == "directory":
+            self._dir_write(preamble, sections)
+        else:
+            self._file_write(preamble, sections)
+
+    def _file_read(self) -> tuple[str, list[SpecSection]]:
         if not self.root.exists():
             return "", []
         text = self.root.read_text(encoding="utf-8")
@@ -126,9 +153,74 @@ class SpecStore:
         except SpecDocumentError as exc:
             raise SpecStoreError(str(exc)) from exc
 
-    def _write(self, preamble: str, sections: list[SpecSection]) -> None:
+    def _file_write(self, preamble: str, sections: list[SpecSection]) -> None:
         self.root.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(self.root, render_document(preamble, sections))
+
+    def _dir_name_for(self, section: SpecSection) -> str:
+        return f"{section.number:03d}-{section.object_type}-{section.object_id}-{slugify(section.name)}"
+
+    def _dir_read(self) -> tuple[str, list[SpecSection]]:
+        preamble_path = self.root / _PREAMBLE_FILENAME
+        preamble = preamble_path.read_text(encoding="utf-8").rstrip("\n") if preamble_path.exists() else ""
+
+        sections: list[SpecSection] = []
+        self._dir_read_children(self.root, (), sections)
+        try:
+            check_duplicate_ids(sections)
+        except SpecDocumentError as exc:
+            raise SpecStoreError(str(exc)) from exc
+        return preamble, sections
+
+    def _dir_read_children(
+        self, directory: Path, ancestor_levels: tuple[str, ...], sections: list[SpecSection]
+    ) -> None:
+        depth = len(ancestor_levels) + 1
+        lock_name = locking.lock_path_for(directory).name
+        child_dirs = sorted(
+            (p for p in directory.iterdir() if p.is_dir() and p.name != lock_name),
+            key=lambda p: p.name,
+        )
+        for child_dir in child_dirs:
+            content_path = child_dir / _CONTENT_FILENAME
+            if not content_path.exists():
+                raise SpecStoreError(f"{child_dir}: missing its {_CONTENT_FILENAME!r} file")
+            try:
+                section = parse_section_block(
+                    content_path.read_text(encoding="utf-8"), depth, ancestor_levels
+                )
+            except SpecDocumentError as exc:
+                raise SpecStoreError(f"{content_path}: {exc}") from exc
+            sections.append(section)
+            self._dir_read_children(child_dir, ancestor_levels + (section.own_name,), sections)
+
+    def _dir_write(self, preamble: str, sections: list[SpecSection]) -> None:
+        # Directory mode has no delete/create diffing -- like single-file
+        # mode's whole-file rewrite, every write clears and rebuilds the
+        # whole tree from the in-memory `sections` list (locked for the
+        # duration, per lib.locking; not atomic across the multiple
+        # directories/files involved, same limitation the general model's
+        # directory mode already has for a reorder cascade -- design.md,
+        # Concurrency / Locking).
+        lock_name = locking.lock_path_for(self.root).name
+        for entry in self.root.iterdir():
+            if entry.name == lock_name:
+                continue
+            if entry.is_dir():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+
+        if preamble.strip():
+            atomic_write_text(self.root / _PREAMBLE_FILENAME, preamble.rstrip("\n") + "\n")
+
+        directory_by_levels: dict[tuple[str, ...], Path] = {(): self.root}
+        for section in sections:
+            parent_dir = directory_by_levels[section.ancestor_levels]
+            section_dir = parent_dir / self._dir_name_for(section)
+            section_dir.mkdir(parents=True, exist_ok=True)
+            atomic_write_text(section_dir / _CONTENT_FILENAME, render_section_block(section) + "\n")
+            directory_by_levels[section.path_levels] = section_dir
 
     def _resolve_ancestor_path(
         self, sections: list[SpecSection], given_segments: list[str]

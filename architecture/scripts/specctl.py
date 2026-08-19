@@ -13,9 +13,10 @@ to the other three tools regardless (architecture/scripts/CLAUDE.md: "CLI
 structure ... einheitlich ... halten, auch wenn ein Tool das jeweilige
 Feature (noch) nicht braucht").
 
-v1 scope (design-specctl.md, Implementation status): single-file mode
-only; the adrctl `spec-ref` auto-propagation is not wired up yet -- `adr`
-is set manually via set-status --adr / set-adr.
+Both single-file and directory mode are implemented (design-specctl.md,
+"Object Format"). The adrctl `spec-ref` auto-propagation is not wired up
+yet, though (design-specctl.md, "ADR Linkage", Implementation status) --
+`adr` is set manually via set-status --adr / set-adr.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from lib import spec_render as render
 from lib.spec_model import LEVEL_TYPES, SpecSection
 from lib.spec_store import SpecStore, SpecStoreError
 
+
 class CliError(Exception):
     pass
 
@@ -41,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="specctl")
     parser.add_argument(
         "--root", required=True, action="append",
-        help="Specification document (single-file mode only in this version). "
+        help="Specification document: a file (single-file mode) or a directory (directory mode). "
              "Repeatable: with more than one --root, operates strictly read-only across all of them, merged.",
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")

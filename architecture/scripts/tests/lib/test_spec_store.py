@@ -300,11 +300,129 @@ class TestMergedModeReadOnly(unittest.TestCase):
                 merged.add(1, ["New"])
 
 
-class TestDirectoryModeRejected(unittest.TestCase):
-    def test_directory_root_rejected(self):
+class TestDirectoryMode(unittest.TestCase):
+    def test_root_directory_detected_and_created(self):
         with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "design"  # does not exist yet, no file suffix
+            store = SpecStore(root=root)
+            self.assertEqual(store.mode, "directory")
+            self.assertTrue(root.is_dir())
+
+    def test_add_creates_nested_directories_with_content_md(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "design"
+            store = SpecStore(root=root)
+            part = store.add(1, ["Concurrency"], description="Intro.")
+            chapter = store.add(2, ["Concurrency", "Locking"], description="A lock.")
+
+            part_dir = root / f"001-{part.object_type}-{part.object_id}-concurrency"
+            chapter_dir = part_dir / f"001-{chapter.object_type}-{chapter.object_id}-locking"
+            self.assertTrue((part_dir / "_content.md").is_file())
+            self.assertTrue((chapter_dir / "_content.md").is_file())
+
+    def test_persists_and_reads_back_across_invocations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "design"
+            SpecStore(root=root).add(1, ["Concurrency"], description="Intro.")
+            store2 = SpecStore(root=root)
+            sections = store2.list_all()
+            self.assertEqual(len(sections), 1)
+            self.assertEqual(sections[0].name, "Concurrency")
+            self.assertEqual(sections[0].description(), "Intro.")
+
+    def test_hand_authored_preamble_file_is_read_and_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "design"
+            root.mkdir()
+            (root / "_preamble.md").write_text("# Design Doc\n\nSome intro text.\n", encoding="utf-8")
+
+            store = SpecStore(root=root)
+            self.assertEqual(store.list_all(), [])
+            # A write (e.g. `add`) must not drop the hand-authored preamble.
+            store.add(1, ["Concurrency"])
+            preamble_text = (root / "_preamble.md").read_text(encoding="utf-8")
+            self.assertEqual(preamble_text, "# Design Doc\n\nSome intro text.\n")
+
+    def test_nested_add_resolve_status_rename_reorder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "design"
+            store = SpecStore(root=root)
+            store.add(1, ["A"])
+            store.add(2, ["A", "A1"])
+            b = store.add(1, ["B"])
+            c = store.add(1, ["C"])
+
+            store.reorder(c.object_id, insert_after=0)
+            sections = store.list_all()
+            self.assertEqual([s.name for s in sections], ["C", "A", "A1", "B"])
+
+            a = next(s for s in sections if s.name == "A")
+            store.rename(a.object_id, "A Renamed")
+            sections = store.list_all()
+            by_name = {s.name: s for s in sections}
+            self.assertEqual(by_name["A1"].ancestor_levels, ("002-A Renamed",))
+
             with self.assertRaises(SpecStoreError):
-                SpecStore(root=Path(tmp))
+                store.set_status(b.object_id, "stable")
+            updated = store.set_status(b.object_id, "stable", adr="b1c2d3")
+            self.assertEqual(updated.status, "stable")
+
+    def test_render_and_combined_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "design"
+            store = SpecStore(root=root)
+            store.add(1, ["Concurrency"], description="Locking and friends.")
+            rendered = store.render_plain()
+            self.assertNotIn("<!--", rendered)
+            self.assertIn("## Concurrency", rendered)
+
+            entries = store.combined_history()
+            self.assertEqual(len(entries), 1)
+
+    def test_rewritten_tree_drops_stale_directories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "design"
+            store = SpecStore(root=root)
+            first = store.add(1, ["First"])
+            old_dir = root / f"001-{first.object_type}-{first.object_id}-first"
+            self.assertTrue(old_dir.is_dir())
+
+            store.rename(first.object_id, "Renamed")
+            self.assertFalse(old_dir.is_dir())
+            new_dir = root / f"001-{first.object_type}-{first.object_id}-renamed"
+            self.assertTrue(new_dir.is_dir())
+
+    def test_duplicate_id_across_content_files_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "design"
+            store = SpecStore(root=root)
+            store.add(1, ["A"])
+            second_dir = root / "002-XX____-dupe1d-b"
+            second_dir.mkdir()
+            (second_dir / "_content.md").write_text(
+                "## B\n\n<!-- specctl id=dupe1d type=XX____ nr=002 status=draft -->\n", encoding="utf-8"
+            )
+            # Reuse the same ID as the first section to trigger the check.
+            first = store.list_all()[0]
+            (second_dir / "_content.md").write_text(
+                f"## B\n\n<!-- specctl id={first.object_id} type=XX____ nr=002 status=draft -->\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(SpecStoreError):
+                store.list_all()
+
+    def test_merged_mode_across_file_and_directory_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            file_root = Path(tmp) / "a.md"
+            dir_root = Path(tmp) / "b"
+            SpecStore(root=file_root).add(1, ["FromFile"])
+            SpecStore(root=dir_root).add(1, ["FromDir"])
+
+            merged = SpecStore(root=[file_root, dir_root])
+            names = {s.name for s in merged.list_all()}
+            self.assertEqual(names, {"FromFile", "FromDir"})
+            with self.assertRaises(SpecStoreError):
+                merged.add(1, ["New"])
 
 
 if __name__ == "__main__":

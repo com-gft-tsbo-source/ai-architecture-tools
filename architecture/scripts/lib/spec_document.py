@@ -45,45 +45,37 @@ def parse_document(text: str) -> tuple[str, list[SpecSection]]:
                 f"heading {heading_text!r} at depth {depth} has no enclosing depth-{depth - 1} heading"
             )
 
-        try:
-            comment_text, remaining = extract_comment(content_lines)
-            comment = parse_comment(comment_text)
-        except Exception as exc:
-            raise SpecDocumentError(f"section {heading_text!r}: {exc}") from exc
-
-        description = "\n".join(remaining).strip("\n")
         ancestor_levels = tuple(section.own_name for section in stack)
-        try:
-            section = SpecSection(
-                object_id=comment.object_id,
-                object_type=comment.object_type,
-                number=comment.number,
-                name=heading_text,
-                status=comment.status,
-                ancestor_levels=ancestor_levels,
-                content={"Description": description},
-                open_questions=comment.open_questions,
-                adr=comment.adr,
-                history=comment.history,
-            )
-        except SpecModelError as exc:
-            raise SpecDocumentError(str(exc)) from exc
-
+        section = _build_section(heading_text, content_lines, ancestor_levels)
         sections.append(section)
         stack.append(section)
 
-    _check_duplicate_ids(sections)
+    check_duplicate_ids(sections)
     return preamble, sections
 
 
 def render_document(preamble: str, sections: list[SpecSection]) -> str:
     parts = [preamble] if preamble.strip() else []
     for section in sections:
-        parts.append(_render_section_block(section))
+        parts.append(render_section_block(section))
     return "\n\n".join(parts).rstrip("\n") + "\n"
 
 
-def _render_section_block(section: SpecSection) -> str:
+def parse_section_block(text: str, depth: int, ancestor_levels: tuple[str, ...]) -> SpecSection:
+    """Parse one Section's own heading + metadata comment + Description
+    (design-specctl.md, "Object Format") from a self-contained block of
+    text -- the single-file mode's per-heading slice (`parse_document`), or
+    directory mode's `_content.md` file (lib/spec_store.py). `depth` and
+    `ancestor_levels` are supplied by the caller, since a lone block carries
+    no information about its own nesting."""
+    lines = text.split("\n")
+    match = _HEADING_RE.match(lines[0]) if lines else None
+    if not match or len(match.group(1)) - 1 != depth:
+        raise SpecDocumentError(f"section block must start with a depth-{depth} heading")
+    return _build_section(match.group(2), lines[1:], ancestor_levels)
+
+
+def render_section_block(section: SpecSection) -> str:
     comment = CommentData(
         object_id=section.object_id,
         object_type=section.object_type,
@@ -98,6 +90,33 @@ def _render_section_block(section: SpecSection) -> str:
     if description:
         lines += ["", description]
     return "\n".join(lines)
+
+
+def _build_section(
+    heading_text: str, content_lines: list[str], ancestor_levels: tuple[str, ...]
+) -> SpecSection:
+    try:
+        comment_text, remaining = extract_comment(content_lines)
+        comment = parse_comment(comment_text)
+    except Exception as exc:
+        raise SpecDocumentError(f"section {heading_text!r}: {exc}") from exc
+
+    description = "\n".join(remaining).strip("\n")
+    try:
+        return SpecSection(
+            object_id=comment.object_id,
+            object_type=comment.object_type,
+            number=comment.number,
+            name=heading_text,
+            status=comment.status,
+            ancestor_levels=ancestor_levels,
+            content={"Description": description},
+            open_questions=comment.open_questions,
+            adr=comment.adr,
+            history=comment.history,
+        )
+    except SpecModelError as exc:
+        raise SpecDocumentError(str(exc)) from exc
 
 
 def _split_into_blocks(lines: list[str]) -> list[tuple[int, str, list[str]]]:
@@ -117,7 +136,11 @@ def _split_into_blocks(lines: list[str]) -> list[tuple[int, str, list[str]]]:
     return [(depth, text, content) for depth, text, content in blocks]
 
 
-def _check_duplicate_ids(sections: list[SpecSection]) -> None:
+def check_duplicate_ids(sections: list[SpecSection]) -> None:
+    """Shared by parse_document (single-file mode) and
+    lib.spec_store's directory-mode reader -- directory mode's own tree
+    structure prevents duplicate *paths*, but two Sections could still
+    collide on `id` if a `_content.md` was hand-edited or copied."""
     seen: dict[str, str] = {}
     for section in sections:
         if section.object_id in seen:

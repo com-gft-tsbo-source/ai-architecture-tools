@@ -9,7 +9,6 @@ specify this case explicitly -- this is a documented implementation choice.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -19,9 +18,8 @@ from lib.clock import now_iso
 from lib.history import HistoryEntry
 from lib.metagroup import MetagroupDeclaration
 from lib.model import MetainfoEntry, ObjectRecord, derive_id, validate_free_form_id
+from lib.text import slugify
 from lib.toolspec import ToolSpec
-
-_FILENAME_UNSAFE_RE = re.compile(r"[^a-z0-9]+")
 
 
 class StoreError(Exception):
@@ -34,13 +32,8 @@ def detect_mode(path: Path) -> str:
     return "file" if path.suffix else "directory"
 
 
-def _slug(name: str) -> str:
-    slug = _FILENAME_UNSAFE_RE.sub("-", name.lower()).strip("-")
-    return slug or "object"
-
-
 def object_file_name(record: ObjectRecord) -> str:
-    return f"{record.number:03d}-{record.object_type}-{record.object_id}-{_slug(record.name)}.md"
+    return f"{record.number:03d}-{record.object_type}-{record.object_id}-{slugify(record.name)}.md"
 
 
 @dataclass(frozen=True)

@@ -72,9 +72,14 @@ Example:
 
 **Single-file mode:** the whole document is one file; sections appear in document order, which *is* their sort order (metagroup path, then number) — no separate reordering of "objects vs. document" to keep in sync.
 
-**Directory mode:** one file per leaf, subdirectories mirroring the heading hierarchy, as in the general model. Since every node (not just leaves) is an object, each directory additionally holds a `_content.md` file carrying that node's own heading/comment/content — distinct from the tool-bookkeeping `.index.md`/`.index.json` files, which continue to serve their general-model role unchanged. *(This mapping is a proposal — directory mode is secondary for a tool whose primary use case is a single flowing document; revisit once a real multi-file spec surfaces.)*
+**Directory mode:** since every node (not just leaves) is an object here, directory mode cannot use the general model's split of "directory = pure classification, file = object" — a node that has children would need to be a directory *and* a file at once. Resolved uniformly: **every Section is a directory**, `<nr>-<type>-<id>-<slug>/`, regardless of whether it currently has children — `<nr>`/`<type>`/`<id>` guarantee uniqueness the same way the general model's object file names do (design.md, "Index Files"); `<slug>` (lowercase, filesystem-safe) only needs to stay readable. Inside it:
 
-**Implementation status:** directory mode is specified above but **deferred** — the first implementation ships single-file mode only, consistent with `VISION.md`'s primary use case (a single flowing document like `design.md`). Deferred the same way `rulectl`/`adrctl` defer `tasklist`: designed, not yet built.
+- `_content.md` — that Section's own heading + metadata comment + `Description`, in the exact same format as one block of the single-file mode (see Object Format above) — a directory-mode `_content.md` and a single-file-mode heading block are byte-for-byte interchangeable modulo surrounding context.
+- one further such directory per child Section, recursively.
+
+There is no `.index.md`/`.index.json`: those general-model files cache an Object Type *shared* by every object filed under one metagroup leaf, but a specctl Section already carries its own Object Type directly in `_content.md` (see Object Format) — a parallel index would only duplicate it, not serve a distinct purpose. The document's preamble (its own `# <title>` and any intro text, kept verbatim in single-file mode) has no single file to live in in directory mode either; it is instead an optional `_preamble.md` at the root directory itself.
+
+Like single-file mode's whole-file rewrite, a directory-mode write clears and rebuilds the whole tree from the in-memory Section list on every change — there is no incremental file-level diffing. This is simpler and, since the whole `--root` directory is understood to be exclusively managed by `specctl` (design.md, "File and Directory Parameters"), safe; it is not atomic across the multiple directories/files touched by one write, the same limitation the general model's directory mode already has for an interrupted reorder cascade (design.md, "Concurrency / Locking").
 
 ## Status
 
@@ -119,7 +124,7 @@ In addition to the general operations from `design.md`, adapted per the deviatio
 - `reorder <id> --after <nr>`: move a Section to a new position among its siblings (same parent), per the general model's Numbering/Reorder rules. A Section's own subtree moves with it; renumbering a sibling cascades into its descendants' ancestor paths the same way `rename` does.
 - `render`: emit the document as plain, comment-stripped Markdown (headings and content only) — a read-only convenience view, does not alter the source.
 
-**Not yet implemented:** "Change metagroup" (moving a Section to a different parent/level, as opposed to reordering among its current siblings) — this would need to re-derive Object Type for the entire moved subtree, on top of the same cascading ancestor-path rewrite `rename`/`reorder` already do. Deferred alongside directory mode and the `adrctl` linkage (see the Implementation status notes above).
+**Not yet implemented:** "Change metagroup" (moving a Section to a different parent/level, as opposed to reordering among its current siblings) — this would need to re-derive Object Type for the entire moved subtree, on top of the same cascading ancestor-path rewrite `rename`/`reorder` already do. Deferred alongside the `adrctl` linkage (see the Implementation status note above).
 
 ## Scope
 
