@@ -9,19 +9,17 @@ specify this case explicitly -- this is a documented implementation choice.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from lib import atomicio, index, locking, metagroup, numbering, objectfile, singlefile
+from lib.clock import now_iso
 from lib.history import HistoryEntry
 from lib.metagroup import MetagroupDeclaration
 from lib.model import MetainfoEntry, ObjectRecord, derive_id, validate_free_form_id
+from lib.text import slugify
 from lib.toolspec import ToolSpec
-
-_FILENAME_UNSAFE_RE = re.compile(r"[^a-z0-9]+")
 
 
 class StoreError(Exception):
@@ -34,17 +32,8 @@ def detect_mode(path: Path) -> str:
     return "file" if path.suffix else "directory"
 
 
-def _slug(name: str) -> str:
-    slug = _FILENAME_UNSAFE_RE.sub("-", name.lower()).strip("-")
-    return slug or "object"
-
-
 def object_file_name(record: ObjectRecord) -> str:
-    return f"{record.number:03d}-{record.object_type}-{record.object_id}-{_slug(record.name)}.md"
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return f"{record.number:03d}-{record.object_type}-{record.object_id}-{slugify(record.name)}.md"
 
 
 @dataclass(frozen=True)
@@ -230,7 +219,7 @@ class Store:
                 metagroup_levels=tuple(metagroup_path),
                 metainfo=[MetainfoEntry(type=k, value=v) for k, v in metainfo.items()],
                 content=content,
-                history=[HistoryEntry(timestamp=_now_iso(), prefix="M", message="Object created")],
+                history=[HistoryEntry(timestamp=now_iso(), prefix="M", message="Object created")],
             )
 
             if self.mode == "directory":
@@ -307,12 +296,12 @@ class Store:
             if old_status != new_status:
                 record.history.append(
                     HistoryEntry(
-                        timestamp=_now_iso(), prefix="M",
+                        timestamp=now_iso(), prefix="M",
                         old_status=old_status, new_status=new_status, message=message,
                     )
                 )
             elif message:
-                record.history.append(HistoryEntry(timestamp=_now_iso(), prefix="M", message=message))
+                record.history.append(HistoryEntry(timestamp=now_iso(), prefix="M", message=message))
             self._persist(record, ctx)
             return record
 
@@ -323,7 +312,7 @@ class Store:
             record.metainfo = [e for e in record.metainfo if e.type != metainfo_type]
             record.metainfo.append(MetainfoEntry(type=metainfo_type, value=value))
             record.history.append(
-                HistoryEntry(timestamp=_now_iso(), prefix="M", message=f"{metainfo_type} set to {value}")
+                HistoryEntry(timestamp=now_iso(), prefix="M", message=f"{metainfo_type} set to {value}")
             )
             self._persist(record, ctx)
             return record
@@ -334,7 +323,7 @@ class Store:
             record, ctx = self._locate(object_id)
             record.history.append(
                 HistoryEntry(
-                    timestamp=_now_iso(), prefix="T",
+                    timestamp=now_iso(), prefix="T",
                     old_status=record.status, new_status=record.status, message=message,
                 )
             )
@@ -368,7 +357,7 @@ class Store:
             other_record.number = new_nr
             other_record.history.append(
                 HistoryEntry(
-                    timestamp=_now_iso(), prefix="M",
+                    timestamp=now_iso(), prefix="M",
                     message=f"Renumbered {old_nr:03d} -> {new_nr:03d} (reorder)",
                 )
             )
@@ -380,7 +369,7 @@ class Store:
         record.number = plan.moving_number_after
         record.history.append(
             HistoryEntry(
-                timestamp=_now_iso(), prefix="M",
+                timestamp=now_iso(), prefix="M",
                 message=f"Reordered to position {plan.moving_number_after:03d}",
             )
         )
@@ -406,7 +395,7 @@ class Store:
             other.number = new_nr
             other.history.append(
                 HistoryEntry(
-                    timestamp=_now_iso(), prefix="M",
+                    timestamp=now_iso(), prefix="M",
                     message=f"Renumbered {old_nr:03d} -> {new_nr:03d} (reorder)",
                 )
             )
@@ -414,7 +403,7 @@ class Store:
         record.number = plan.moving_number_after
         record.history.append(
             HistoryEntry(
-                timestamp=_now_iso(), prefix="M",
+                timestamp=now_iso(), prefix="M",
                 message=f"Reordered to position {plan.moving_number_after:03d}",
             )
         )

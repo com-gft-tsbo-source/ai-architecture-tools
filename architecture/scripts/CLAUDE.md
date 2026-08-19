@@ -1,13 +1,15 @@
-# scripts/ — Python-CLI-Tools (taskctl.py, rulectl.py, adrctl.py)
+# scripts/ — Python-CLI-Tools (taskctl.py, rulectl.py, adrctl.py, specctl.py)
 
 Agentische CLI-Tools für Taskmanagement (`taskctl.py`), Code-Qualitäts-Regeln
-(`rulectl.py`) und Architecture Decision Records (`adrctl.py`). Objektmodell,
-Dateiformat und CLI-Kontrakt sind spezifiziert in:
+(`rulectl.py`), Architecture Decision Records (`adrctl.py`) und
+Spezifikationsdokumente (`specctl.py`). Objektmodell, Dateiformat und
+CLI-Kontrakt sind spezifiziert in:
 
 - `architecture/docs/scripts/design.md` — allgemeines Objektmodell, CLI-Kontrakt,
-  Locking, Index-Dateien (gilt für alle drei Tools).
+  Locking, Index-Dateien (gilt für alle vier Tools als Basis; specctl weicht an
+  mehreren dort explizit vermerkten Stellen ab).
 - `architecture/docs/scripts/design-taskctl.md`, `design-rulectl.md`,
-  `design-adrctl.md` — tool-spezifische Ergänzungen.
+  `design-adrctl.md`, `design-specctl.md` — tool-spezifische Ergänzungen.
 
 Bei Widersprüchen zwischen vorhandenem Code und diesen Dokumenten sind die
 Design-Dokumente maßgeblich — nicht der Code.
@@ -23,13 +25,69 @@ entfernt, doppelte Nummern innerhalb einer Metagroup werden gemeldet).
 explizit angegeben wird; `add --<metagroup-type>` akzeptiert zur Referenz auf
 existierende Pfade pro Segment Nummer, Name oder `Nummer-Name` (spezifiziert in
 `design.md`, CLI Contract; Begründung in `design-decisions.md`, Abschnitt
-"Amendments"). 214 Unit-/Integrationstests unter `tests/`
+"Amendments").
+
+`specctl.py` ist implementiert (Add je Ebene, Status inkl. ADR-Pflicht ab
+`stable`, `set-adr`, `set-description`, `rename`, `reorder`, `move-to-<Ebene>`,
+`show`, `list`, `history`, `render`) — **sowohl Single-File- als auch Directory-Mode**
+(`design-specctl.md`, "Object Format"). Es nutzt bewusst *nicht*
+`lib/cliapp.py` und `lib/objectfile.py`/`lib/singlefile.py`/`lib/store.py`:
+deren generisches Objektformat (Signature-Heading, `## Meta`-Bulletliste,
+`> `-Zitatblöcke, Metagroup getrennt vom Objekt) passt nicht zu specctls
+leichtgewichtigem Format und kollabiertem Metagroup-=-Objekt-Modell —
+eigene Module `lib/spec_model.py`, `lib/spec_comment.py`,
+`lib/spec_document.py`, `lib/spec_store.py`, `lib/spec_render.py`.
+Wiederverwendet werden die tatsächlich generischen Bausteine:
+`lib/locking.py`, `lib/atomicio.py`, `lib/clock.py`, `lib/numbering.py`,
+`lib/history.py`, `lib/text.py` (`escape_signature_text`, `slugify` —
+Letzteres seit specctl auch von `lib/store.py` genutzt statt eines eigenen
+privaten Duplikats), `lib/metagroup.py` (`resolve_segment`,
+`assign_leaf_name`) sowie `lib/store.py`s `detect_mode` (Datei- vs.
+Directory-Erkennung anhand Dateiendung) und `lib/abbrev.py`, das dafür um
+die 4-/5-Ebenen-Breiten aus `design-specctl.md` ("Object Type")
+generalisiert wurde, ohne das Verhalten für die anderen drei Tools zu
+ändern (deren Breiten summierten schon vorher zu 6).
+
+specctls Directory-Mode weicht vom allgemeinen Modell ab: **jede Section ist
+ein Verzeichnis** (`<nr>-<type>-<id>-<slug>/`, nicht nur Blätter), mit einer
+`_content.md` für Heading+Kommentar+Description; kein `.index.md`/
+`.index.json` (das Object Type steckt bereits pro Section in `_content.md`,
+ein Index wäre reine Duplikation); die Dokument-Präambel liegt optional in
+`_preamble.md` im Wurzelverzeichnis. Ein Schreibvorgang leert und baut den
+gesamten Baum aus der In-Memory-Liste neu auf (wie das komplette Neu-Schreiben
+der Datei im Single-File-Mode) — nicht atomar über mehrere Dateien hinweg,
+dieselbe bereits im allgemeinen Modell akzeptierte Einschränkung bei einer
+unterbrochenen Reorder-Kaskade. Beide Modi konvertieren in dieselbe flache,
+präorder `list[SpecSection]`-Repräsentation, sodass sämtliche CRUD-Methoden
+(`add`, `set_status`, `rename`, `reorder`, `move`, ...) modusunabhängig
+bleiben — nur `_read`/`_write` verzweigen.
+
+`move-to-<metagroup-type>` (das allgemeine Modell nennt es
+`set-<metagroup-type>`, design.md: "Changing an object's metagroup ...
+re-derives everything downstream") verschiebt eine Section zu einem neuen
+Elternpfad — bei specctl trifft das den **gesamten verschobenen Teilbaum**,
+nicht nur die Section selbst: jedes Nachkommen-Object-Type wird aus seinem
+eigenen vollständigen Vorfahren-Namenspfad abgeleitet, der sich durch die
+Verschiebung ändert, muss also neu abgeleitet werden (nicht nur gepatcht wie
+bei `rename`/`reorder`). Abgelehnt werden Verschiebungen in den eigenen
+Teilbaum (Zyklus), zum aktuellen Elternpfad (No-op, `reorder` verwenden) und
+solche, die für die Section selbst oder einen Nachkommen die 5-Ebenen-Grenze
+überschreiten würden.
+
+104 Unit-/Integrationstests für specctl (Single-File- und Directory-Mode,
+inkl. `move`) kommen zu den 221 der anderen drei Tools/geteilten Module
+hinzu (214 plus 7 neue Tests für die 4-/5-Ebenen-Generalisierung von
+`lib/abbrev.py`) — 325 insgesamt, unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`).
 
 Noch offen:
 - `tasklist` (rulectl/adrctl) ist absichtlich nur als Stub vorhanden
   (Exit 1, "not yet specified") — Verhalten laut Design-Dokumenten separat
   zu spezifizieren.
+- specctl: die bidirektionale adrctl-Verknüpfung (`spec-ref`-Metainfo bei
+  adrctl, `lib/spec_link.py`, Auto-Propagation — `design-specctl.md`, "ADR
+  Linkage") ist spezifiziert, aber bewusst noch nicht implementiert; `adr`
+  wird bis dahin nur manuell über `set-status --adr` / `set-adr` gepflegt.
 - Locking wurde nur innerhalb eines Prozesses (Threads) getestet, nicht
   über echte Multi-Prozess-Konkurrenz.
 
@@ -51,11 +109,13 @@ Noch offen:
 
 - Exit-Codes: `0` = ok, `1` = Fehler.
 - Fehlermeldungen → stderr, reguläre Ausgabe → stdout.
-- CLI-Struktur (Subcommands, `--json`-Flag, Positionsargumente ans Ende)
-  einheitlich über alle drei Tools halten, auch wenn ein Tool das
-  jeweilige Feature (noch) nicht braucht.
+- CLI-Struktur (Subcommands, `--json`-Flag, `--root` wiederholbar für
+  Read-Only-Merge, Positionsargumente ans Ende) einheitlich über alle vier
+  Tools halten, auch wenn ein Tool das jeweilige Feature (noch) nicht
+  braucht — das gilt für specctl trotz eigener CLI-Implementierung (kein
+  `lib/cliapp.py`) genauso.
 - Bei einer Änderung an einem Tool prüfen, ob dieselbe Änderung auch bei
-  den anderen beiden Sinn ergibt (z. B. neue CLI-Option, Statuslogik).
+  den anderen Sinn ergibt (z. B. neue CLI-Option, Statuslogik).
 
 ## Struktur
 
@@ -65,6 +125,12 @@ architecture/scripts/
 ├── taskctl.py         # CLI: Taskliste
 ├── rulectl.py         # CLI: Code-Qualitäts-Regeln
 ├── adrctl.py          # CLI: ADRs
+├── specctl.py         # CLI: Spezifikationsdokumente (eigene CLI, kein lib/cliapp.py)
 └── lib/
-    ├── ...            # geteilt: Zukünftige Libraries
+    ├── ...                # geteilt zwischen allen vier Tools (Locking, Atomic-IO,
+    │                      # Numbering, History, Text, Abbrev, Clock, ...)
+    ├── model.py, objectfile.py, singlefile.py, store.py, toolspec.py, index.py, render.py
+    │                      # generisches Objektformat: taskctl/rulectl/adrctl
+    └── spec_model.py, spec_comment.py, spec_document.py, spec_store.py, spec_render.py
+                           # specctl-eigenes, leichtgewichtiges Format (design-specctl.md)
 ```

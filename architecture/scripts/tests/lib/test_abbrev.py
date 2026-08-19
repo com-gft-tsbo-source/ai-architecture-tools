@@ -7,6 +7,7 @@ from lib.abbrev import (
     pad,
     strip_sort_prefix,
     widths_for_level_count,
+    widths_target_length,
 )
 
 
@@ -16,9 +17,20 @@ class TestWidthsAndPrefix(unittest.TestCase):
         self.assertEqual(widths_for_level_count(2), (3, 3))
         self.assertEqual(widths_for_level_count(3), (2, 2, 2))
 
+    def test_widths_for_level_count_specctl_exception(self):
+        # design-specctl.md, "Object Type": width grows with depth for
+        # specctl's 4/5-level metagroups instead of staying fixed at 6.
+        self.assertEqual(widths_for_level_count(4), (2, 2, 2, 2))
+        self.assertEqual(widths_for_level_count(5), (2, 2, 2, 2, 2))
+
     def test_widths_for_unsupported_level_count(self):
         with self.assertRaises(ValueError):
-            widths_for_level_count(4)
+            widths_for_level_count(6)
+
+    def test_widths_target_length(self):
+        self.assertEqual(widths_target_length(3), 6)
+        self.assertEqual(widths_target_length(4), 8)
+        self.assertEqual(widths_target_length(5), 10)
 
     def test_strip_sort_prefix(self):
         self.assertEqual(strip_sort_prefix("002-Implementation"), "Implementation")
@@ -115,6 +127,50 @@ class TestDeriveObjectType(unittest.TestCase):
             known[f"Abcdem-{suffix}"] = ("dummy",)
         with self.assertRaises(AbbrevCollisionError):
             derive_object_type(["Abcdefmnopqrst"], known=known)
+
+
+class TestFourAndFiveLevels(unittest.TestCase):
+    """specctl's exception: width grows with depth (design-specctl.md,
+    "Object Type") instead of staying fixed at 6."""
+
+    def test_natural_four_levels(self):
+        result = natural_object_type(["Part", "Chapter", "Section", "Subsection"])
+        self.assertEqual(result, "PaChSeSu")
+        self.assertEqual(len(result), 8)
+
+    def test_natural_five_levels(self):
+        result = natural_object_type(["Part", "Chapter", "Section", "Subsection", "Point"])
+        self.assertEqual(result, "PaChSeSuPo")
+        self.assertEqual(len(result), 10)
+
+    def test_short_name_at_one_level_only_pads_the_overall_result(self):
+        # Only the final joined string is padded to the target length -- a
+        # short individual level's shortfall is not padded per-level, same
+        # as the existing 1-3 level behavior (natural_object_type(["Go"])).
+        result = natural_object_type(["P", "Chapter", "Section", "Subsection", "Point"])
+        self.assertEqual(result, "PChSeSuPo_")
+        self.assertEqual(len(result), 10)
+
+    def test_five_level_collision_with_identical_names_forces_suffix(self):
+        # All 5 level names identical between the two paths -> no level can
+        # be resolved by the anchor+divergent-character rule (divergent_index
+        # is None for a name that's a prefix of/identical to the colliding
+        # one), so this escalates to width-extension, same as the existing
+        # 1-3 level "identical source names" case.
+        known = {"PaChSeSuPo": ("Part", "Chapter", "Section", "Subsection", "Point")}
+        result = derive_object_type(
+            ["Part", "Chapter", "Section", "Subsection", "Points"], known=known
+        )
+        self.assertNotIn(result, known)
+        self.assertGreater(len(result), 10)
+        self.assertTrue(result.startswith("Pa") or result.startswith("Par"))
+
+    def test_explicit_abbrev_five_levels_padded_to_ten(self):
+        result = derive_object_type(
+            ["Part", "Chapter", "Section", "Subsection", "Point"], known={}, abbrev="pt"
+        )
+        self.assertEqual(result, "pt" + "_" * 8)
+        self.assertEqual(len(result), 10)
 
 
 if __name__ == "__main__":

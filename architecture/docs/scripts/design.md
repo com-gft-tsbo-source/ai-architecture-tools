@@ -7,6 +7,7 @@ Tools:
 - taskctl — see design-taskctl.md
 - rulectl — see design-rulectl.md
 - adrctl — see design-adrctl.md
+- specctl — see design-specctl.md
 
 ## File and Directory Parameters
 
@@ -27,7 +28,7 @@ Tools:
 ### Metagroups
 
 - Metagroups classify objects along a tool-specific, hierarchical axis (e.g. Category for rulectl, Component for adrctl, Phase for taskctl).
-- A metagroup is a Type/Name tuple. The set of metagroup Types and their order is fixed per tool, with a maximum of **3 levels**.
+- A metagroup is a Type/Name tuple. The set of metagroup Types and their order is fixed per tool, with a maximum of **3 levels** (exception: specctl, up to **5** levels — see design-specctl.md).
 - Each metagroup Name is itself a (partial) path reflecting its position in the hierarchy, e.g.:
 
       Type: Category
@@ -68,7 +69,7 @@ The Object Type is a short, stable code derived from the object's metagroup, uni
 
 - Letters are taken from the metagroup Name **after** stripping its `<nr>-` sort prefix.
 - If the result is shorter than 6 characters, it is right-padded with `_` to reach 6.
-- A tool may define an entirely different derivation (see design-taskctl.md for the one exception).
+- A tool may define an entirely different derivation (see design-taskctl.md and design-specctl.md for exceptions).
 
 **Explicit override:** an abbreviation may be supplied explicitly when creating a metagroup path (`add-<metagroup-type> <name> --abbrev <code>`). In directory mode it is stored in `.index.md`; in single-file mode it is stored alongside the path in the `## Metagroups` section. Either way it is then stable / write-once — later collisions elsewhere never change an abbreviation once assigned.
 
@@ -125,12 +126,15 @@ Every object has a History: a chronological, timestamped log of every management
 - Prefix `M` marks a management operation on the object (add, rename, content/metainfo/metagroup change, status change). The transition segment `[<old>] -> [<new>]` is shown only when the status actually changed.
 - A tool may define additional prefixes for its own operations (see design-taskctl.md for `T`).
 - Message text follows either inline after `" | "` on the header line, or as one or more `  > `-prefixed continuation lines — never both in the same entry. Message text must not itself contain a line starting with `  > ` or with `- ` in column 0.
+- A tool may restrict which operations are logged here (see design-specctl.md for an exception that omits content-change entries).
 
 ### User Content
 
 Objects are filled with user content, typically Markdown containing instructions or guidance for an agent or user. Tools request specific named blocks (e.g. `Description`); each tool defines which blocks it supports. Every block may contain Markdown and is stored with a `> ` prefix per line.
 
 ## Object Format
+
+A tool may replace this format entirely with its own (see design-specctl.md, whose human-readability requirement is incompatible with the `> `-quoted, signature-headed format below).
 
 An object consists of exactly **one** level-1 heading and its nested sections:
 

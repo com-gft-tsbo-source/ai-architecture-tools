@@ -1,10 +1,22 @@
-"""Text helpers: Signature escaping and '> '-prefixed User Content blocks."""
+"""Text helpers: Signature escaping, '> '-prefixed User Content blocks, and
+filename slugging (directory-mode object/section file and directory names)."""
 
 from __future__ import annotations
 
 import re
 
 _SIGNATURE_UNSAFE = re.compile(r"[^A-Za-z0-9]")
+_SLUG_UNSAFE = re.compile(r"[^a-z0-9]+")
+
+
+def slugify(name: str) -> str:
+    """Lowercase, filesystem-safe slug for a free-text Name -- used as part
+    of a directory-mode file/directory name alongside its Number/Type/ID,
+    which together already guarantee uniqueness (design.md, "Index Files";
+    design-specctl.md, "Object Format", Directory mode): the slug itself
+    only needs to stay readable, not unique."""
+    slug = _SLUG_UNSAFE.sub("-", name.lower()).strip("-")
+    return slug or "object"
 
 
 def escape_signature_text(text: str) -> str:
