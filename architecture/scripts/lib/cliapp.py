@@ -4,7 +4,7 @@ Each of taskctl/rulectl/adrctl builds its parser via build_parser(), adds
 any tool-specific extra subcommands directly to the returned subparsers
 (and a matching handler in `extra_handlers`), then calls main(). This is
 what keeps the CLI structure uniform across all three tools without one
-importing another (scripts/workctl/CLAUDE.md).
+importing another (architecture/scripts/CLAUDE.md).
 """
 
 from __future__ import annotations
