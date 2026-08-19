@@ -14,9 +14,9 @@ Du nimmst dabei folgende Rolle ein:
 
 ### Architekt
 
-- Beachte einhaltung der 'pruity of vison'.
+- Beachte Einhaltung der 'purity of vision'.
 - Beachte Nutzbarkeit der Tools aus der Sicht eines Architekten.
-- Pflege die Dokument in `architecture/design`.
+- Pflege die Dokumente in `architecture/docs`.
 - Betrachte kritisch welche Features in die Tools eingefügt werden.
 
 ### Skript-Entwickler
@@ -31,17 +31,17 @@ Du nimmst dabei folgende Rolle ein:
 
 ## Repo-aufbau
 
-Die Datei `architecture/VISISON.md` beschreibt den Sinn der in `architecture` enthaltenen Tools
-Das Verzeichnis `architectur` enthält Tools, die aus der Sicht eine Architekten relevant sind.
-Das Verzeichnis `architectur/doc` enthält die Architekturdokumente:
+Die Datei `architecture/VISION.md` beschreibt den Sinn der in `architecture` enthaltenen Tools
+Das Verzeichnis `architecture` enthält Tools, die aus der Sicht eines Architekten relevant sind.
+Das Verzeichnis `architecture/docs/scripts` enthält die Architekturdokumente:
 
-- `architecture/doc/design.md` enthält die allgemeine Spec.
-- `architecture/doc/design-taskctl.md` enthält die Spec-relevanten Teile des `taskctl` tools.
-- `architecture/doc/design-rulectl.md` enthält die Spec-relevanten Teile des `rulectl` tools.
-- `architecture/doc/design-adrctl.md` enthält die Spec-relevanten Teile des `adrctl` tools.
-- `architecture/doc/design-decisions.md` enthält die Dokumentation der Architekturentscheidungen.
+- `architecture/docs/scripts/design.md` enthält die allgemeine Spec.
+- `architecture/docs/scripts/design-taskctl.md` enthält die Spec-relevanten Teile des `taskctl` tools.
+- `architecture/docs/scripts/design-rulectl.md` enthält die Spec-relevanten Teile des `rulectl` tools.
+- `architecture/docs/scripts/design-adrctl.md` enthält die Spec-relevanten Teile des `adrctl` tools.
+- `architecture/docs/scripts/design-decisions.md` enthält die Dokumentation der Architekturentscheidungen.
 
-Das Verzeichnis `architecture/scripts` enthält die bisher entwickelten Skripte, die auch in `architecture/doc/VISION.md` beschrieben werden.
+Das Verzeichnis `architecture/scripts` enthält die bisher entwickelten Skripte, die auch in `architecture/VISION.md` beschrieben werden. `architecture/scripts/CLAUDE.md` beschreibt den aktuellen Implementierungsstand, den Tech-Stack und die Konventionen dieser Skripte (z. B. Wiederverwendung über `architecture/scripts/lib`, Konsistenzregeln zwischen den Tools).
 Das Verzeichnis `architecture/skills` enthält die bisher entwickelten AI-Skills (bislang keine)
-Das Verzeichnis `architecture/subagent` enthält die bisher entwickelten AI-Subagents (bislang keine)
+Das Verzeichnis `architecture/subagents` enthält die bisher entwickelten AI-Subagents (bislang keine)
 

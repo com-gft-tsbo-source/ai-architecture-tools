@@ -4,9 +4,9 @@ Agentische CLI-Tools für Taskmanagement (`taskctl.py`), Code-Qualitäts-Regeln
 (`rulectl.py`) und Architecture Decision Records (`adrctl.py`). Objektmodell,
 Dateiformat und CLI-Kontrakt sind spezifiziert in:
 
-- `doc/architecture/scripts/workctl/design.md` — allgemeines Objektmodell, CLI-Kontrakt,
+- `architecture/docs/scripts/design.md` — allgemeines Objektmodell, CLI-Kontrakt,
   Locking, Index-Dateien (gilt für alle drei Tools).
-- `doc/architecture/scripts/workctl/design-taskctl.md`, `design-rulectl.md`,
+- `architecture/docs/scripts/design-taskctl.md`, `design-rulectl.md`,
   `design-adrctl.md` — tool-spezifische Ergänzungen.
 
 Bei Widersprüchen zwischen vorhandenem Code und diesen Dokumenten sind die
@@ -24,7 +24,7 @@ explizit angegeben wird; `add --<metagroup-type>` akzeptiert zur Referenz auf
 existierende Pfade pro Segment Nummer, Name oder `Nummer-Name` (spezifiziert in
 `design.md`, CLI Contract; Begründung in `design-decisions.md`, Abschnitt
 "Amendments"). 214 Unit-/Integrationstests unter `tests/`
-(`python -m unittest discover -s scripts/workctl/tests -t scripts/workctl`).
+(`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`).
 
 Noch offen:
 - `tasklist` (rulectl/adrctl) ist absichtlich nur als Stub vorhanden
@@ -40,7 +40,7 @@ Noch offen:
 ## Geteilter Code
 
 - Funktionalität, die mehrere Tools nutzen, gehört in ein eigenes Modul
-  unter `scripts/workctl/lib/`, nicht mehrfach implementieren.
+  unter `architecture/scripts/lib/`, nicht mehrfach implementieren.
 - Ein CLI-Skript importiert ein anderes CLI-Skript nie direkt (z. B. lädt
   `rulectl.py` nicht `taskctl.py` als Ganzes) — nur
   `lib/`-Module werden tool-übergreifend importiert.
@@ -60,7 +60,7 @@ Noch offen:
 ## Struktur
 
 ```
-scripts/workctl/
+architecture/scripts/
 ├── CLAUDE.md
 ├── taskctl.py         # CLI: Taskliste
 ├── rulectl.py         # CLI: Code-Qualitäts-Regeln

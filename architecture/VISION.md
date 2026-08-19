@@ -38,7 +38,7 @@ Diese Tool dient zum Managen der Spezifikation. Diese Tool ist nicht implementie
 
 Das Ziel hier ist:
 
-- Dokumente wie `architecture/doc/design.md` durch User und KI zu managen.
+- Dokumente wie `architecture/docs/scripts/design.md` durch User und KI zu managen.
 - Das Dokument menschenlesbar zu halten, während es auch für KI geeignet ist.
 - Eine Verbindung mit `adrctl` herzustellen. Zumindest Querverweise zwischen beiden Tools soll es geben. `adrctl` als Tool um die Historie des Designdokuments zu managen wäre wünschenswert.
 - Es muss flexibel sein, um unterschiedliche Gliederungstiefen managen zu können.
