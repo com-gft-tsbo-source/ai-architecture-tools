@@ -12,6 +12,7 @@ An ADR affecting more than one component gets its own, dedicated metagroup path 
 ## Metainfo
 
 - `superseded-by=<id of the ADR>` — only set when status is `superseded`.
+- `spec-ref=<file>#<id>` — repeatable; names the specctl Section(s) this ADR governs. Whenever this ADR is created or has its status changed, the shared `lib/spec_link.py` module (used by both `adrctl.py` and `specctl.py`) automatically updates the `adr` Metainfo field on every referenced specctl object, logging the change there too. See design-specctl.md, "ADR Linkage", for the full mechanism. A `spec-ref` pointing at a file or object ID that doesn't exist aborts the operation.
 
 ## Status
 
