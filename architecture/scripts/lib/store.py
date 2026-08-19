@@ -183,16 +183,22 @@ class Store:
 
     def _dir_resolve_path(self, given_segments: list[str]) -> list[str]:
         resolved: list[str] = []
-        for given in given_segments:
-            siblings = metagroup.dir_sibling_names(self.root, resolved)
-            resolved.append(metagroup.resolve_segment(siblings, given))
+        try:
+            for given in given_segments:
+                siblings = metagroup.dir_sibling_names(self.root, resolved)
+                resolved.append(metagroup.resolve_segment(siblings, given))
+        except metagroup.MetagroupError as exc:
+            raise StoreError(str(exc)) from exc
         return resolved
 
     def _sf_resolve_path(self, declarations, given_segments: list[str]) -> list[str]:
         resolved: list[str] = []
-        for given in given_segments:
-            siblings = metagroup.sf_sibling_names(declarations, resolved)
-            resolved.append(metagroup.resolve_segment(siblings, given))
+        try:
+            for given in given_segments:
+                siblings = metagroup.sf_sibling_names(declarations, resolved)
+                resolved.append(metagroup.resolve_segment(siblings, given))
+        except metagroup.MetagroupError as exc:
+            raise StoreError(str(exc)) from exc
         return resolved
 
     # -- add --------------------------------------------------------------
@@ -370,6 +376,73 @@ class Store:
                 record, declarations, records = self._sf_find(object_id)
                 records = [r for r in records if r.object_id != object_id]
                 self._sf_write(declarations, records)
+            return record
+
+    def set_metagroup(self, object_id: str, metagroup_path: list[str]) -> ObjectRecord:
+        """Change metagroup (design.md, "Changing an object's metagroup"):
+        reassign an object to a different, already-existing metagroup path,
+        re-deriving its Number (`max+1` in the new subpath -- the old
+        subpath's number becomes a gap), Object Type, and Signature/file
+        name/location -- the same re-derivation `add` performs for a
+        brand-new object. `metagroup_path` is resolved against *existing*
+        siblings only, same as `--<metagroup-type>` elsewhere (design.md,
+        CLI Contract) -- it never creates a new metagroup path."""
+        with self.lock():
+            if self.mode == "directory":
+                record, old_path = self._find(object_id)
+                new_segments = self._dir_resolve_path(metagroup_path)
+                if new_segments == list(record.metagroup_levels):
+                    raise StoreError(
+                        "object is already assigned to that metagroup path -- use 'reorder' "
+                        "to change its position among unchanged siblings instead"
+                    )
+                new_object_type = metagroup.dir_object_type_for(self.root, new_segments)
+                new_directory = metagroup.level_directory(self.root, new_segments)
+                sibling_numbers = [r.number for r, _p in self._load_directory(new_directory)]
+
+                old_directory = old_path.parent
+                record.metagroup_levels = tuple(new_segments)
+                record.object_type = new_object_type
+                record.number = numbering.next_number(sibling_numbers)
+                record.history.append(
+                    HistoryEntry(
+                        timestamp=now_iso(), prefix="M",
+                        message=f"metagroup changed to {'/'.join(new_segments)}",
+                    )
+                )
+
+                old_path.unlink()
+                new_path = new_directory / object_file_name(record)
+                new_path.write_text(objectfile.render_object(record, self.spec), encoding="utf-8")
+                self._rebuild_index(old_directory)
+                self._rebuild_index(new_directory)
+                return record
+
+            declarations, records = self._sf_read()
+            record = next((r for r in records if r.object_id == object_id), None)
+            if record is None:
+                raise StoreError(f"no object with ID {object_id!r}")
+            new_segments = self._sf_resolve_path(declarations, metagroup_path)
+            if new_segments == list(record.metagroup_levels):
+                raise StoreError(
+                    "object is already assigned to that metagroup path -- use 'reorder' "
+                    "to change its position among unchanged siblings instead"
+                )
+            new_object_type = metagroup.sf_object_type_for(declarations, new_segments)
+            sibling_numbers = [
+                r.number for r in records
+                if r.object_id != object_id and list(r.metagroup_levels) == new_segments
+            ]
+            record.metagroup_levels = tuple(new_segments)
+            record.object_type = new_object_type
+            record.number = numbering.next_number(sibling_numbers)
+            record.history.append(
+                HistoryEntry(
+                    timestamp=now_iso(), prefix="M",
+                    message=f"metagroup changed to {'/'.join(new_segments)}",
+                )
+            )
+            self._sf_write(declarations, records)
             return record
 
     def annotate(self, object_id: str, message: str) -> ObjectRecord:

@@ -73,7 +73,7 @@ präorder `list[SpecSection]`-Repräsentation, sodass sämtliche CRUD-Methoden
 bleiben — nur `_read`/`_write` verzweigen.
 
 `move-to-<metagroup-type>` (das allgemeine Modell nennt es
-`set-<metagroup-type>`, design.md: "Changing an object's metagroup ...
+`group-<metagroup-type>`, design.md: "Changing an object's metagroup ...
 re-derives everything downstream") verschiebt eine Section zu einem neuen
 Elternpfad — bei specctl trifft das den **gesamten verschobenen Teilbaum**,
 nicht nur die Section selbst: jedes Nachkommen-Object-Type wird aus seinem
@@ -95,7 +95,7 @@ folgenden wurden daraufhin nachgezogen (`design-decisions.md`, "Amendments
   Löschung eine dauerhafte Nummernlücke, wird nirgends nachträglich geloggt.
 - **`set-<user-content-block> <id> <value>`** bei taskctl/rulectl/adrctl
   (z. B. `set-description`, rulectls `set-procedure`, adrctls
-  `set-motivation`/`set-rationale`) — dieselbe `set-<type>`-Form wie bei
+  `set-motivation`/`set-rationale`) — dieselbe `<verb>-<type>`-Form wie bei
   Metagroups/Metainfo, jetzt auch für Content-Blöcke. specctl hatte
   `set-description` bereits.
 - **`list`-Filter** bei allen vier Tools: `--<metagroup-type> <path>`
@@ -105,42 +105,65 @@ folgenden wurden daraufhin nachgezogen (`design-decisions.md`, "Amendments
   Höchstens ein Metagroup-Filter pro Aufruf, Metainfo-Filter kombinieren
   sich (AND).
 - **`MetainfoSpec.choices` wird jetzt durchgesetzt** (`lib/store.py`,
-  `_validate_metainfo_choice`, greift bei `add` und `set-<metainfo-type>`)
+  `_validate_metainfo_choice`, greift bei `add` und `info-<metainfo-type>`)
   — vorher war das Feld deklariert (z. B. taskctls `review`), aber nie
   geprüft; ein ungültiger Wert wurde still akzeptiert und fiel bei taskctl
   sogar still auf den 3-Schritt-Pfad zurück statt zu scheitern.
 
-Bewusst noch offen aus demselben Abgleich (siehe `design.md`, "Metagroup
-Operations"/"Object Operations"): Metagroup-**Rename** und **Change
-metagroup** (`set-<metagroup-type>`) für taskctl/rulectl/adrctl — beide im
-CLI Contract dokumentiert, aber weder als Store-Methode noch als CLI-Befehl
-vorhanden. specctl deckt beides bereits implizit ab (`rename`,
-`move-to-<Ebene>`).
+**Drei getrennte Verb-Präfixe statt eines gemeinsamen `set-`** für die drei
+objektbezogenen Update-Achsen (`design-decisions.md`, "Amendments
+(2026-08-19, three-verb command namespace + Change metagroup)"): `group-<Metagroup-Typ>`
+(Change metagroup), `info-<Metainfo-Typ>` (Metainfo, vormals
+`set-<Metainfo-Typ>` — betrifft auch adrctls `info-spec-ref`/
+`info-superseded-by`), `set-<Content-Block>` (Change content, unverändert).
+Fest im generischen Engine-Code verankert (`lib/cliapp.py`), nicht als
+konfigurierbares `ToolSpec`-Feld — macht die drei Namensräume kollisionsfrei,
+ohne pro Tool wählbare Präfixe (die kein Tool je gebraucht hat). Damit ist
+**Change metagroup** (`group-<metagroup-type> <id> <path>`) jetzt für
+taskctl/rulectl/adrctl implementiert (`lib/store.py`s `set_metagroup`):
+weist einem Objekt einen anderen, bereits existierenden Metagroup-Pfad zu,
+leitet Nummer/Object-Type/Speicherort neu ab (wie `add`), lehnt No-op
+(aktueller Pfad) mit Verweis auf `reorder` ab. Da ein Objekt im generischen
+Modell immer ein Metagroup-Blatt ist (nie ein Pfadknoten mit eigenen
+Kindern), ist — anders als bei specctls `move` — keine
+Object-Type-Neuableitungskaskade nötig.
 
-374 Unit-/Integrationstests insgesamt unter `tests/`
+Beim Implementieren zusätzlich behoben: `_dir_resolve_path`/
+`_sf_resolve_path` (genutzt von `add`, `group-<metagroup-type>`,
+`resolve_metagroup_path`) fingen `lib/metagroup.py`s `MetagroupError` bisher
+nicht ab — ein unauflösbarer Metagroup-Pfad (z. B. `add --component
+Nonexistent/thing`) stürzte mit unbehandeltem Traceback ab statt sauber mit
+`StoreError`/Exit 1 zu scheitern. Jetzt gefangen und als `StoreError`
+weitergereicht.
+
+Noch offen aus dem Spec-vs-Implementierung-Abgleich (siehe `design.md`,
+"Metagroup Operations"): Metagroup-**Rename** für taskctl/rulectl/adrctl —
+im Contract dokumentiert, noch nicht implementiert. specctl deckt das
+implizit über sein eigenes `rename` ab.
+
+383 Unit-/Integrationstests insgesamt unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 104 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`), mehrere Tests für `resolve_root` (Kollision, Default-Modus,
 `.md`-/Name-Override, Multi-Tool-Koexistenz unter einem `--root`), 17 Tests
 für die `spec-ref`-Verknüpfung (`receive_adr_link`, `lib/spec_link.py`, den
 generischen `after_dispatch`-Hook, End-to-End über `adrctl`/`specctl`:
-`add --spec-ref`, `set-status`-Re-Propagation, retroaktives `set-spec-ref`,
-fehlendes Ziel) sowie rund 27 neue Tests für `delete`,
-`set-<user-content-block>`, `list`-Filter und die `choices`-Validierung
-(Store-Ebene, CLI-Ebene für alle vier Tools, inkl. specctls
-`--force-delete`-Kaskade).
+`add --spec-ref`, `set-status`-Re-Propagation, retroaktives `info-spec-ref`,
+fehlendes Ziel), rund 27 Tests für `delete`, `set-<user-content-block>`,
+`list`-Filter und die `choices`-Validierung sowie rund 9 neue Tests für
+`group-<metagroup-type>` (Store- und CLI-Ebene, No-op-Ablehnung, unbekannter
+Pfad) und die `info-`-Umbenennung.
 
 Noch offen:
 - `tasklist` (rulectl/adrctl) ist absichtlich nur als Stub vorhanden
   (Exit 1, "not yet specified") — Verhalten laut Design-Dokumenten separat
   zu spezifizieren.
-- Metagroup-Rename und Change-metagroup (`set-<metagroup-type>`) für
-  taskctl/rulectl/adrctl (siehe oben) — im Contract dokumentiert, noch nicht
-  implementiert.
+- Metagroup-Rename für taskctl/rulectl/adrctl (siehe oben) — im Contract
+  dokumentiert, noch nicht implementiert.
 - specctl: die bidirektionale adrctl-Verknüpfung ist implementiert —
   `spec-ref=<id>`-Metainfo bei adrctl (einwertig, `design-decisions.md`,
   "Amendments (2026-08-19, spec-ref single-valued)"), `lib/spec_link.py`,
-  Auto-Propagation nach `adrctl add`/`set-status`/`set-spec-ref` über
+  Auto-Propagation nach `adrctl add`/`set-status`/`info-spec-ref` über
   `lib/cliapp.py`s `after_dispatch`-Hook in `SpecStore.receive_adr_link`
   (loggt einen `M`-History-Eintrag, anders als das weiterhin manuelle
   `set-adr`). Keine Transaktionalität über beide Stores hinweg: schlägt die

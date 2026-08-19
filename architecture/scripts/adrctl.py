@@ -8,7 +8,7 @@ rulectl.
 
 `spec-ref` (design-adrctl.md, "Metainfo") links an ADR to the specctl
 Section it governs: after a successful `add`, `set-status`, or
-`set-spec-ref` that leaves `spec-ref` set, lib/spec_link.py propagates the
+`info-spec-ref` that leaves `spec-ref` set, lib/spec_link.py propagates the
 ADR's ID into that Section's `adr` field (design-specctl.md, "ADR
 Linkage"). This runs via cliapp.main()'s `after_dispatch` hook rather than
 adrctl importing specctl.py directly (architecture/scripts/CLAUDE.md: "a
@@ -27,7 +27,7 @@ from lib.model import ObjectRecord
 from lib.store import Store
 from lib.toolspec import MetagroupLevelSpec, MetainfoSpec, StatusSpec, ToolSpec
 
-_SPEC_LINK_TRIGGERS = ("add", "set-status", "set-spec-ref")
+_SPEC_LINK_TRIGGERS = ("add", "set-status", "info-spec-ref")
 
 
 def build_spec() -> ToolSpec:

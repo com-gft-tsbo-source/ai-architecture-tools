@@ -137,7 +137,7 @@ class TestAddAndGet(unittest.TestCase):
     def test_add_requires_existing_metagroup(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks")
-            with self.assertRaises(Exception):
+            with self.assertRaises(StoreError):
                 store.add(metagroup_path=["001-Setup"], name="First task")
 
     def test_add_then_get(self):
@@ -370,6 +370,69 @@ class TestSetContent(unittest.TestCase):
             self.assertEqual(store2.get(record.object_id).content["Description"], "Revised")
 
 
+class TestSetMetagroup(unittest.TestCase):
+    def test_directory_mode_moves_object_and_rederives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            store.add_metagroup_path(["002-Implementation"])
+            store.add(metagroup_path=["002-Implementation"], name="Existing")
+            record = store.add(metagroup_path=["001-Setup"], name="First")
+
+            moved = store.set_metagroup(record.object_id, ["002-Implementation"])
+            self.assertEqual(moved.metagroup_levels, ("002-Implementation",))
+            self.assertEqual(moved.number, 2)  # after the existing sibling
+            self.assertEqual(moved.history[-1].prefix, "M")
+
+            reloaded = store.get(record.object_id)
+            self.assertEqual(reloaded.metagroup_levels, ("002-Implementation",))
+            still_there = [r.object_id for r, _p in store._load_directory(
+                Path(tmp) / "tasks" / "001-Setup"
+            )]
+            self.assertNotIn(record.object_id, still_there)
+
+    def test_directory_mode_leaves_a_numbering_gap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            store.add_metagroup_path(["002-Implementation"])
+            first = store.add(metagroup_path=["001-Setup"], name="First")
+            store.add(metagroup_path=["001-Setup"], name="Second")
+            store.set_metagroup(first.object_id, ["002-Implementation"])
+            third = store.add(metagroup_path=["001-Setup"], name="Third")
+            self.assertEqual(third.number, 3)
+
+    def test_noop_move_to_current_path_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            record = store.add(metagroup_path=["001-Setup"], name="First")
+            with self.assertRaises(StoreError):
+                store.set_metagroup(record.object_id, ["001-Setup"])
+
+    def test_single_file_mode_moves_and_persists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks.md")
+            store.add_metagroup_path(["001-Setup"])
+            store.add_metagroup_path(["002-Implementation"])
+            record = store.add(metagroup_path=["001-Setup"], name="First")
+
+            store.set_metagroup(record.object_id, ["002-Implementation"])
+
+            store2 = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks.md")
+            reloaded = store2.get(record.object_id)
+            self.assertEqual(reloaded.metagroup_levels, ("002-Implementation",))
+            self.assertEqual(reloaded.number, 1)
+
+    def test_unknown_metagroup_path_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            record = store.add(metagroup_path=["001-Setup"], name="First")
+            with self.assertRaises(StoreError):
+                store.set_metagroup(record.object_id, ["Nonexistent"])
+
+
 class TestDelete(unittest.TestCase):
     def test_directory_mode_removes_object(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -439,7 +502,7 @@ class TestSingleFileMode(unittest.TestCase):
     def test_add_requires_existing_metagroup(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks.md")
-            with self.assertRaises(Exception):
+            with self.assertRaises(StoreError):
                 store.add(metagroup_path=["001-Setup"], name="First")
 
     def test_set_status_persists_across_reads(self):

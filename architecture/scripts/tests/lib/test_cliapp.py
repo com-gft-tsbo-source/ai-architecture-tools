@@ -257,6 +257,69 @@ class TestListFilters(unittest.TestCase):
             self.assertIn("at most one", err)
 
 
+class TestInfoCommand(unittest.TestCase):
+    def test_info_sets_metainfo_value(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add-phase", "001-Setup"])
+            _c, out, _e = run(
+                ["--root", root, "--json", "add", "--name", "Task", "--phase", "001-Setup"]
+            )
+            object_id = json.loads(out)["id"]
+
+            code, _out, _err = run(["--root", root, "info-review", object_id, "user"])
+            self.assertEqual(code, 0)
+
+            _c, out, _e = run(["--root", root, "--json", "show", object_id])
+            self.assertEqual(json.loads(out)["metainfo"]["review"], "user")
+
+
+class TestGroupCommand(unittest.TestCase):
+    def test_group_moves_object_and_rederives_number(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add-phase", "001-Setup"])
+            run(["--root", root, "add-phase", "002-Implementation"])
+            run(["--root", root, "add", "--name", "Existing", "--phase", "002-Implementation"])
+            _c, out, _e = run(
+                ["--root", root, "--json", "add", "--name", "Task", "--phase", "001-Setup"]
+            )
+            object_id = json.loads(out)["id"]
+
+            code, _out, _err = run(["--root", root, "group-phase", object_id, "002-Implementation"])
+            self.assertEqual(code, 0)
+
+            _c, out, _e = run(["--root", root, "--json", "show", object_id])
+            data = json.loads(out)
+            self.assertEqual(data["metagroup"], ["002-Implementation"])
+            self.assertEqual(data["number"], 2)
+
+    def test_group_noop_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add-phase", "001-Setup"])
+            _c, out, _e = run(
+                ["--root", root, "--json", "add", "--name", "Task", "--phase", "001-Setup"]
+            )
+            object_id = json.loads(out)["id"]
+
+            code, _out, err = run(["--root", root, "group-phase", object_id, "001-Setup"])
+            self.assertEqual(code, 1)
+            self.assertIn("reorder", err)
+
+    def test_group_unknown_path_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add-phase", "001-Setup"])
+            _c, out, _e = run(
+                ["--root", root, "--json", "add", "--name", "Task", "--phase", "001-Setup"]
+            )
+            object_id = json.loads(out)["id"]
+
+            code, _out, err = run(["--root", root, "group-phase", object_id, "Nonexistent"])
+            self.assertEqual(code, 1)
+
+
 class TestAfterDispatch(unittest.TestCase):
     def test_called_with_spec_store_args_and_result_on_success(self):
         calls = []

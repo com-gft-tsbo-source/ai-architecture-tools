@@ -54,7 +54,7 @@ class TestEndToEnd(unittest.TestCase):
             old_id = json.loads(out)["id"]
             code, _out, _err = run(["--root", root, "set-status", old_id, "superseded"])
             self.assertEqual(code, 0)
-            code, _out, _err = run(["--root", root, "set-superseded-by", old_id, "abc123"])
+            code, _out, _err = run(["--root", root, "info-superseded-by", old_id, "abc123"])
             self.assertEqual(code, 0)
             code, out, _err = run(["--root", root, "--json", "show", old_id])
             self.assertEqual(json.loads(out)["metainfo"]["superseded-by"], "abc123")
@@ -134,7 +134,7 @@ class TestSpecRefLinkage(unittest.TestCase):
             )
             adr_id = json.loads(out)["id"]
 
-            code, _out, _err = run(["--root", root, "set-spec-ref", adr_id, section_id])
+            code, _out, _err = run(["--root", root, "info-spec-ref", adr_id, section_id])
             self.assertEqual(code, 0)
 
             code, out, _err = run_specctl(["--root", root, "--json", "show", section_id])

@@ -78,10 +78,18 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
 
     for metainfo in spec.metainfo:
         metainfo_parser = subparsers.add_parser(
-            f"set-{_flag_name(metainfo.type)}", help=f"Set {metainfo.type} on an object"
+            f"info-{_flag_name(metainfo.type)}", help=f"Set {metainfo.type} on an object"
         )
         metainfo_parser.add_argument("id")
         metainfo_parser.add_argument("value")
+
+    for level in spec.metagroup_levels:
+        group_parser = subparsers.add_parser(
+            f"group-{_flag_name(level.type)}",
+            help=f"Reassign an object to a different, existing {level.type} metagroup path",
+        )
+        group_parser.add_argument("id")
+        group_parser.add_argument("value", help="Existing metagroup path, e.g. 'Python/backend'")
 
     for block in spec.user_content_blocks:
         content_parser = subparsers.add_parser(
@@ -186,8 +194,12 @@ def dispatch(spec: ToolSpec, store: Store, args: argparse.Namespace, extra_handl
         return store.set_status(args.id, args.status, message=args.message, force=args.force)
 
     for metainfo in spec.metainfo:
-        if command == f"set-{_flag_name(metainfo.type)}":
+        if command == f"info-{_flag_name(metainfo.type)}":
             return store.set_metainfo(args.id, metainfo.type, args.value)
+
+    for level in spec.metagroup_levels:
+        if command == f"group-{_flag_name(level.type)}":
+            return store.set_metagroup(args.id, args.value.split("/"))
 
     for block in spec.user_content_blocks:
         if command == f"set-{_flag_name(block)}":
