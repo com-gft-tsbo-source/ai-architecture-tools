@@ -133,6 +133,64 @@ class TestRenameAndReorder(unittest.TestCase):
             self.assertEqual(names_in_order, ["C", "A", "B"])
 
 
+class TestMove(unittest.TestCase):
+    def test_move_reparents_section_and_subtree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            run(["--root", root, "add-part", "A"])
+            _c, out, _e = run(["--root", root, "--json", "add-chapter", "A/Sub"])
+            sub_id = json.loads(out)["id"]
+            run(["--root", root, "add-section", "A/Sub/Grand"])
+            run(["--root", root, "add-part", "B"])
+
+            code, out, _err = run(["--root", root, "--json", "move-to-chapter", sub_id, "B"])
+            self.assertEqual(code, 0)
+            data = json.loads(out)
+            self.assertEqual(data["path"], ["002-B", "001-Sub"])
+
+            _c, out, _e = run(["--root", root, "list"])
+            names_in_order = [line.split("-", 4)[-1] for line in out.strip().splitlines()]
+            self.assertEqual(names_in_order, ["A", "B", "Sub", "Grand"])
+
+    def test_move_to_part_needs_no_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            run(["--root", root, "add-part", "A"])
+            _c, out, _e = run(["--root", root, "--json", "add-chapter", "A/Sub"])
+            sub_id = json.loads(out)["id"]
+
+            code, out, _err = run(["--root", root, "--json", "move-to-part", sub_id])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(out)["path"], ["002-Sub"])
+
+    def test_move_rejects_cycle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            _c, out, _e = run(["--root", root, "--json", "add-part", "A"])
+            a_id = json.loads(out)["id"]
+            run(["--root", root, "add-chapter", "A/Sub"])
+
+            code, _out, err = run(["--root", root, "move-to-section", a_id, "A/Sub"])
+            self.assertEqual(code, 1)
+            self.assertIn("own subtree", err)
+
+    def test_move_rejects_depth_cap_violation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            run(["--root", root, "add-part", "A"])
+            _c, out, _e = run(["--root", root, "--json", "add-chapter", "A/A1"])
+            a1_id = json.loads(out)["id"]
+            run(["--root", root, "add-section", "A/A1/A2"])
+            run(["--root", root, "add-part", "B"])
+            run(["--root", root, "add-chapter", "B/C"])
+            run(["--root", root, "add-section", "B/C/D"])
+            run(["--root", root, "add-subsection", "B/C/D/E"])
+
+            code, _out, err = run(["--root", root, "move-to-point", a1_id, "B/C/D/E"])
+            self.assertEqual(code, 1)
+            self.assertIn("5-level cap", err)
+
+
 class TestListAndRender(unittest.TestCase):
     def test_list_filters_by_status(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -265,6 +265,126 @@ class TestReorder(unittest.TestCase):
             self.assertEqual([s.name for s in sections], ["A", "B"])
 
 
+class TestMove(unittest.TestCase):
+    def test_move_reparents_and_renumbers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            sub = store.add(2, ["A", "Sub"])
+            store.add(1, ["B"])
+            store.add(2, ["B", "Existing"])
+
+            moved = store.move(sub.object_id, 2, ["B"])
+            self.assertEqual(moved.ancestor_levels, ("002-B",))
+            self.assertEqual(moved.number, 2)  # after B's existing child
+
+    def test_move_carries_subtree_and_cascades_ancestor_levels(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            sub = store.add(2, ["A", "Sub"])
+            store.add(3, ["A", "Sub", "Grand"])
+            store.add(1, ["B"])
+
+            store.move(sub.object_id, 2, ["B"])
+
+            sections = store.list_all()
+            by_name = {s.name: s for s in sections}
+            self.assertEqual(by_name["Sub"].ancestor_levels, ("002-B",))
+            self.assertEqual(by_name["Grand"].ancestor_levels, ("002-B", "001-Sub"))
+            self.assertEqual([s.name for s in sections], ["A", "B", "Sub", "Grand"])
+
+    def test_move_rederives_object_type_for_whole_subtree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            sub = store.add(2, ["A", "Sub"])
+            grand = store.add(3, ["A", "Sub", "Grand"])
+            store.add(1, ["B"])
+            sub_type_before, grand_type_before = sub.object_type, grand.object_type
+
+            store.move(sub.object_id, 2, ["B"])
+
+            sections = store.list_all()
+            by_name = {s.name: s for s in sections}
+            self.assertNotEqual(by_name["Sub"].object_type, sub_type_before)
+            self.assertNotEqual(by_name["Grand"].object_type, grand_type_before)
+            self.assertTrue(by_name["Sub"].object_type.startswith("B"))
+            self.assertTrue(by_name["Grand"].object_type.startswith("B"))
+
+    def test_move_to_root_level(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            sub = store.add(2, ["A", "Sub"])
+
+            promoted = store.move(sub.object_id, 1, [])
+            self.assertEqual(promoted.level, 1)
+            self.assertEqual(promoted.ancestor_levels, ())
+
+    def test_move_logs_single_history_entry_on_root_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            sub = store.add(2, ["A", "Sub"])
+            grand = store.add(3, ["A", "Sub", "Grand"])
+            store.add(1, ["B"])
+
+            store.move(sub.object_id, 2, ["B"])
+
+            after = store.list_all()
+            by_name = {s.name: s for s in after}
+            self.assertEqual(len(by_name["Sub"].history), 2)  # Add + Move
+            self.assertEqual(by_name["Sub"].history[-1].message, "Move to B")
+            self.assertEqual(len(by_name["Grand"].history), 1)  # Add only, no Move entry
+
+    def test_move_into_own_subtree_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            a = store.add(1, ["A"])
+            store.add(2, ["A", "Sub"])
+            with self.assertRaises(SpecStoreError):
+                store.move(a.object_id, 3, ["A", "Sub"])
+
+    def test_move_to_current_parent_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            sub = store.add(2, ["A", "Sub"])
+            with self.assertRaises(SpecStoreError):
+                store.move(sub.object_id, 2, ["A"])
+
+    def test_move_exceeding_depth_cap_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            store.add(2, ["A", "A1"])
+            store.add(3, ["A", "A1", "A2"])
+            a1 = next(s for s in store.list_all() if s.name == "A1")  # depth 2, subtree reaches depth 3
+            store.add(1, ["B"])
+            store.add(2, ["B", "C"])
+            store.add(3, ["B", "C", "D"])
+            store.add(4, ["B", "C", "D", "E"])  # depth 4 parent path -> target level 5
+
+            with self.assertRaises(SpecStoreError):
+                store.move(a1.object_id, 5, ["B", "C", "D", "E"])  # A1's Grandchild would land at depth 6
+
+    def test_move_wrong_path_length_for_level_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            b = store.add(1, ["B"])
+            with self.assertRaises(SpecStoreError):
+                store.move(b.object_id, 3, ["OnlyOneSegment"])
+
+    def test_move_missing_parent_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            b = store.add(1, ["B"])
+            with self.assertRaises(SpecStoreError):
+                store.move(b.object_id, 2, ["Nonexistent"])
+
+
 class TestRenderAndHistory(unittest.TestCase):
     def test_render_strips_comments(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -391,6 +511,29 @@ class TestDirectoryMode(unittest.TestCase):
             self.assertFalse(old_dir.is_dir())
             new_dir = root / f"001-{first.object_type}-{first.object_id}-renamed"
             self.assertTrue(new_dir.is_dir())
+
+    def test_move_relocates_directory_and_descendants_on_disk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "design"
+            store = SpecStore(root=root)
+            store.add(1, ["A"])
+            sub = store.add(2, ["A", "Sub"])
+            store.add(3, ["A", "Sub", "Grand"])
+            store.add(1, ["B"])
+
+            store.move(sub.object_id, 2, ["B"])
+
+            sections = store.list_all()
+            by_name = {s.name: s for s in sections}
+            b_dir = root / next(
+                p.name for p in root.iterdir() if p.is_dir() and "-b" in p.name.lower()
+            )
+            sub_dir = b_dir / f"{by_name['Sub'].number:03d}-{by_name['Sub'].object_type}-{by_name['Sub'].object_id}-sub"
+            grand_dir = sub_dir / f"{by_name['Grand'].number:03d}-{by_name['Grand'].object_type}-{by_name['Grand'].object_id}-grand"
+            self.assertTrue(sub_dir.is_dir())
+            self.assertTrue((sub_dir / "_content.md").is_file())
+            self.assertTrue(grand_dir.is_dir())
+            self.assertTrue((grand_dir / "_content.md").is_file())
 
     def test_duplicate_id_across_content_files_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

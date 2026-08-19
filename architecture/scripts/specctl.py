@@ -39,6 +39,10 @@ def _level_flag_name(level_type: str) -> str:
     return f"add-{level_type.lower()}"
 
 
+def _move_flag_name(level_type: str) -> str:
+    return f"move-to-{level_type.lower()}"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="specctl")
     parser.add_argument(
@@ -93,6 +97,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Insert right after this sibling number (0 = before all siblings)",
     )
 
+    for depth, level_type in enumerate(LEVEL_TYPES, start=1):
+        move_parser = subparsers.add_parser(
+            _move_flag_name(level_type),
+            help=f"Move a Section to become a {level_type} (depth {depth}) under a new parent",
+        )
+        move_parser.add_argument("id")
+        move_parser.add_argument(
+            "path", nargs="?", default=None,
+            help=f"'/'-separated path of {depth - 1} existing ancestor Section name(s) "
+                 + ("(omit for move-to-part, which has no parent)" if depth == 1 else "-- the new parent"),
+        )
+
     show_parser = subparsers.add_parser("show", help="Display a Section")
     show_parser.add_argument("id")
     show_parser.add_argument("--history", action="store_true", help="Include History")
@@ -139,6 +155,14 @@ def dispatch(store: SpecStore, args: argparse.Namespace) -> object:
 
     if command == "reorder":
         return store.reorder(args.id, args.insert_after)
+
+    for depth, level_type in enumerate(LEVEL_TYPES, start=1):
+        if command == _move_flag_name(level_type):
+            path_segments = args.path.split("/") if args.path else []
+            try:
+                return store.move(args.id, depth, path_segments)
+            except SpecStoreError as exc:
+                raise CliError(str(exc)) from exc
 
     if command == "show":
         return store.resolve_id(args.id)

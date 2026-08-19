@@ -518,3 +518,77 @@ class SpecStore:
 
         new_span = [s for block in blocks for s in block]
         return sections[:span_start] + new_span + sections[span_end:]
+
+    # -- move (metagroup/parent change) ----------------------------------
+
+    def move(self, object_id: str, level: int, path_segments: list[str]) -> SpecSection:
+        """`move-to-<metagroup-type>`: reassign a Section's parent, i.e. the
+        general model's "Change metagroup" (design-specctl.md, Operations).
+        Unlike `rename`/`reorder`, which only ever touch one position in a
+        descendant's `ancestor_levels`, the whole prefix up to and including
+        the moved Section's own segment can change here (both its values and
+        its length), so every descendant's Object Type -- derived from its
+        full ancestor-name path -- must be re-derived too, not just patched."""
+        self._require_writable()
+        if not 1 <= level <= MAX_LEVEL:
+            raise SpecStoreError(f"unsupported level {level}; specctl supports 1-{MAX_LEVEL}")
+        if len(path_segments) != level - 1:
+            raise SpecStoreError(
+                f"move-to-{LEVEL_TYPES[level - 1].lower()} expects a {level - 1}-segment parent path "
+                f"(got {len(path_segments)}: {'/'.join(path_segments)!r})"
+            )
+
+        with self.lock():
+            preamble, sections = self._read()
+            index, section = self._find_with_index(sections, object_id)
+            old_prefix = section.path_levels
+            end = _subtree_end(sections, index)
+
+            new_parent_levels = self._resolve_ancestor_path(sections, path_segments)
+
+            if new_parent_levels[: len(old_prefix)] == old_prefix:
+                raise SpecStoreError("cannot move a Section into its own subtree")
+            if new_parent_levels == section.ancestor_levels:
+                raise SpecStoreError(
+                    "the given parent is already this Section's parent -- use 'reorder' to "
+                    "change its position among unchanged siblings instead"
+                )
+
+            max_extra_depth = max(
+                (sections[j].level - section.level for j in range(index + 1, end)), default=0
+            )
+            if level + max_extra_depth > MAX_LEVEL:
+                raise SpecStoreError(
+                    f"moving to level {level} would push a descendant beyond the {MAX_LEVEL}-level cap"
+                )
+
+            siblings = _direct_children_own_names(sections, new_parent_levels)
+            section.number = numbering.next_number([int(name[:3]) for name in siblings])
+            section.ancestor_levels = new_parent_levels
+            new_prefix = section.path_levels
+
+            for j in range(index + 1, end):
+                suffix = sections[j].ancestor_levels[len(old_prefix):]
+                sections[j].ancestor_levels = new_prefix + suffix
+
+            for j in range(index, end):
+                s = sections[j]
+                known = _known_object_types(sections[:j] + sections[j + 1:])
+                full_path = list(s.ancestor_levels) + [s.own_name]
+                try:
+                    s.object_type = abbrev.derive_object_type(full_path, known)
+                except abbrev.AbbrevCollisionError as exc:
+                    raise SpecStoreError(str(exc)) from exc
+
+            destination = "/".join(path_segments) if path_segments else "(root)"
+            section.history.append(
+                HistoryEntry(timestamp=now_iso(), prefix="M", message=f"Move to {destination}")
+            )
+
+            moved_block = sections[index:end]
+            remaining = sections[:index] + sections[end:]
+            insertion_index = _insertion_index(remaining, new_parent_levels)
+            sections = remaining[:insertion_index] + moved_block + remaining[insertion_index:]
+
+            self._write(preamble, sections)
+            return self._find_with_index(sections, object_id)[1]

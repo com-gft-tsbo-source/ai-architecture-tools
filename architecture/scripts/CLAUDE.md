@@ -28,8 +28,8 @@ existierende Pfade pro Segment Nummer, Name oder `Nummer-Name` (spezifiziert in
 "Amendments").
 
 `specctl.py` ist implementiert (Add je Ebene, Status inkl. ADR-Pflicht ab
-`stable`, `set-adr`, `set-description`, `rename`, `reorder`, `show`, `list`,
-`history`, `render`) — **sowohl Single-File- als auch Directory-Mode**
+`stable`, `set-adr`, `set-description`, `rename`, `reorder`, `move-to-<Ebene>`,
+`show`, `list`, `history`, `render`) — **sowohl Single-File- als auch Directory-Mode**
 (`design-specctl.md`, "Object Format"). Es nutzt bewusst *nicht*
 `lib/cliapp.py` und `lib/objectfile.py`/`lib/singlefile.py`/`lib/store.py`:
 deren generisches Objektformat (Signature-Heading, `## Meta`-Bulletliste,
@@ -59,13 +59,25 @@ der Datei im Single-File-Mode) — nicht atomar über mehrere Dateien hinweg,
 dieselbe bereits im allgemeinen Modell akzeptierte Einschränkung bei einer
 unterbrochenen Reorder-Kaskade. Beide Modi konvertieren in dieselbe flache,
 präorder `list[SpecSection]`-Repräsentation, sodass sämtliche CRUD-Methoden
-(`add`, `set_status`, `rename`, `reorder`, ...) modusunabhängig bleiben —
-nur `_read`/`_write` verzweigen.
+(`add`, `set_status`, `rename`, `reorder`, `move`, ...) modusunabhängig
+bleiben — nur `_read`/`_write` verzweigen.
 
-89 Unit-/Integrationstests für specctl (Single-File- und Directory-Mode)
-kommen zu den 221 der anderen drei Tools/geteilten Module hinzu (214 plus 7
-neue Tests für die 4-/5-Ebenen-Generalisierung von `lib/abbrev.py`) — 310
-insgesamt, unter `tests/`
+`move-to-<metagroup-type>` (das allgemeine Modell nennt es
+`set-<metagroup-type>`, design.md: "Changing an object's metagroup ...
+re-derives everything downstream") verschiebt eine Section zu einem neuen
+Elternpfad — bei specctl trifft das den **gesamten verschobenen Teilbaum**,
+nicht nur die Section selbst: jedes Nachkommen-Object-Type wird aus seinem
+eigenen vollständigen Vorfahren-Namenspfad abgeleitet, der sich durch die
+Verschiebung ändert, muss also neu abgeleitet werden (nicht nur gepatcht wie
+bei `rename`/`reorder`). Abgelehnt werden Verschiebungen in den eigenen
+Teilbaum (Zyklus), zum aktuellen Elternpfad (No-op, `reorder` verwenden) und
+solche, die für die Section selbst oder einen Nachkommen die 5-Ebenen-Grenze
+überschreiten würden.
+
+104 Unit-/Integrationstests für specctl (Single-File- und Directory-Mode,
+inkl. `move`) kommen zu den 221 der anderen drei Tools/geteilten Module
+hinzu (214 plus 7 neue Tests für die 4-/5-Ebenen-Generalisierung von
+`lib/abbrev.py`) — 325 insgesamt, unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`).
 
 Noch offen:
@@ -76,14 +88,6 @@ Noch offen:
   adrctl, `lib/spec_link.py`, Auto-Propagation — `design-specctl.md`, "ADR
   Linkage") ist spezifiziert, aber bewusst noch nicht implementiert; `adr`
   wird bis dahin nur manuell über `set-status --adr` / `set-adr` gepflegt.
-- specctl: `move` (Wechsel der Metagroup-Ebene/des Elternpfads eines
-  bestehenden Sections, inkl. kaskadierender Neuableitung des Object Type für
-  den gesamten verschobenen Teilbaum) ist nicht implementiert — nur `add`
-  (neu anlegen), `rename` (Name ändern, kaskadiert bereits in
-  `ancestor_levels` der Nachkommen) und `reorder` (Geschwister-Reihenfolge
-  innerhalb desselben Elternpfads, ebenfalls kaskadierend). Design.md listet
-  "Change metagroup" als generische Objekt-Operation; für specctl fehlt dafür
-  noch eine CLI-Entsprechung.
 - Locking wurde nur innerhalb eines Prozesses (Threads) getestet, nicht
   über echte Multi-Prozess-Konkurrenz.
 
