@@ -2,6 +2,7 @@
 
 Dieses Repository dient zum Erstellen einer Reihe von Skripten, Skills und Subagents, die mich bei meiner Arbeit als Architekt und Softwareentwickler unterstützen sollen. Momentan wird im Unterverzeichnis `architecture` gearbeitet.
 Die Entwicklung der Skills und Subagents ruht im Augenblick.
+Die vorhandenen Tools `taskctl`, `adrctl` und `rulectl` dürfen aktuell nicht für die eigene Arbeit an diesem Repository genutzt werden — sie werden ggf. noch angepasst und sind daher unter Umständen nicht mehr kompatibel zu ihrem eigenen Dateiformat.
 
 ## Deine Aufgabe
 
@@ -24,6 +25,7 @@ Du nimmst dabei folgende Rolle ein:
 - Entwickle `pythonic` Code.
 - Achte auf Wiederverwendung von Code durch Libraries.
 - Erstelle Tests für den erzeugten Code
+- Beachte einheitliches User-Interface und Dateiformat
 
 ### Tester
 
