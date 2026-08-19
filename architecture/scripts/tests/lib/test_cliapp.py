@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib.cliapp import main, register_deferred
+from lib.cliapp import CliError, main, register_deferred
 from lib.toolspec import MetagroupLevelSpec, MetainfoSpec, StatusSpec, ToolSpec
 
 SPEC = ToolSpec(
@@ -144,6 +144,62 @@ class TestDeferredStub(unittest.TestCase):
                             configure_parser=configure)
             self.assertEqual(code, 1)
             self.assertIn("not yet specified", err.getvalue())
+
+
+class TestAfterDispatch(unittest.TestCase):
+    def test_called_with_spec_store_args_and_result_on_success(self):
+        calls = []
+
+        def hook(spec, store, args, result):
+            calls.append((spec, store, args, result))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add-phase", "001-Setup"])
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = main(
+                    SPEC,
+                    ["--root", root, "add", "--name", "Task", "--phase", "001-Setup"],
+                    after_dispatch=hook,
+                )
+            self.assertEqual(code, 0)
+            self.assertEqual(len(calls), 1)
+            spec, store, args, result = calls[0]
+            self.assertIs(spec, SPEC)
+            self.assertEqual(args.command, "add")
+            self.assertEqual(result.name, "Task")
+
+    def test_not_called_when_dispatch_itself_fails(self):
+        calls = []
+
+        def hook(spec, store, args, result):
+            calls.append(result)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = main(SPEC, ["--root", root, "add", "--name", "No phase"], after_dispatch=hook)
+            self.assertEqual(code, 1)
+            self.assertEqual(calls, [])
+
+    def test_error_raised_by_hook_aborts_with_exit_code_1(self):
+        def hook(spec, store, args, result):
+            raise CliError("propagation failed")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add-phase", "001-Setup"])
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = main(
+                    SPEC,
+                    ["--root", root, "add", "--name", "Task", "--phase", "001-Setup"],
+                    after_dispatch=hook,
+                )
+            self.assertEqual(code, 1)
+            self.assertIn("propagation failed", err.getvalue())
 
 
 if __name__ == "__main__":

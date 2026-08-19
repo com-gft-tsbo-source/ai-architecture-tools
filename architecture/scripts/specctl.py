@@ -17,10 +17,10 @@ Both single-file and directory mode are implemented (design-specctl.md,
 "Object Format"). `--root` resolves to specctl's `spec.md`/`spec` within a
 directory shared by all four tools (design.md, "File and Directory
 Parameters") -- the same `--root` a user already passes to `adrctl` also
-locates specctl's data, deterministically. The adrctl `spec-ref` auto-
-propagation itself is not wired up yet, though (design-specctl.md, "ADR
-Linkage", Implementation status) -- `adr` is set manually via
-set-status --adr / set-adr.
+locates specctl's data, deterministically. `adrctl`'s `spec-ref` metainfo
+field drives automatic propagation into a Section's `adr` field via
+lib/spec_link.py (design-specctl.md, "ADR Linkage") -- `set-adr` here
+remains the manual, unlogged way to set/correct it directly.
 """
 
 from __future__ import annotations

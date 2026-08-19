@@ -413,6 +413,23 @@ class SpecStore:
             self._write(preamble, sections)
             return section
 
+    def receive_adr_link(self, object_id: str, adr_id: str, *, message: str = "") -> SpecSection:
+        """Update `adr` as driven by adrctl's automatic propagation
+        (design-specctl.md, "ADR Linkage") -- unlike `set_adr` (a manual,
+        unlogged correction), this reflects a real ADR decision (the
+        referenced ADR's creation, status change, or `spec-ref` being
+        attached), so it *is* logged as an `M` History entry here, the
+        same as any other Status-adjacent field driven by an external event."""
+        with self.lock():
+            preamble, sections = self._read()
+            _index, section = self._find_with_index(sections, object_id)
+            section.adr = adr_id
+            section.history.append(
+                HistoryEntry(timestamp=now_iso(), prefix="M", message=message or f"adr={adr_id}")
+            )
+            self._write(preamble, sections)
+            return section
+
     def set_description(self, object_id: str, description: str, *, adr: Optional[str] = None) -> SpecSection:
         with self.lock():
             preamble, sections = self._read()

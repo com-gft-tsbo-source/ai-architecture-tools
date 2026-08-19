@@ -155,6 +155,52 @@ class TestStatusAndAdr(unittest.TestCase):
             self.assertEqual(after.history[-1].new_status, "stable")
 
 
+class TestReceiveAdrLink(unittest.TestCase):
+    def test_updates_adr_field(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            updated = store.receive_adr_link(section.object_id, "b1c2d3")
+            self.assertEqual(updated.adr, "b1c2d3")
+
+    def test_logs_history_entry_with_default_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            before = len(section.history)
+            store.receive_adr_link(section.object_id, "b1c2d3")
+            after = store.resolve_id(section.object_id)
+            self.assertEqual(len(after.history), before + 1)
+            self.assertEqual(after.history[-1].prefix, "M")
+            self.assertEqual(after.history[-1].message, "adr=b1c2d3")
+
+    def test_logs_history_entry_with_custom_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            store.receive_adr_link(section.object_id, "b1c2d3", message="adr=b1c2d3")
+            after = store.resolve_id(section.object_id)
+            self.assertEqual(after.history[-1].message, "adr=b1c2d3")
+
+    def test_unlike_set_adr_receive_adr_link_is_logged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            manual = len(store.resolve_id(section.object_id).history)
+            store.set_adr(section.object_id, "aaaaaa")
+            after_manual = len(store.resolve_id(section.object_id).history)
+            self.assertEqual(after_manual, manual)
+            store.receive_adr_link(section.object_id, "bbbbbb")
+            after_automatic = len(store.resolve_id(section.object_id).history)
+            self.assertEqual(after_automatic, manual + 1)
+
+    def test_unknown_id_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            with self.assertRaises(SpecStoreError):
+                store.receive_adr_link("nope", "b1c2d3")
+
+
 class TestSetDescription(unittest.TestCase):
     def test_draft_content_change_untracked(self):
         with tempfile.TemporaryDirectory() as tmp:

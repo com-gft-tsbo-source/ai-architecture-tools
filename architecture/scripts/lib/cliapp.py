@@ -257,6 +257,7 @@ def main(
     *,
     extra_handlers: Optional[dict[str, Handler]] = None,
     configure_parser: Optional[Callable[[argparse.ArgumentParser, "argparse._SubParsersAction"], None]] = None,
+    after_dispatch: Optional[Callable[[ToolSpec, Store, argparse.Namespace, object], None]] = None,
 ) -> int:
     if extra_handlers is None:
         extra_handlers = {}
@@ -269,6 +270,8 @@ def main(
     try:
         store = Store(spec=spec, root=Path(args.root))
         result = dispatch(spec, store, args, extra_handlers)
+        if after_dispatch is not None:
+            after_dispatch(spec, store, args, result)
     except (StoreError, CliError, DeferredOperationError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

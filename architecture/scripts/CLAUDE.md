@@ -84,20 +84,29 @@ Teilbaum (Zyklus), zum aktuellen Elternpfad (No-op, `reorder` verwenden) und
 solche, die für die Section selbst oder einen Nachkommen die 5-Ebenen-Grenze
 überschreiten würden.
 
-330 Unit-/Integrationstests insgesamt unter `tests/`
+347 Unit-/Integrationstests insgesamt unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 104 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
-`move`) und mehrere neue Tests für `resolve_root` (Kollision, Default-Modus,
-`.md`-/Name-Override, Multi-Tool-Koexistenz unter einem `--root`).
+`move`), mehrere Tests für `resolve_root` (Kollision, Default-Modus,
+`.md`-/Name-Override, Multi-Tool-Koexistenz unter einem `--root`) sowie
+17 neue Tests für die `spec-ref`-Verknüpfung (`receive_adr_link`,
+`lib/spec_link.py`, den generischen `after_dispatch`-Hook, End-to-End über
+`adrctl`/`specctl`: `add --spec-ref`, `set-status`-Re-Propagation,
+retroaktives `set-spec-ref`, fehlendes Ziel).
 
 Noch offen:
 - `tasklist` (rulectl/adrctl) ist absichtlich nur als Stub vorhanden
   (Exit 1, "not yet specified") — Verhalten laut Design-Dokumenten separat
   zu spezifizieren.
-- specctl: die bidirektionale adrctl-Verknüpfung (`spec-ref`-Metainfo bei
-  adrctl, `lib/spec_link.py`, Auto-Propagation — `design-specctl.md`, "ADR
-  Linkage") ist spezifiziert, aber bewusst noch nicht implementiert; `adr`
-  wird bis dahin nur manuell über `set-status --adr` / `set-adr` gepflegt.
+- specctl: die bidirektionale adrctl-Verknüpfung ist implementiert —
+  `spec-ref=<id>`-Metainfo bei adrctl (einwertig, `design-decisions.md`,
+  "Amendments (2026-08-19, spec-ref single-valued)"), `lib/spec_link.py`,
+  Auto-Propagation nach `adrctl add`/`set-status`/`set-spec-ref` über
+  `lib/cliapp.py`s `after_dispatch`-Hook in `SpecStore.receive_adr_link`
+  (loggt einen `M`-History-Eintrag, anders als das weiterhin manuelle
+  `set-adr`). Keine Transaktionalität über beide Stores hinweg: schlägt die
+  Propagation fehl (z. B. unbekannte `spec-ref`), bleibt die ADR trotzdem
+  persistiert, `adrctl` beendet sich mit Exit 1.
 - `resolve_root`-Lücke, beim Testen entdeckt, noch nicht entschieden: Zeigt
   `--root` auf ein **existierendes Verzeichnis eines anderen Tools** (z. B.
   `adrctl --root ./project/tasks`, wobei `tasks/` bereits taskctl gehört),
