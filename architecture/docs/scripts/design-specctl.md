@@ -43,7 +43,7 @@ Letters are taken from the metagroup Name after stripping its `<nr>-` prefix, sa
 `design.md`'s generic Object Format (`# <signature>` heading, `## Meta` bullet list, `> `-quoted content, `## History` section) is deliberately **not** used here — it would work against `specctl`'s own stated goal (see `VISION.md`) of keeping the document human-readable while still being agent-usable. Instead:
 
 - The heading itself (`##` … `######`) is plain, human-authored text — the object's Name, verbatim. No ID, Signature, or type is encoded into it.
-- Immediately below the heading, exactly one HTML comment holds all bookkeeping (`id`, `nr`, `status`, `adr`, `history`) — invisible in a normal Markdown render or diff-preview, but trivial to parse.
+- Immediately below the heading, exactly one HTML comment holds all bookkeeping (`id`, `type`, `nr`, `status`, `adr`, `history`, and optionally `open-questions`, see User Content) — invisible in a normal Markdown render or diff-preview, but trivial to parse. `type` is stored explicitly rather than re-derived on every read, for the same reason the general Object Format stores it in `## Meta`: collision resolution depends on creation order (design.md, "Object Type").
 - Content follows as plain Markdown — no `> ` quoting.
 
 There is no `## Meta` list (a node's ancestors are already visible from its heading nesting), no re-stated `## <name>` heading, no separate `## History` section, and no `## Metagroups` bookkeeping block (the headings themselves are the metagroup declarations — nothing needs registering ahead of time).
@@ -52,7 +52,9 @@ Example:
 
     ### Locking
 
-    <!-- specctl id=a3f9c2 nr=003 status=stable adr=b1c2d3
+    <!-- specctl id=a3f9c2 type=PaCh__ nr=003 status=stable adr=b1c2d3
+    open-questions:
+    > Re-check the timeout after a steal, or leave it as-is?
     history:
     - 2026-08-17T15:45:48: M | Add
     - 2026-08-18T09:10:00: M [draft] -> [stable] | adr=b1c2d3
@@ -63,7 +65,7 @@ Example:
 
     #### Timeout Behaviour
 
-    <!-- specctl id=f00d21 nr=001 status=draft -->
+    <!-- specctl id=f00d21 type=PaChTi nr=001 status=draft -->
 
     Waiting instances time out after 3 minutes; on timeout they steal the
     lock...
@@ -71,6 +73,8 @@ Example:
 **Single-file mode:** the whole document is one file; sections appear in document order, which *is* their sort order (metagroup path, then number) — no separate reordering of "objects vs. document" to keep in sync.
 
 **Directory mode:** one file per leaf, subdirectories mirroring the heading hierarchy, as in the general model. Since every node (not just leaves) is an object, each directory additionally holds a `_content.md` file carrying that node's own heading/comment/content — distinct from the tool-bookkeeping `.index.md`/`.index.json` files, which continue to serve their general-model role unchanged. *(This mapping is a proposal — directory mode is secondary for a tool whose primary use case is a single flowing document; revisit once a real multi-file spec surfaces.)*
+
+**Implementation status:** directory mode is specified above but **deferred** — the first implementation ships single-file mode only, consistent with `VISION.md`'s primary use case (a single flowing document like `design.md`). Deferred the same way `rulectl`/`adrctl` defer `tasklist`: designed, not yet built.
 
 ## Status
 
@@ -90,10 +94,8 @@ Deviates from the general model: only `M` entries for **Add**, **Rename**, **Mov
 
 ## User Content
 
-- `Description` — the Section's main prose. Mandatory, always available (same fixed name as the general model's `--description`).
-- `OpenQuestions` — optional free Markdown; unresolved questions or todos for this Section, pending a future ADR.
-
-Both stored as plain Markdown directly under the object's metadata comment — no `> ` prefix (see Object Format).
+- `Description` — the Section's main, visible prose. Mandatory, always available (same fixed name as the general model's `--description`). Stored as plain Markdown directly under the object's metadata comment — no `> ` prefix (see Object Format).
+- `OpenQuestions` — optional free text; unresolved questions or todos for this Section, pending a future ADR. Unlike `Description`, this is stored **inside** the hidden metadata comment (`open-questions:` block, `> `-encoded), not as visible Markdown: a second visible convention would need its own in-band delimiter (e.g. a sub-heading) that could collide with a real nested Section/Subsection/Point heading one level down. Since open questions are working notes rather than primary reading content, hiding them alongside `history:` fits the same "keep the rendered document readable" goal instead of working against it.
 
 ## ADR Linkage
 
@@ -104,13 +106,20 @@ Both stored as plain Markdown directly under the object's metadata comment — n
 - **Propagation is automatic**, not a manual sync step: whenever an ADR carrying one or more `spec-ref` values is created, or has its status changed via `adrctl set-status`, `lib/spec_link.py` updates the `adr` field — and appends the matching `M` History entry — on every referenced `specctl` object, within the same invocation. A `spec-ref` pointing at a file or object ID that doesn't exist aborts the `adrctl` operation with an error rather than being silently skipped.
 - Superseding an ADR (`adrctl`'s existing `superseded-by` metainfo) updates a Section's `adr` value the same way, once the superseding ADR itself declares the matching `spec-ref` and is accepted — older ADRs remain fully queryable in `adrctl`'s own History, even though a Section's `adr` field only ever shows the single current one.
 
+**Implementation status:** the automatic propagation (`spec-ref`, `lib/spec_link.py`, the `adrctl`-side write-back) is specified above but **deferred** to a follow-up change. The first implementation of `specctl` ships the `adr` Metainfo field and `set-adr` as a manual command only — `adrctl` is not yet touched. This lets `specctl` land and be exercised standalone before the cross-tool wiring is built on top of it.
+
 ## Operations
 
 In addition to the general operations from `design.md`, adapted per the deviations above:
 
-- `add-<metagroup-type> <name>` creates the path segment **and** its object in one step (see "Deviation from the general model") — there is no separate content-less path-declaration step to run first.
-- `set-adr <id>`: manually set or correct the `adr` Metainfo field. Normally driven automatically by `adrctl` (see ADR Linkage), but available directly for manual correction or for documents not yet backed by an ADR store.
+- `add-<metagroup-type> <name>` creates the path segment **and** its object in one step (see "Deviation from the general model") — there is no separate content-less path-declaration step to run first. `<name>` is the full `/`-separated path of heading texts, ancestors then the new leaf (the general model's own shape for `add-<type> <name>`, e.g. `add-component frontend/mocking`) — there is no separate `--name` flag, since the path's leaf segment *is* the Section's heading text.
+- `set-description <id> <value>`: change a Section's `Description` content — the general model's "Change content" operation, made explicit here (unlike the other three tools, which don't yet expose it over the CLI) because the ADR-gating rule under Status needs a command to attach to. Accepts `--adr <id>` inline for the case described under Status.
+- `set-adr <id> <value>`: manually set or correct the `adr` Metainfo field. Normally driven automatically by `adrctl` (see ADR Linkage), but available directly for manual correction or for documents not yet backed by an ADR store. Not logged in History (see History above).
+- `rename <id> <name>`: change a Section's heading text without moving it. Cascades: every descendant's stored ancestor path embeds this Section's own `<nr>-<name>` segment (see Object Format) and is rewritten accordingly.
+- `reorder <id> --after <nr>`: move a Section to a new position among its siblings (same parent), per the general model's Numbering/Reorder rules. A Section's own subtree moves with it; renumbering a sibling cascades into its descendants' ancestor paths the same way `rename` does.
 - `render`: emit the document as plain, comment-stripped Markdown (headings and content only) — a read-only convenience view, does not alter the source.
+
+**Not yet implemented:** "Change metagroup" (moving a Section to a different parent/level, as opposed to reordering among its current siblings) — this would need to re-derive Object Type for the entire moved subtree, on top of the same cascading ancestor-path rewrite `rename`/`reorder` already do. Deferred alongside directory mode and the `adrctl` linkage (see the Implementation status notes above).
 
 ## Scope
 

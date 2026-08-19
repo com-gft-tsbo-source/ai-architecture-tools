@@ -10,7 +10,16 @@ import re
 
 _SORT_PREFIX_RE = re.compile(r"^\d{3}-")
 _TARGET_LENGTH = 6
-_WIDTHS_BY_LEVEL_COUNT = {1: (6,), 2: (3, 3), 3: (2, 2, 2)}
+# 4/5-level widths are specctl's exception (design-specctl.md, "Object Type"):
+# width grows with depth instead of staying fixed at 6, since a 5-level path
+# could not stay legible otherwise. Every level count's widths still sum to
+# the value passed as pad()'s target_length (see natural_object_type/
+# derive_object_type below), so this table is the only thing that changes
+# per tool -- the derivation/collision algorithm itself stays generic.
+_WIDTHS_BY_LEVEL_COUNT = {
+    1: (6,), 2: (3, 3), 3: (2, 2, 2),
+    4: (2, 2, 2, 2), 5: (2, 2, 2, 2, 2),
+}
 _MAX_EXTRA_WIDTH = 3
 _MAX_NUMERIC_SUFFIX = 99
 
@@ -26,19 +35,26 @@ def widths_for_level_count(level_count: int) -> tuple[int, ...]:
         raise ValueError(f"unsupported metagroup level count: {level_count}") from None
 
 
+def widths_target_length(level_count: int) -> int:
+    """Total Object Type width for a given level count (sum of its per-level
+    widths) -- the target length every pad() call for that level count uses."""
+    return sum(widths_for_level_count(level_count))
+
+
 def strip_sort_prefix(name: str) -> str:
     """Remove a leading 3-digit zero-padded sort prefix ('<nr>-'), if present."""
     return _SORT_PREFIX_RE.sub("", name, count=1)
 
 
-def pad(letters: str) -> str:
-    """Right-pad with '_' to the 6-character target length. Codes already at
-    or beyond that length (e.g. after collision-escalation) are left as-is.
-    Also used to normalize a user-typed Object Type before matching (a
+def pad(letters: str, target_length: int = _TARGET_LENGTH) -> str:
+    """Right-pad with '_' to `target_length` (default 6, the fixed width used
+    by every 1-3 level tool). Codes already at or beyond that length (e.g.
+    after collision-escalation, or specctl's wider 4/5-level codes) are left
+    as-is. Also used to normalize a user-typed Object Type before matching (a
     trailing-'_' omission on the command line is re-padded before comparison)."""
-    if len(letters) >= _TARGET_LENGTH:
+    if len(letters) >= target_length:
         return letters
-    return letters + "_" * (_TARGET_LENGTH - len(letters))
+    return letters + "_" * (target_length - len(letters))
 
 
 def _join(stripped_names: tuple[str, ...], widths: tuple[int, ...]) -> str:
@@ -50,7 +66,7 @@ def natural_object_type(level_names: list[str]) -> str:
     already-assigned one; use derive_object_type() to get a guaranteed-unique result."""
     stripped = tuple(strip_sort_prefix(n) for n in level_names)
     widths = widths_for_level_count(len(stripped))
-    return pad(_join(stripped, widths))
+    return pad(_join(stripped, widths), sum(widths))
 
 
 def _first_divergent_index(a: str, b: str) -> int | None:
@@ -75,7 +91,7 @@ def derive_object_type(
     never auto-resolved on collision; the caller must pick a different one.
     """
     if abbrev is not None:
-        padded = pad(abbrev)
+        padded = pad(abbrev, widths_target_length(len(level_names)))
         if padded in known:
             raise AbbrevCollisionError(
                 f"explicit --abbrev {abbrev!r} collides with an existing Object Type"
@@ -84,7 +100,8 @@ def derive_object_type(
 
     stripped = tuple(strip_sort_prefix(n) for n in level_names)
     widths = widths_for_level_count(len(stripped))
-    candidate = pad(_join(stripped, widths))
+    target_length = sum(widths)
+    candidate = pad(_join(stripped, widths), target_length)
     if candidate not in known:
         return candidate
 
@@ -94,7 +111,7 @@ def derive_object_type(
     # natural window with the first character where the source names diverge.
     substituted = _substitute_colliding_levels(stripped, colliding, widths)
     if substituted is not None:
-        candidate = pad(_join(substituted, widths))
+        candidate = pad(_join(substituted, widths), target_length)
         if candidate not in known:
             return candidate
     else:
@@ -105,12 +122,12 @@ def derive_object_type(
         for level_index in range(len(widths)):
             trial_widths = list(widths)
             trial_widths[level_index] += extra
-            trial = pad(_join(stripped, tuple(trial_widths)))
+            trial = pad(_join(stripped, tuple(trial_widths)), target_length)
             if trial not in known:
                 return trial
 
     # Escalate further: numeric suffix on the best base candidate.
-    base = pad(_join(substituted, widths))
+    base = pad(_join(substituted, widths), target_length)
     for suffix in range(2, _MAX_NUMERIC_SUFFIX + 1):
         trial = f"{base}-{suffix}"
         if trial not in known:
