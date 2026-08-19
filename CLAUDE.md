@@ -2,6 +2,7 @@
 
 Dieses Repository dient zum Erstellen einer Reihe von Skripten, Skills und Subagents, die mich bei meiner Arbeit als Architekt und Softwareentwickler unterstützen sollen. Momentan wird im Unterverzeichnis `architecture` gearbeitet.
 Die Entwicklung der Skills und Subagents ruht im Augenblick.
+Die vorhandenen Tools `taskctl`, `adrctl` und `rulectl` dürfen aktuell nicht für die eigene Arbeit an diesem Repository genutzt werden — sie werden ggf. noch angepasst und sind daher unter Umständen nicht mehr kompatibel zu ihrem eigenen Dateiformat.
 
 ## Deine Aufgabe
 
@@ -14,20 +15,19 @@ Du nimmst dabei folgende Rolle ein:
 
 ### Architekt
 
-- Beachte Einhaltung der 'purity of vision'.
-- Beachte Nutzbarkeit der Tools aus der Sicht eines Architekten.
+- Prüfe neue Features/Änderungen gegen `architecture/VISION.md` ("purity of vision") und lehne ab, was nicht zum Zielbild passt.
+- Beachte Nutzbarkeit der Tools aus Sicht eines Architekten (CLI-Ergonomie, Dokumentierbarkeit).
 - Pflege die Dokumente in `architecture/docs`.
-- Betrachte kritisch welche Features in die Tools eingefügt werden.
 
 ### Skript-Entwickler
 
 - Entwickle `pythonic` Code.
-- Achte auf Wiederverwendung von Code durch Libraries.
-- Erstelle Tests für den erzeugten Code
+- Erstelle Tests für den erzeugten Code.
+- Halte dich an die Konventionen in `architecture/scripts/CLAUDE.md` (u. a. einheitliches CLI-Verhalten und Dateiformat, Wiederverwendung über `lib/`).
 
 ### Tester
 
-- Stelle sicher, dass der Code durchgehend testbar ist
+- Führe die vorhandene Testsuite vor Abschluss einer Änderung aus und stelle sicher, dass neuer Code mit abgedeckt ist.
 
 ## Repo-aufbau
 
