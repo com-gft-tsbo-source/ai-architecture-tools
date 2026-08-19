@@ -65,6 +65,7 @@ There is no multi-root, read-only merge mode — `--root` takes exactly one path
 ### Metainfo
 
 - Every object may carry Metainfo: Type/Name tuples that provide context for the object's content (e.g. `weight`, `tool`, `assignee-type`). Available types are tool-specific.
+- A Metainfo type may declare a fixed, closed set of valid values (e.g. taskctl's `review`: `none`/`user`/`subagent`) instead of free text. Setting a value outside that set — via `set-<metainfo-type>` or inline on `add` — is rejected with an error; a type without a declared value set accepts any text.
 
 ### Numbering
 
@@ -200,25 +201,25 @@ This is plain Markdown (same bullet-list style as `## Meta`), holds one line per
 
 ### Metagroup Operations
 - Create (`add-<metagroup-type> <name>`) — creates the metagroup's directory (directory mode) or its `## Metagroups` entry (single-file mode).
-- Rename
+- Rename — **not yet implemented** for taskctl/rulectl/adrctl (no store method or CLI command); specctl covers this implicitly, since every metagroup node is itself an object there and its own `rename` operation applies (design-specctl.md, Operations).
 - Show (`show-metagroups`)
 
 ### Object Operations
 - Add
 - Reorder
-- Delete
+- Delete (`delete <id>`) — removes the object outright; leaves its Number as a permanent gap, same as any other deletion (see Numbering above). Not logged anywhere once gone — there is no tombstone.
 - Change status
-- Change content
-- Change metagroup (see "Changing an object's metagroup" above)
+- Change content (`set-<user-content-block> <id> <value>`, e.g. `set-description`) — one subcommand per declared user-content block, the same uniform `set-<type> <value>` shape as metagroups/metainfo.
+- Change metagroup (see "Changing an object's metagroup" above) — **not yet implemented** for taskctl/rulectl/adrctl as a `set-<metagroup-type>` command, despite being documented in the CLI Contract below; specctl has its own, implemented equivalent (`move-to-<metagroup-type>`, design-specctl.md, Operations).
 - Display: short (single line)
 - Display: full description
 - Display: short + history
 
 ### Operations Across All Objects
 - List all objects (short display)
-- List objects in specific metagroups
-- List objects with specific metainfo
-- List objects with a specific status
+- List objects in specific metagroups (`list --<metagroup-type> <path>`) — includes every object at or below that path, not only an exact match.
+- List objects with specific metainfo (`list --<metainfo-type> <value>`) — exact match.
+- List objects with a specific status (`list --status <value>`)
 - Historical overview: the combined history of all objects, newest first
 
 ## Index Files
@@ -257,14 +258,16 @@ A pure performance cache, indexed by Object ID, listing only the **direct childr
 ## CLI Contract
 
 - `--root <path>`: resolved to this tool's file-or-directory target as described under "File and Directory Parameters" above. Required, single value — not repeatable.
-- Subcommand style: `add`, `add-<metagroup-type> <name>`, `set-status`, `set-<metainfo-type>`, `set-<metagroup-type>`, `annotate`, `next`, `show`, `show-metagroups`, `reindex`, …
-- `add-<type> <name>` and `set-<type> <name>` share one uniform shape across metagroups and metainfo: a subcommand followed by a single positional value, e.g. `add-domain backend`, `set-domain backend`, `add-component frontend/mocking` (nested types take a path-like name spanning their own ancestors).
+- Subcommand style: `add`, `add-<metagroup-type> <name>`, `set-status`, `set-<metainfo-type>`, `set-<user-content-block>`, `delete`, `annotate`, `next`, `show`, `show-metagroups`, `reindex`, `list`, …
+- `add-<type> <name>` and `set-<type> <name>` share one uniform shape across metagroups, metainfo, and user-content blocks: a subcommand followed by a single positional value, e.g. `add-domain backend`, `set-domain backend`, `add-component frontend/mocking` (nested types take a path-like name spanning their own ancestors), `set-description <id> "..."`.
 - `set-*` operations are also available as inline flags on `add`, to create an object and populate its fields — including its metagroup — in a single call.
 - `add-<metagroup-type> <name> [--abbrev <code>]`: creates a metagroup path (and, optionally, its Object Type abbreviation) — as a directory in directory mode, or as a `## Metagroups` entry in single-file mode. Only the path's last segment is newly created; every ancestor segment must already exist and is resolved the same way as `--<metagroup-type>` below. If the last segment lacks a `<nr>-` sort prefix, one is auto-assigned (`max + 1` among its siblings, see Metagroups above); an explicitly supplied prefix is used verbatim.
 - `--<metagroup-type> <value>` — whether inline on `add` or anywhere else a metagroup path is referenced (not created) — resolves an *existing* path one `/`-separated segment at a time against that segment's siblings. Each segment may be given as the exact `<nr>-<name>` form, a bare number (`2`), or a bare name (`Implementation`). A segment matching more than one sibling (e.g. two same-named siblings with different numbers) aborts with an error rather than guessing.
+- `delete <id>`: removes the object outright (see "Object Operations" above).
+- `list [--status <value>] [--<metagroup-type> <path>] [--<metainfo-type> <value>]`: lists objects, optionally filtered. At most one `--<metagroup-type>` flag may be given (an object has exactly one metagroup path); it is resolved the same way as `--<metagroup-type>` above and matches that path plus everything below it. Every `--<metainfo-type>` flag given must match that Metainfo's value exactly; multiple such flags combine (AND).
 - `--name "..."`: the object's Name.
 - `--description "..."`: the object's Description (always available under this fixed name).
 - `--<user-section> "..."`: content for any other tool-defined user-content block.
 - `--message "..."`: the History log text for `set-status`, `annotate`, or any other logged operation.
-- `--id <value>`: object selector, resolved in order: (1) matches the Signature pattern, (2) contains `/` → interpreted as `<metagroup-path>/<nr>`, (3) otherwise treated as a raw ID. (This is why free-form IDs must not contain `/`.)
-- Positional parameters: only file or directory names, always last.
+- `--id <value>`: object selector, resolved in order: (1) matches the Signature pattern, (2) contains `/` → interpreted as `<metagroup-path>/<nr>`, (3) otherwise treated as a raw ID. (This is why free-form IDs must not contain `/`.) Note: this full resolver only backs `show`'s `--id`-flavored positional `id`; other commands' `id` positional (`set-status`, `delete`, `reorder`, …) match a raw Object ID only, not a Signature or path selector.
+- Positional parameters carry the subcommand's own values (an object's `--id` selector, a Name/path, a Status, a metainfo/content value, …) — never a file or directory path; every filesystem location is resolved exclusively through `--root` (see "File and Directory Parameters"). Where a subcommand takes more than one positional parameter, the object selector (if any) always comes first.

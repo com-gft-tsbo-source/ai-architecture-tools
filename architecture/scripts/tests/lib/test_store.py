@@ -301,6 +301,115 @@ class TestSetMetainfo(unittest.TestCase):
             self.assertEqual(len(updated2.metainfo), 1)
 
 
+def taskctl_spec_with_review_choices() -> ToolSpec:
+    return ToolSpec(
+        name="taskctl",
+        metagroup_levels=(MetagroupLevelSpec(type="Phase"),),
+        metainfo=(MetainfoSpec(type="review", choices=("none", "user", "subagent")),),
+        status=StatusSpec(codes=(" ", "~", "X"), initial=" "),
+        user_content_blocks=("Description",),
+        root_name="tasks",
+        default_mode="directory",
+    )
+
+
+class TestMetainfoChoices(unittest.TestCase):
+    def test_set_metainfo_rejects_value_outside_choices(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec_with_review_choices(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            record = store.add(metagroup_path=["001-Setup"], name="First")
+            with self.assertRaises(StoreError):
+                store.set_metainfo(record.object_id, "review", "bogus")
+
+    def test_set_metainfo_accepts_declared_choice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec_with_review_choices(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            record = store.add(metagroup_path=["001-Setup"], name="First")
+            updated = store.set_metainfo(record.object_id, "review", "subagent")
+            self.assertEqual(updated.metainfo_value("review"), "subagent")
+
+    def test_add_inline_metainfo_rejects_value_outside_choices(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec_with_review_choices(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            with self.assertRaises(StoreError):
+                store.add(metagroup_path=["001-Setup"], name="First", metainfo={"review": "bogus"})
+
+    def test_type_without_choices_accepts_any_value(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            record = store.add(metagroup_path=["001-Setup"], name="First")
+            updated = store.set_metainfo(record.object_id, "review", "anything-goes")
+            self.assertEqual(updated.metainfo_value("review"), "anything-goes")
+
+
+class TestSetContent(unittest.TestCase):
+    def test_changes_description_and_logs_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            record = store.add(metagroup_path=["001-Setup"], name="First", description="Original")
+            before = len(record.history)
+            updated = store.set_content(record.object_id, "Description", "Revised")
+            self.assertEqual(updated.content["Description"], "Revised")
+            self.assertEqual(len(updated.history), before + 1)
+            self.assertEqual(updated.history[-1].prefix, "M")
+            reloaded = store.get(record.object_id)
+            self.assertEqual(reloaded.content["Description"], "Revised")
+
+    def test_single_file_mode_persists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks.md")
+            store.add_metagroup_path(["001-Setup"])
+            record = store.add(metagroup_path=["001-Setup"], name="First")
+            store.set_content(record.object_id, "Description", "Revised")
+            store2 = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks.md")
+            self.assertEqual(store2.get(record.object_id).content["Description"], "Revised")
+
+
+class TestDelete(unittest.TestCase):
+    def test_directory_mode_removes_object(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            first = store.add(metagroup_path=["001-Setup"], name="First")
+            second = store.add(metagroup_path=["001-Setup"], name="Second")
+            deleted = store.delete(first.object_id)
+            self.assertEqual(deleted.object_id, first.object_id)
+            remaining_ids = [r.object_id for r in store.list_all()]
+            self.assertEqual(remaining_ids, [second.object_id])
+
+    def test_directory_mode_leaves_a_numbering_gap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            first = store.add(metagroup_path=["001-Setup"], name="First")
+            store.add(metagroup_path=["001-Setup"], name="Second")
+            store.delete(first.object_id)
+            third = store.add(metagroup_path=["001-Setup"], name="Third")
+            self.assertEqual(third.number, 3)
+
+    def test_single_file_mode_removes_object(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks.md")
+            store.add_metagroup_path(["001-Setup"])
+            first = store.add(metagroup_path=["001-Setup"], name="First")
+            store.add(metagroup_path=["001-Setup"], name="Second")
+            store.delete(first.object_id)
+            store2 = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks.md")
+            self.assertEqual(len(store2.list_all()), 1)
+
+    def test_unknown_id_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            with self.assertRaises(StoreError):
+                store.delete("nope")
+
+
 class TestSingleFileMode(unittest.TestCase):
     def _new_store(self, tmp) -> Store:
         store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks.md")

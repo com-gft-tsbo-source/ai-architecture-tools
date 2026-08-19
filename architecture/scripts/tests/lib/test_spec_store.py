@@ -431,6 +431,56 @@ class TestMove(unittest.TestCase):
                 store.move(b.object_id, 2, ["Nonexistent"])
 
 
+class TestDelete(unittest.TestCase):
+    def test_deletes_leaf_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            leaf = store.add(2, ["A", "Sub"])
+            deleted = store.delete(leaf.object_id)
+            self.assertEqual(deleted.object_id, leaf.object_id)
+            names = [s.name for s in store.list_all()]
+            self.assertEqual(names, ["A"])
+
+    def test_rejects_deleting_section_with_children_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            parent = store.add(1, ["A"])
+            store.add(2, ["A", "Sub"])
+            with self.assertRaises(SpecStoreError):
+                store.delete(parent.object_id)
+            # nothing was removed
+            self.assertEqual(len(store.list_all()), 2)
+
+    def test_force_delete_cascades_whole_subtree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            parent = store.add(1, ["A"])
+            store.add(2, ["A", "Sub"])
+            store.add(3, ["A", "Sub", "Grand"])
+            store.add(1, ["B"])
+
+            store.delete(parent.object_id, cascade=True)
+
+            names = [s.name for s in store.list_all()]
+            self.assertEqual(names, ["B"])
+
+    def test_unknown_id_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            with self.assertRaises(SpecStoreError):
+                store.delete("nope")
+
+    def test_leaves_numbering_gap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            first = store.add(1, ["First"])
+            store.add(1, ["Second"])
+            store.delete(first.object_id)
+            third = store.add(1, ["Third"])
+            self.assertEqual(third.number, 3)
+
+
 class TestRenderAndHistory(unittest.TestCase):
     def test_render_strips_comments(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -543,6 +593,19 @@ class TestDirectoryMode(unittest.TestCase):
             self.assertFalse(old_dir.is_dir())
             new_dir = root / f"001-{first.object_type}-{first.object_id}-renamed"
             self.assertTrue(new_dir.is_dir())
+
+    def test_force_delete_removes_directory_and_descendants_on_disk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "spec"
+            store = SpecStore(root=root)
+            parent = store.add(1, ["Concurrency"])
+            store.add(2, ["Concurrency", "Locking"])
+            parent_dir = root / f"001-{parent.object_type}-{parent.object_id}-concurrency"
+            self.assertTrue(parent_dir.is_dir())
+
+            store.delete(parent.object_id, cascade=True)
+            self.assertFalse(parent_dir.is_dir())
+            self.assertEqual(store.list_all(), [])
 
     def test_move_relocates_directory_and_descendants_on_disk(self):
         with tempfile.TemporaryDirectory() as tmp:

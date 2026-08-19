@@ -117,8 +117,20 @@ def build_parser() -> argparse.ArgumentParser:
     show_parser.add_argument("id")
     show_parser.add_argument("--history", action="store_true", help="Include History")
 
+    delete_parser = subparsers.add_parser("delete", help="Delete a Section")
+    delete_parser.add_argument("id")
+    delete_parser.add_argument(
+        "--force-delete", dest="force_delete", action="store_true",
+        help="Delete the whole subtree, even if the Section still has descendant Sections",
+    )
+
     list_parser = subparsers.add_parser("list", help="List Sections")
     list_parser.add_argument("--status", default=None, choices=("draft", "stable", "deprecated"))
+    list_parser.add_argument(
+        "--under", default=None,
+        help="List only Sections under this '/'-separated ancestor path, including descendants",
+    )
+    list_parser.add_argument("--adr", default=None, help="List only Sections governed by this ADR ID")
 
     subparsers.add_parser("history", help="Combined History of every Section, newest first")
     subparsers.add_parser("render", help="Emit the document as plain, comment-stripped Markdown")
@@ -171,10 +183,24 @@ def dispatch(store: SpecStore, args: argparse.Namespace) -> object:
     if command == "show":
         return store.resolve_id(args.id)
 
+    if command == "delete":
+        try:
+            return store.delete(args.id, cascade=args.force_delete)
+        except SpecStoreError as exc:
+            raise CliError(str(exc)) from exc
+
     if command == "list":
         sections = store.list_all()
         if args.status is not None:
             sections = [s for s in sections if s.status == args.status]
+        if args.under is not None:
+            try:
+                prefix = store.resolve_path(args.under.split("/"))
+            except SpecStoreError as exc:
+                raise CliError(str(exc)) from exc
+            sections = [s for s in sections if s.path_levels[:len(prefix)] == prefix]
+        if args.adr is not None:
+            sections = [s for s in sections if s.adr == args.adr]
         return sections
 
     if command == "history":

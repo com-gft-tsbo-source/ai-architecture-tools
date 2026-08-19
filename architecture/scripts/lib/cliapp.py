@@ -83,9 +83,19 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
         metainfo_parser.add_argument("id")
         metainfo_parser.add_argument("value")
 
+    for block in spec.user_content_blocks:
+        content_parser = subparsers.add_parser(
+            f"set-{_flag_name(block)}", help=f"Change {block} content on an object"
+        )
+        content_parser.add_argument("id")
+        content_parser.add_argument("value")
+
     show_parser = subparsers.add_parser("show", help="Display an object")
     show_parser.add_argument("id")
     show_parser.add_argument("--history", action="store_true", help="Include History")
+
+    delete_parser = subparsers.add_parser("delete", help="Delete an object")
+    delete_parser.add_argument("id")
 
     reorder_parser = subparsers.add_parser("reorder", help="Move an object to a new position among its siblings")
     reorder_parser.add_argument("id")
@@ -98,6 +108,16 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
 
     list_parser = subparsers.add_parser("list", help="List objects")
     list_parser.add_argument("--status", default=None)
+    for level in spec.metagroup_levels:
+        list_parser.add_argument(
+            f"--{_flag_name(level.type)}", dest=f"metagroup__{level.type}", default=None,
+            help=f"List only objects under this {level.type} metagroup path, including descendants",
+        )
+    for metainfo in spec.metainfo:
+        list_parser.add_argument(
+            f"--{_flag_name(metainfo.type)}", dest=f"metainfo__{metainfo.type}", default=None,
+            help=f"List only objects whose {metainfo.type} metainfo equals this value",
+        )
 
     return parser, subparsers
 
@@ -169,9 +189,16 @@ def dispatch(spec: ToolSpec, store: Store, args: argparse.Namespace, extra_handl
         if command == f"set-{_flag_name(metainfo.type)}":
             return store.set_metainfo(args.id, metainfo.type, args.value)
 
+    for block in spec.user_content_blocks:
+        if command == f"set-{_flag_name(block)}":
+            return store.set_content(args.id, block, args.value)
+
     if command == "show":
         record = store.resolve_id(args.id)
         return record
+
+    if command == "delete":
+        return store.delete(args.id)
 
     if command == "reorder":
         return store.reorder(args.id, args.insert_after)
@@ -189,6 +216,21 @@ def dispatch(spec: ToolSpec, store: Store, args: argparse.Namespace, extra_handl
         records = store.list_all()
         if args.status is not None:
             records = [r for r in records if r.status == args.status]
+        supplied_metagroup = [
+            (level.type, getattr(args, f"metagroup__{level.type}"))
+            for level in spec.metagroup_levels
+            if getattr(args, f"metagroup__{level.type}") is not None
+        ]
+        if len(supplied_metagroup) > 1:
+            flags = ", ".join(f"--{_flag_name(l.type)}" for l in spec.metagroup_levels)
+            raise CliError(f"list accepts at most one of [{flags}] as a metagroup filter")
+        if supplied_metagroup:
+            segments = store.resolve_metagroup_path(supplied_metagroup[0][1].split("/"))
+            records = [r for r in records if list(r.metagroup_levels[:len(segments)]) == segments]
+        for metainfo in spec.metainfo:
+            value = getattr(args, f"metainfo__{metainfo.type}")
+            if value is not None:
+                records = [r for r in records if r.metainfo_value(metainfo.type) == value]
         return records
 
     raise CliError(f"unknown command: {command}")

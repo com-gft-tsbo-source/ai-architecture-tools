@@ -146,6 +146,117 @@ class TestDeferredStub(unittest.TestCase):
             self.assertIn("not yet specified", err.getvalue())
 
 
+class TestSetContentBlock(unittest.TestCase):
+    def test_set_description_changes_content_and_shows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add-phase", "001-Setup"])
+            _c, out, _e = run(
+                ["--root", root, "--json", "add", "--name", "Task", "--phase", "001-Setup",
+                 "--description", "Original"]
+            )
+            object_id = json.loads(out)["id"]
+
+            code, _out, _err = run(["--root", root, "set-description", object_id, "Revised"])
+            self.assertEqual(code, 0)
+
+            _c, out, _e = run(["--root", root, "--json", "show", object_id])
+            self.assertEqual(json.loads(out)["content"]["Description"], "Revised")
+
+
+class TestDeleteCommand(unittest.TestCase):
+    def test_delete_removes_object_from_list(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add-phase", "001-Setup"])
+            _c, out, _e = run(
+                ["--root", root, "--json", "add", "--name", "Task", "--phase", "001-Setup"]
+            )
+            object_id = json.loads(out)["id"]
+
+            code, _out, _err = run(["--root", root, "delete", object_id])
+            self.assertEqual(code, 0)
+
+            code, out, _err = run(["--root", root, "list"])
+            self.assertEqual(code, 0)
+            self.assertEqual(out.strip(), "")
+
+    def test_delete_unknown_id_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add-phase", "001-Setup"])
+            code, _out, err = run(["--root", root, "delete", "nope"])
+            self.assertEqual(code, 1)
+            self.assertIn("nope", err)
+
+
+RULECTL_LIKE_SPEC = ToolSpec(
+    name="rulectl",
+    metagroup_levels=(MetagroupLevelSpec(type="Language"), MetagroupLevelSpec(type="Context")),
+    metainfo=(MetainfoSpec(type="weight"),),
+    status=StatusSpec(codes=("draft", "active"), initial="active"),
+    user_content_blocks=("Description",),
+    root_name="rules",
+    default_mode="directory",
+)
+
+
+def run_rulectl_like(argv):
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = main(RULECTL_LIKE_SPEC, argv)
+    return code, out.getvalue(), err.getvalue()
+
+
+class TestListFilters(unittest.TestCase):
+    def test_metagroup_filter_includes_descendants(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "rules")
+            run_rulectl_like(["--root", root, "add-language", "Python"])
+            run_rulectl_like(["--root", root, "add-context", "Python/backend"])
+            run_rulectl_like(
+                ["--root", root, "add", "--name", "In backend", "--context", "Python/backend"]
+            )
+            run_rulectl_like(["--root", root, "add-language", "Go"])
+            run_rulectl_like(["--root", root, "add-context", "Go/server"])
+            run_rulectl_like(
+                ["--root", root, "add", "--name", "In go server", "--context", "Go/server"]
+            )
+
+            code, out, _err = run_rulectl_like(["--root", root, "list", "--language", "Python"])
+            self.assertEqual(code, 0)
+            self.assertIn("In_backend", out)
+            self.assertNotIn("In_go_server", out)
+
+    def test_metainfo_filter_exact_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "rules")
+            run_rulectl_like(["--root", root, "add-language", "Python"])
+            run_rulectl_like(["--root", root, "add-context", "Python/backend"])
+            run_rulectl_like(
+                ["--root", root, "add", "--name", "Heavy", "--context", "Python/backend",
+                 "--weight", "high"]
+            )
+            run_rulectl_like(
+                ["--root", root, "add", "--name", "Light", "--context", "Python/backend",
+                 "--weight", "low"]
+            )
+
+            code, out, _err = run_rulectl_like(["--root", root, "list", "--weight", "high"])
+            self.assertEqual(code, 0)
+            self.assertIn("Heavy", out)
+            self.assertNotIn("Light", out)
+
+    def test_more_than_one_metagroup_filter_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "rules")
+            code, _out, err = run_rulectl_like(
+                ["--root", root, "list", "--language", "Python", "--context", "Python/backend"]
+            )
+            self.assertEqual(code, 1)
+            self.assertIn("at most one", err)
+
+
 class TestAfterDispatch(unittest.TestCase):
     def test_called_with_spec_store_args_and_result_on_success(self):
         calls = []

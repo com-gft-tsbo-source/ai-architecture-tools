@@ -212,6 +212,72 @@ class TestListAndRender(unittest.TestCase):
             self.assertIn("## Concurrency", out)
             self.assertIn("Intro.", out)
 
+    def test_list_under_includes_descendants_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            run(["--root", root, "add-part", "Concurrency"])
+            run(["--root", root, "add-chapter", "Concurrency/Locking"])
+            run(["--root", root, "add-part", "Other"])
+
+            code, out, _err = run(["--root", root, "list", "--under", "Concurrency"])
+            self.assertEqual(code, 0)
+            self.assertIn("Concurrency", out)
+            self.assertIn("Locking", out)
+            self.assertNotIn("Other", out)
+
+    def test_list_adr_filter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            _c, out, _e = run(["--root", root, "--json", "add-part", "A"])
+            a_id = json.loads(out)["id"]
+            run(["--root", root, "add-part", "B"])
+            run(["--root", root, "set-status", a_id, "stable", "--adr", "x1"])
+
+            code, out, _err = run(["--root", root, "list", "--adr", "x1"])
+            self.assertEqual(code, 0)
+            self.assertIn("A", out)
+            self.assertNotIn("B_____", out)
+
+
+class TestDeleteCommand(unittest.TestCase):
+    def test_deletes_leaf_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
+            part_id = json.loads(out)["id"]
+
+            code, _out, _err = run(["--root", root, "delete", part_id])
+            self.assertEqual(code, 0)
+
+            code, out, _err = run(["--root", root, "list"])
+            self.assertEqual(code, 0)
+            self.assertEqual(out.strip(), "")
+
+    def test_rejects_deleting_section_with_children(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
+            part_id = json.loads(out)["id"]
+            run(["--root", root, "add-chapter", "Concurrency/Locking"])
+
+            code, _out, err = run(["--root", root, "delete", part_id])
+            self.assertEqual(code, 1)
+            self.assertIn("--force-delete", err)
+
+    def test_force_delete_cascades(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
+            part_id = json.loads(out)["id"]
+            run(["--root", root, "add-chapter", "Concurrency/Locking"])
+
+            code, _out, _err = run(["--root", root, "delete", part_id, "--force-delete"])
+            self.assertEqual(code, 0)
+
+            code, out, _err = run(["--root", root, "list"])
+            self.assertEqual(code, 0)
+            self.assertEqual(out.strip(), "")
+
 
 class TestSharesRootWithOtherTools(unittest.TestCase):
     def test_specctl_and_adrctl_coexist_under_the_same_root(self):

@@ -40,7 +40,7 @@ ersatzlos entfallen — kein Tool hatte dafür einen echten Anwendungsfall.
 
 `specctl.py` ist implementiert (Add je Ebene, Status inkl. ADR-Pflicht ab
 `stable`, `set-adr`, `set-description`, `rename`, `reorder`, `move-to-<Ebene>`,
-`show`, `list`, `history`, `render`) — **sowohl Single-File- als auch Directory-Mode**
+`delete`, `show`, `list`, `history`, `render`) — **sowohl Single-File- als auch Directory-Mode**
 (`design-specctl.md`, "Object Format"). Es nutzt bewusst *nicht*
 `lib/cliapp.py` und `lib/objectfile.py`/`lib/singlefile.py`/`lib/store.py`:
 deren generisches Objektformat (Signature-Heading, `## Meta`-Bulletliste,
@@ -84,20 +84,59 @@ Teilbaum (Zyklus), zum aktuellen Elternpfad (No-op, `reorder` verwenden) und
 solche, die für die Section selbst oder einen Nachkommen die 5-Ebenen-Grenze
 überschreiten würden.
 
-347 Unit-/Integrationstests insgesamt unter `tests/`
+Ein Spec-vs-Implementierung-Abgleich (2026-08-19) deckte mehrere in
+`design.md` bereits dokumentierte, aber nie verdrahtete Operationen auf; die
+folgenden wurden daraufhin nachgezogen (`design-decisions.md`, "Amendments
+(2026-08-19, closing spec/implementation gaps)"):
+- **`delete <id>`** bei allen vier Tools. Bei taskctl/rulectl/adrctl eine
+  einfache Entfernung (Objekt ist immer Metagroup-Blatt, keine Kinder
+  möglich); bei specctl lehnt `delete` eine Section mit Kind-Sections ab,
+  außer `--force-delete` löscht den gesamten Teilbaum. Hinterlässt wie jede
+  Löschung eine dauerhafte Nummernlücke, wird nirgends nachträglich geloggt.
+- **`set-<user-content-block> <id> <value>`** bei taskctl/rulectl/adrctl
+  (z. B. `set-description`, rulectls `set-procedure`, adrctls
+  `set-motivation`/`set-rationale`) — dieselbe `set-<type>`-Form wie bei
+  Metagroups/Metainfo, jetzt auch für Content-Blöcke. specctl hatte
+  `set-description` bereits.
+- **`list`-Filter** bei allen vier Tools: `--<metagroup-type> <path>`
+  (taskctl/rulectl/adrctl) bzw. `--under <path>` (specctl) — inklusive aller
+  Nachfahren, nicht nur exakter Treffer; `--<metainfo-type> <value>`
+  (taskctl/rulectl/adrctl) bzw. `--adr <id>` (specctl) — exakter Treffer.
+  Höchstens ein Metagroup-Filter pro Aufruf, Metainfo-Filter kombinieren
+  sich (AND).
+- **`MetainfoSpec.choices` wird jetzt durchgesetzt** (`lib/store.py`,
+  `_validate_metainfo_choice`, greift bei `add` und `set-<metainfo-type>`)
+  — vorher war das Feld deklariert (z. B. taskctls `review`), aber nie
+  geprüft; ein ungültiger Wert wurde still akzeptiert und fiel bei taskctl
+  sogar still auf den 3-Schritt-Pfad zurück statt zu scheitern.
+
+Bewusst noch offen aus demselben Abgleich (siehe `design.md`, "Metagroup
+Operations"/"Object Operations"): Metagroup-**Rename** und **Change
+metagroup** (`set-<metagroup-type>`) für taskctl/rulectl/adrctl — beide im
+CLI Contract dokumentiert, aber weder als Store-Methode noch als CLI-Befehl
+vorhanden. specctl deckt beides bereits implizit ab (`rename`,
+`move-to-<Ebene>`).
+
+374 Unit-/Integrationstests insgesamt unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 104 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`), mehrere Tests für `resolve_root` (Kollision, Default-Modus,
-`.md`-/Name-Override, Multi-Tool-Koexistenz unter einem `--root`) sowie
-17 neue Tests für die `spec-ref`-Verknüpfung (`receive_adr_link`,
-`lib/spec_link.py`, den generischen `after_dispatch`-Hook, End-to-End über
-`adrctl`/`specctl`: `add --spec-ref`, `set-status`-Re-Propagation,
-retroaktives `set-spec-ref`, fehlendes Ziel).
+`.md`-/Name-Override, Multi-Tool-Koexistenz unter einem `--root`), 17 Tests
+für die `spec-ref`-Verknüpfung (`receive_adr_link`, `lib/spec_link.py`, den
+generischen `after_dispatch`-Hook, End-to-End über `adrctl`/`specctl`:
+`add --spec-ref`, `set-status`-Re-Propagation, retroaktives `set-spec-ref`,
+fehlendes Ziel) sowie rund 27 neue Tests für `delete`,
+`set-<user-content-block>`, `list`-Filter und die `choices`-Validierung
+(Store-Ebene, CLI-Ebene für alle vier Tools, inkl. specctls
+`--force-delete`-Kaskade).
 
 Noch offen:
 - `tasklist` (rulectl/adrctl) ist absichtlich nur als Stub vorhanden
   (Exit 1, "not yet specified") — Verhalten laut Design-Dokumenten separat
   zu spezifizieren.
+- Metagroup-Rename und Change-metagroup (`set-<metagroup-type>`) für
+  taskctl/rulectl/adrctl (siehe oben) — im Contract dokumentiert, noch nicht
+  implementiert.
 - specctl: die bidirektionale adrctl-Verknüpfung ist implementiert —
   `spec-ref=<id>`-Metainfo bei adrctl (einwertig, `design-decisions.md`,
   "Amendments (2026-08-19, spec-ref single-valued)"), `lib/spec_link.py`,

@@ -1,6 +1,7 @@
 """specctl storage orchestration: locking, CRUD, --id resolution
-(design-specctl.md). The adrctl `spec-ref` auto-propagation is still
-deferred (design-specctl.md, "ADR Linkage", Implementation status).
+(design-specctl.md). The adrctl `spec-ref` auto-propagation is implemented
+in lib/spec_link.py, triggered from adrctl.py (design-specctl.md, "ADR
+Linkage").
 
 Unlike lib/store.py, there is no separate metagroup-declaration layer: a
 SpecSection's position *is* its classification (design-specctl.md,
@@ -236,6 +237,38 @@ class SpecStore:
                 raise SpecStoreError(str(exc)) from exc
             resolved = resolved + (segment,)
         return resolved
+
+    def resolve_path(self, given_segments: list[str]) -> tuple[str, ...]:
+        """Resolve a '/'-separated path of ancestor names against existing
+        Sections, the same way move()/rename() do internally (design.md:
+        '--<metagroup-type> <value>' resolves each segment against its
+        siblings). Used by `list --under` (design.md, "List objects in
+        specific metagroups")."""
+        _preamble, sections = self._read()
+        return self._resolve_ancestor_path(sections, given_segments)
+
+    def delete(self, object_id: str, *, cascade: bool = False) -> SpecSection:
+        """Remove a Section entirely (design.md, "Object Operations": Delete).
+        Rejects deleting a Section that still has descendant Sections unless
+        `cascade` is set (specctl's `--force-delete`) -- since a specctl
+        metagroup-path node is always also an object (design-specctl.md,
+        "Deviation from the general model"), deleting it silently would
+        otherwise orphan its children rather than just removing one leaf.
+        Leaves a permanent numbering gap among the remaining siblings, same
+        as the general model (design.md, "Numbering")."""
+        with self.lock():
+            preamble, sections = self._read()
+            index, section = self._find_with_index(sections, object_id)
+            end = _subtree_end(sections, index)
+            descendant_count = end - index - 1
+            if descendant_count > 0 and not cascade:
+                raise SpecStoreError(
+                    f"Section {object_id!r} has {descendant_count} descendant Section(s); "
+                    "use --force-delete to delete the whole subtree"
+                )
+            del sections[index:end]
+            self._write(preamble, sections)
+            return section
 
     def _find_with_index(self, sections: list[SpecSection], object_id: str) -> tuple[int, SpecSection]:
         for i, s in enumerate(sections):

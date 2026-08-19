@@ -27,6 +27,20 @@ class StoreError(Exception):
     pass
 
 
+def _validate_metainfo_choice(spec: ToolSpec, metainfo_type: str, value: str) -> None:
+    """Enforce MetainfoSpec.choices, if the type declares a fixed value set
+    (design.md, "Metainfo": "Available types are tool-specific" -- some of
+    those types are closed enums, e.g. taskctl's `review`)."""
+    for metainfo in spec.metainfo:
+        if metainfo.type == metainfo_type:
+            if metainfo.choices is not None and value not in metainfo.choices:
+                raise StoreError(
+                    f"invalid value {value!r} for metainfo {metainfo_type!r} "
+                    f"(choices: {', '.join(metainfo.choices)})"
+                )
+            return
+
+
 def resolve_root(given_path: Path, name: str, default_mode: str) -> tuple[Path, str]:
     """Resolve a --root argument to this tool's actual file-or-directory
     target and mode, per design.md "File and Directory Parameters". Pure
@@ -197,6 +211,8 @@ class Store:
         content = dict(content or {})
         content.setdefault("Description", description)
         metainfo = metainfo or {}
+        for metainfo_type, value in metainfo.items():
+            _validate_metainfo_choice(self.spec, metainfo_type, value)
 
         with self.lock():
             declarations: list[MetagroupDeclaration] = []
@@ -316,6 +332,7 @@ class Store:
             return record
 
     def set_metainfo(self, object_id: str, metainfo_type: str, value: str) -> ObjectRecord:
+        _validate_metainfo_choice(self.spec, metainfo_type, value)
         with self.lock():
             record, ctx = self._locate(object_id)
             record.metainfo = [e for e in record.metainfo if e.type != metainfo_type]
@@ -324,6 +341,35 @@ class Store:
                 HistoryEntry(timestamp=now_iso(), prefix="M", message=f"{metainfo_type} set to {value}")
             )
             self._persist(record, ctx)
+            return record
+
+    def set_content(self, object_id: str, block: str, value: str) -> ObjectRecord:
+        """Change one of the object's user-content blocks after creation
+        (design.md, "Object Operations": "Change content") -- the generic
+        model previously only let a block be set inline at `add` time."""
+        with self.lock():
+            record, ctx = self._locate(object_id)
+            record.content[block] = value
+            record.history.append(
+                HistoryEntry(timestamp=now_iso(), prefix="M", message=f"{block} changed")
+            )
+            self._persist(record, ctx)
+            return record
+
+    def delete(self, object_id: str) -> ObjectRecord:
+        """Remove an object entirely (design.md, "Object Operations": Delete).
+        Leaves a permanent numbering gap (design.md, "Numbering": "Deleting an
+        object leaves a gap -- numbers are never compacted") -- no renumbering
+        of siblings happens here, unlike `reorder`."""
+        with self.lock():
+            if self.mode == "directory":
+                record, path = self._find(object_id)
+                path.unlink()
+                self._rebuild_index(path.parent)
+            else:
+                record, declarations, records = self._sf_find(object_id)
+                records = [r for r in records if r.object_id != object_id]
+                self._sf_write(declarations, records)
             return record
 
     def annotate(self, object_id: str, message: str) -> ObjectRecord:

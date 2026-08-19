@@ -32,9 +32,9 @@ Tool um ADRs zu managen. Dies soll von der KI genutzt werden, um getroffene Ents
 
 Auch diese Tool unterstüzt einen export nach `taskctl` um die Umsetzung von Änderungen zu tracken.
 
-### `specctl` (existiert nicht)
+### `specctl` (existiert bereits)
 
-Diese Tool dient zum Managen der Spezifikation. Diese Tool ist nicht implementiert und auch nicht dokumentiert.
+Diese Tool dient zum Managen der Spezifikation. Spezifiziert in `architecture/docs/scripts/design-specctl.md`, implementiert in `architecture/scripts/specctl.py`.
 
 Das Ziel hier ist:
 
