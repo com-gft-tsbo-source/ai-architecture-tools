@@ -29,6 +29,8 @@ class TestToolSpec(unittest.TestCase):
             ),
             status=StatusSpec(codes=("draft", "active", "obsolete"), initial="active"),
             user_content_blocks=("Description", "Procedure"),
+            root_name="rules",
+            default_mode="directory",
         )
 
     def test_metainfo_names(self):
@@ -43,6 +45,18 @@ class TestToolSpec(unittest.TestCase):
         spec = self._make()
         self.assertIsNone(spec.object_type_fn)
         self.assertEqual(spec.deferred_operations, ())
+
+    def test_rejects_invalid_default_mode(self):
+        with self.assertRaises(ValueError):
+            ToolSpec(
+                name="rulectl",
+                metagroup_levels=(MetagroupLevelSpec(type="Language"),),
+                metainfo=(),
+                status=StatusSpec(codes=("active",), initial="active"),
+                user_content_blocks=("Description",),
+                root_name="rules",
+                default_mode="both",
+            )
 
 
 if __name__ == "__main__":

@@ -15,6 +15,8 @@ TASKCTL_SPEC = ToolSpec(
     ),
     status=StatusSpec(codes=("[ ]", "[~]", "[X]"), initial="[ ]"),
     user_content_blocks=("Description",),
+    root_name="tasks",
+    default_mode="directory",
 )
 
 RULECTL_SPEC = ToolSpec(
@@ -27,6 +29,8 @@ RULECTL_SPEC = ToolSpec(
     metainfo=(MetainfoSpec(type="weight"), MetainfoSpec(type="tool")),
     status=StatusSpec(codes=("draft", "active", "obsolete"), initial="active"),
     user_content_blocks=("Description", "Procedure"),
+    root_name="rules",
+    default_mode="directory",
 )
 
 ADRCTL_SPEC = ToolSpec(
@@ -35,6 +39,8 @@ ADRCTL_SPEC = ToolSpec(
     metainfo=(MetainfoSpec(type="superseded-by"),),
     status=StatusSpec(codes=("proposed", "accepted"), initial="proposed"),
     user_content_blocks=("Motivation", "Description", "Rationale"),
+    root_name="adrs",
+    default_mode="directory",
 )
 
 

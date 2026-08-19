@@ -33,6 +33,8 @@ def build_spec() -> ToolSpec:
         ),
         status=StatusSpec(codes=("draft", "active", "obsolete"), initial="active"),
         user_content_blocks=("Description", "Procedure"),
+        root_name="rules",
+        default_mode="directory",
         deferred_operations=("tasklist",),
     )
 

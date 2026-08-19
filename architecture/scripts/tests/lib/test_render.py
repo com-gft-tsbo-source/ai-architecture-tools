@@ -12,6 +12,8 @@ SPEC = ToolSpec(
     metainfo=(MetainfoSpec(type="weight"),),
     status=StatusSpec(codes=("draft", "active"), initial="active"),
     user_content_blocks=("Description", "Procedure"),
+    root_name="rules",
+    default_mode="directory",
 )
 
 

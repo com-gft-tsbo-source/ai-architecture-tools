@@ -85,6 +85,8 @@ def build_spec() -> ToolSpec:
             transition_validator=validate_transition,
         ),
         user_content_blocks=("Description",),
+        root_name="tasks",
+        default_mode="directory",
         object_type_fn=object_type_from_phase,
     )
 

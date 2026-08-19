@@ -103,35 +103,37 @@ def _cascade_own_name_change(
             sections[j].ancestor_levels = tuple(levels)
 
 
+_ROOT_NAME = "spec"
+_DEFAULT_MODE = "file"
+
+
 @dataclass
 class SpecStore:
-    """A single --root maps to one SpecStore. Passing a list of more than
-    one root switches to "merged" mode, same read-only semantics as
-    lib.store.Store (design.md, "File and Directory Parameters")."""
+    """A single --root maps to one SpecStore, resolved via
+    lib.store.resolve_root() to specctl's actual file-or-directory target
+    (design.md, "File and Directory Parameters"; design-specctl.md,
+    "Store")."""
 
-    root: "Path | list[Path]"
+    root: Path
     mode: str = field(init=False)
 
     def __post_init__(self) -> None:
-        roots = [Path(r) for r in self.root] if isinstance(self.root, list) else [Path(self.root)]
-        if len(roots) > 1:
-            self.mode = "merged"
-            self.root = roots
-            self._sub_stores = [SpecStore(r) for r in roots]
-            return
-        self.root = roots[0]
-        self.mode = generic_store.detect_mode(self.root)
+        try:
+            self.root, self.mode = generic_store.resolve_root(
+                Path(self.root), _ROOT_NAME, _DEFAULT_MODE
+            )
+        except generic_store.StoreError as exc:
+            raise SpecStoreError(str(exc)) from exc
         if self.mode == "directory":
             self.root.mkdir(parents=True, exist_ok=True)
+        else:
+            # File mode still needs its parent (the shared directory) to
+            # exist before lock() can create the sibling .lock file -- the
+            # file itself is still created lazily, on first write.
+            self.root.parent.mkdir(parents=True, exist_ok=True)
 
     def lock(self) -> locking.FileLock:
         return locking.FileLock(self.root)
-
-    def _require_writable(self) -> None:
-        if self.mode == "merged":
-            raise SpecStoreError(
-                "multiple --root values were given; this operation is read-only in that mode"
-            )
 
     # -- read/write -----------------------------------------------------
 
@@ -253,7 +255,6 @@ class SpecStore:
         initial_status: Optional[str] = None,
         abbrev_override: Optional[str] = None,
     ) -> SpecSection:
-        self._require_writable()
         if not 1 <= level <= MAX_LEVEL:
             raise SpecStoreError(f"unsupported level {level}; specctl supports 1-{MAX_LEVEL}")
         if len(path_segments) != level:
@@ -306,25 +307,12 @@ class SpecStore:
     # -- read ---------------------------------------------------------------
 
     def list_all(self) -> list[SpecSection]:
-        if self.mode == "merged":
-            sections: list[SpecSection] = []
-            for sub in self._sub_stores:
-                sections.extend(sub.list_all())
-            return sections
         _preamble, sections = self._read()
         return sections
 
     def resolve_id(self, token: str) -> SpecSection:
         """--id selector: (1) Signature match, (2) contains '/' -> ancestor-path/nr,
         (3) raw ID (design.md, CLI Contract)."""
-        if self.mode == "merged":
-            for sub in self._sub_stores:
-                try:
-                    return sub.resolve_id(token)
-                except SpecStoreError:
-                    continue
-            raise SpecStoreError(f"no section matches --id {token!r}")
-
         sections = self.list_all()
         for s in sections:
             if s.signature == token:
@@ -369,7 +357,6 @@ class SpecStore:
         self, object_id: str, new_status: str, *, message: str = "", force: bool = False,
         adr: Optional[str] = None,
     ) -> SpecSection:
-        self._require_writable()
         if new_status not in STATUS_CODES:
             raise SpecStoreError(f"invalid status {new_status!r} for specctl")
         with self.lock():
@@ -419,7 +406,6 @@ class SpecStore:
         Operations). Not logged in History: standalone adr changes are not
         Add/Rename/Move/Status, the only categories specctl's History tracks
         -- the authoritative trail lives in the ADR itself."""
-        self._require_writable()
         with self.lock():
             preamble, sections = self._read()
             _index, section = self._find_with_index(sections, object_id)
@@ -428,7 +414,6 @@ class SpecStore:
             return section
 
     def set_description(self, object_id: str, description: str, *, adr: Optional[str] = None) -> SpecSection:
-        self._require_writable()
         with self.lock():
             preamble, sections = self._read()
             _index, section = self._find_with_index(sections, object_id)
@@ -447,7 +432,6 @@ class SpecStore:
     # -- rename / reorder -----------------------------------------------
 
     def rename(self, object_id: str, new_name: str) -> SpecSection:
-        self._require_writable()
         with self.lock():
             preamble, sections = self._read()
             index, section = self._find_with_index(sections, object_id)
@@ -466,7 +450,6 @@ class SpecStore:
             return section
 
     def reorder(self, object_id: str, insert_after: int) -> SpecSection:
-        self._require_writable()
         with self.lock():
             preamble, sections = self._read()
             index, section = self._find_with_index(sections, object_id)
@@ -529,7 +512,6 @@ class SpecStore:
         the moved Section's own segment can change here (both its values and
         its length), so every descendant's Object Type -- derived from its
         full ancestor-name path -- must be re-derived too, not just patched."""
-        self._require_writable()
         if not 1 <= level <= MAX_LEVEL:
             raise SpecStoreError(f"unsupported level {level}; specctl supports 1-{MAX_LEVEL}")
         if len(path_segments) != level - 1:

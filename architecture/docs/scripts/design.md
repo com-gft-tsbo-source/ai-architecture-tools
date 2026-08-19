@@ -11,10 +11,28 @@ Tools:
 
 ## File and Directory Parameters
 
-- Tools store their data in files or directories.
-- If the tool receives a **file** as parameter, it reads/writes only that file. The file holds objects in *single-file mode* (see "Object Format" below).
-- If the tool receives a **directory** as parameter, it reads/writes only within that directory and its subdirectories, in *directory mode* — one object per file.
-- If the tool receives **multiple files and/or directories** (any mix), it operates strictly read-only across all of them, merging their information.
+Tools store their data in files or directories, resolved from a single `--root <path>` (see CLI Contract). Each tool has a fixed **store name** (`tasks` for taskctl, `rules` for rulectl, `adrs` for adrctl, `spec` for specctl — see each tool's design document) that names its data within a directory shared by all four tools — this is what lets tools reference each other's objects (e.g. adrctl ↔ specctl, design-specctl.md "ADR Linkage") without an ambiguous, separately-configured path.
+
+`--root <path>` is resolved to the tool's actual file-or-directory target in two steps:
+
+**1. Determine the shared directory** — the directory that holds (or will hold) every tool's data for this project. `path` is treated as naming *this tool's own target directly* — and its parent used as the shared directory — whenever it looks like a file (exists as one, or doesn't exist yet but ends in `.md`) **or** its own name already matches this tool's store name `<name>` (e.g. `path` is exactly `.../adrs` for `adrctl`); otherwise `path` itself is the shared directory:
+- `path` exists and is a file → its parent directory.
+- `path` does not exist, ends in `.md` → its parent directory (created if necessary).
+- `path`'s own name equals `<name>` (this tool's store name) → its parent directory (created if necessary) — without this, a first invocation naming the target directory directly (e.g. `adrctl --root ./project/adrs`, not yet existing) would otherwise double-nest to `./project/adrs/adrs`.
+- Anything else (including an existing directory) → `path` itself.
+
+This means `--root` may point at *any* tool's own **file** — e.g. running `specctl --root ./project/adrs.md` resolves the shared directory to `./project`, exactly as `--root ./project` would. **Open gap:** the equivalent for an existing bare *directory* belonging to a different tool (e.g. `specctl --root ./project/adrs`, an existing directory) is not yet resolved the same way — its name doesn't match specctl's own store name, so rule 4 below applies and `./project/adrs` is (incorrectly, from a cross-tool-pointing perspective) treated as the shared directory itself. Only pointing at the shared directory directly, or at a tool's own `<name>.md` file, is currently reliable.
+
+**2. Resolve this tool's target within the shared directory**, given its store name `<name>`:
+- Two candidates: `<name>.md` (file, *single-file mode*, see "Object Format" below) and `<name>` (directory, *directory mode* — one object per file).
+- Both candidates exist → abort with an error (ambiguous; requires manual cleanup).
+- Exactly one candidate exists → use it, in the corresponding mode.
+- Neither exists (first invocation for this tool):
+  - `path` (from step 1, before resolving to the shared directory) is itself exactly the file candidate → create and use it as a file.
+  - `path` is itself exactly the directory candidate → create and use it as a directory.
+  - Otherwise → the tool's own default mode (see its design document), creating `<name>.md` or `<name>`.
+
+There is no multi-root, read-only merge mode — `--root` takes exactly one path, and every invocation resolves to exactly one file-or-directory target (design-decisions.md, "Amendments": this replaced the original repeatable-`--root` merge design once cross-tool referencing needed an unambiguous, shared location instead).
 
 ## Managed Objects
 
@@ -238,7 +256,7 @@ A pure performance cache, indexed by Object ID, listing only the **direct childr
 
 ## CLI Contract
 
-- `--root <path>`: base directory for all file operations. Repeatable (`--root a --root b …`); with more than one value, the tools operate in the read-only merge mode described under "File and Directory Parameters" above — every mutating operation aborts with an error in that mode.
+- `--root <path>`: resolved to this tool's file-or-directory target as described under "File and Directory Parameters" above. Required, single value — not repeatable.
 - Subcommand style: `add`, `add-<metagroup-type> <name>`, `set-status`, `set-<metainfo-type>`, `set-<metagroup-type>`, `annotate`, `next`, `show`, `show-metagroups`, `reindex`, …
 - `add-<type> <name>` and `set-<type> <name>` share one uniform shape across metagroups and metainfo: a subcommand followed by a single positional value, e.g. `add-domain backend`, `set-domain backend`, `add-component frontend/mocking` (nested types take a path-like name spanning their own ancestors).
 - `set-*` operations are also available as inline flags on `add`, to create an object and populate its fields — including its metagroup — in a single call.

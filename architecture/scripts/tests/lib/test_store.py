@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from lib import index
-from lib.store import Store, StoreError, detect_mode, object_file_name
+from lib.store import Store, StoreError, object_file_name, resolve_root
 from lib.toolspec import MetagroupLevelSpec, MetainfoSpec, StatusSpec, ToolSpec
 
 
@@ -14,27 +14,118 @@ def taskctl_spec(transition_validator=None) -> ToolSpec:
         metainfo=(MetainfoSpec(type="review"),),
         status=StatusSpec(codes=(" ", "~", "X"), initial=" ", transition_validator=transition_validator),
         user_content_blocks=("Description",),
+        root_name="tasks",
+        default_mode="directory",
     )
 
 
-class TestDetectMode(unittest.TestCase):
+def adrctl_spec() -> ToolSpec:
+    return ToolSpec(
+        name="adrctl",
+        metagroup_levels=(MetagroupLevelSpec(type="Domain"),),
+        metainfo=(),
+        status=StatusSpec(codes=("proposed", "accepted"), initial="proposed"),
+        user_content_blocks=("Description",),
+        root_name="adrs",
+        default_mode="directory",
+    )
+
+
+class TestSharedRootAcrossTools(unittest.TestCase):
+    def test_two_tools_coexist_under_the_same_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "project"
+            tasks = Store(spec=taskctl_spec(), root=root)
+            tasks.add_metagroup_path(["Setup"])
+            tasks.add(metagroup_path=["Setup"], name="Task one")
+
+            adrs = Store(spec=adrctl_spec(), root=root)
+            adrs.add_metagroup_path(["Backend"])
+            adrs.add(metagroup_path=["Backend"], name="ADR one")
+
+            self.assertEqual(tasks.root, root / "tasks")
+            self.assertEqual(adrs.root, root / "adrs")
+            self.assertEqual(len(tasks.list_all()), 1)
+            self.assertEqual(len(adrs.list_all()), 1)
+
+    def test_second_tool_pointed_at_first_tools_own_file_finds_shared_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "project"
+            Store(spec=adrctl_spec(), root=root)  # creates root/adrs/ as a directory
+
+            # Pointing specctl at another tool's *file* (design.md's
+            # confirmed rule) resolves the shared directory to its parent --
+            # but adrctl's own directory-mode target is a directory, not a
+            # file, so this only applies via an explicit adrs.md file, e.g.
+            # after a hand-authored setup. Exercise the file case directly:
+            adrs_md = root / "adrs.md"
+            adrs_md.parent.mkdir(parents=True, exist_ok=True)
+            adrs_md.write_text("placeholder", encoding="utf-8")
+            tasks = Store(spec=taskctl_spec(), root=adrs_md)
+            self.assertEqual(tasks.root, root / "tasks")
+
+
+class TestResolveRoot(unittest.TestCase):
     def test_existing_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "tasks.md"
             path.write_text("x", encoding="utf-8")
-            self.assertEqual(detect_mode(path), "file")
+            self.assertEqual(resolve_root(path, "tasks", "directory"), (path, "file"))
 
-    def test_existing_directory(self):
+    def test_existing_directory_matching_name(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(detect_mode(Path(tmp)), "directory")
+            path = Path(tmp) / "tasks"
+            path.mkdir()
+            self.assertEqual(resolve_root(path, "tasks", "directory"), (path, "directory"))
 
-    def test_nonexistent_with_suffix_is_file(self):
+    def test_shared_directory_with_existing_file_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(detect_mode(Path(tmp) / "tasks.md"), "file")
+            target = Path(tmp) / "tasks.md"
+            target.write_text("x", encoding="utf-8")
+            self.assertEqual(resolve_root(Path(tmp), "tasks", "directory"), (target, "file"))
 
-    def test_nonexistent_without_suffix_is_directory(self):
+    def test_shared_directory_with_existing_directory_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(detect_mode(Path(tmp) / "tasks"), "directory")
+            target = Path(tmp) / "tasks"
+            target.mkdir()
+            self.assertEqual(resolve_root(Path(tmp), "tasks", "file"), (target, "directory"))
+
+    def test_both_candidates_existing_is_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "tasks.md").write_text("x", encoding="utf-8")
+            (Path(tmp) / "tasks").mkdir()
+            with self.assertRaises(StoreError):
+                resolve_root(Path(tmp), "tasks", "directory")
+
+    def test_nonexistent_md_suffixed_path_forces_file_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            given = Path(tmp) / "project" / "tasks.md"
+            self.assertEqual(resolve_root(given, "tasks", "directory"), (given, "file"))
+
+    def test_nonexistent_bare_name_matching_own_store_forces_directory_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            given = Path(tmp) / "project" / "tasks"
+            self.assertEqual(resolve_root(given, "tasks", "file"), (given, "directory"))
+
+    def test_nonexistent_unrelated_path_falls_back_to_default_mode_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            given = Path(tmp) / "project"
+            self.assertEqual(
+                resolve_root(given, "tasks", "directory"), (given / "tasks", "directory")
+            )
+
+    def test_nonexistent_unrelated_path_falls_back_to_default_mode_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            given = Path(tmp) / "project"
+            self.assertEqual(resolve_root(given, "spec", "file"), (given / "spec.md", "file"))
+
+    def test_another_tools_file_path_resolves_shared_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "adrs.md").write_text("x", encoding="utf-8")
+            self.assertEqual(
+                resolve_root(Path(tmp) / "adrs.md", "tasks", "directory"),
+                (Path(tmp) / "tasks", "directory"),
+            )
 
 
 class TestAddAndGet(unittest.TestCase):
@@ -319,57 +410,6 @@ class TestAutoNumberingAndFlexibleReference(unittest.TestCase):
             store.add_metagroup_path(["Setup"])
             record = store.add(metagroup_path=["1"], name="First")
             self.assertEqual(record.metagroup_levels, ("001-Setup",))
-
-
-class TestMergedMode(unittest.TestCase):
-    def test_list_all_merges_across_roots(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root_a = Path(tmp) / "a"
-            root_b = Path(tmp) / "b"
-            store_a = Store(spec=taskctl_spec(), root=root_a)
-            store_a.add_metagroup_path(["Setup"])
-            store_a.add(metagroup_path=["Setup"], name="FromA")
-            store_b = Store(spec=taskctl_spec(), root=root_b)
-            store_b.add_metagroup_path(["Setup"])
-            store_b.add(metagroup_path=["Setup"], name="FromB")
-
-            merged = Store(spec=taskctl_spec(), root=[root_a, root_b])
-            self.assertEqual(merged.mode, "merged")
-            names = {r.name for r in merged.list_all()}
-            self.assertEqual(names, {"FromA", "FromB"})
-
-    def test_get_finds_object_in_either_root(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root_a = Path(tmp) / "a"
-            root_b = Path(tmp) / "b"
-            store_a = Store(spec=taskctl_spec(), root=root_a)
-            store_a.add_metagroup_path(["Setup"])
-            created = store_a.add(metagroup_path=["Setup"], name="FromA")
-            store_b = Store(spec=taskctl_spec(), root=root_b)
-            store_b.add_metagroup_path(["Setup"])
-
-            merged = Store(spec=taskctl_spec(), root=[root_a, root_b])
-            self.assertEqual(merged.get(created.object_id).name, "FromA")
-
-    def test_write_operations_rejected(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root_a = Path(tmp) / "a"
-            root_b = Path(tmp) / "b"
-            Store(spec=taskctl_spec(), root=root_a).add_metagroup_path(["Setup"])
-            Store(spec=taskctl_spec(), root=root_b).add_metagroup_path(["Setup"])
-
-            merged = Store(spec=taskctl_spec(), root=[root_a, root_b])
-            with self.assertRaises(StoreError):
-                merged.add(metagroup_path=["Setup"], name="X")
-            with self.assertRaises(StoreError):
-                merged.add_metagroup_path(["Other"])
-            with self.assertRaises(StoreError):
-                merged.set_status("whatever", "~")
-
-    def test_single_root_list_is_unaffected(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            store = Store(spec=taskctl_spec(), root=[Path(tmp) / "tasks"])
-            self.assertNotEqual(store.mode, "merged")
 
 
 class TestReorder(unittest.TestCase):

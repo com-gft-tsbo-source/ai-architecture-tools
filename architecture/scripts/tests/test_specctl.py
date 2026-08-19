@@ -213,27 +213,21 @@ class TestListAndRender(unittest.TestCase):
             self.assertIn("Intro.", out)
 
 
-class TestMultiRootMergedReadOnly(unittest.TestCase):
-    def test_write_rejected_with_multiple_roots(self):
+class TestSharesRootWithOtherTools(unittest.TestCase):
+    def test_specctl_and_adrctl_coexist_under_the_same_root(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root_a = str(Path(tmp) / "a.md")
-            root_b = str(Path(tmp) / "b.md")
-            run(["--root", root_a, "add-part", "FromA"])
-            run(["--root", root_b, "add-part", "FromB"])
-
-            code, out, _err = run(["--root", root_a, "--root", root_b, "list"])
+            shared_root = str(Path(tmp) / "project")
+            run(["--root", shared_root, "add-part", "Concurrency"])
+            code, out, _err = run(["--root", shared_root, "list"])
             self.assertEqual(code, 0)
-            self.assertEqual(len(out.strip().splitlines()), 2)
-
-            code, _out, err = run(["--root", root_a, "--root", root_b, "add-part", "New"])
-            self.assertEqual(code, 1)
-            self.assertIn("read-only", err)
+            self.assertIn("Concurrency", out)
+            self.assertTrue((Path(tmp) / "project" / "spec.md").is_file())
 
 
 class TestDirectoryMode(unittest.TestCase):
     def test_nested_add_and_show(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = str(Path(tmp) / "design")
+            root = str(Path(tmp) / "spec")
             self.assertEqual(
                 run(["--root", root, "add-part", "Concurrency", "--description", "Intro."])[0], 0
             )
@@ -249,7 +243,7 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_creates_directory_tree_on_disk(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             run(["--root", str(root), "add-part", "Concurrency"])
             self.assertTrue(root.is_dir())
             children = [p for p in root.iterdir() if p.is_dir()]
@@ -258,7 +252,7 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_status_rename_reorder_render(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = str(Path(tmp) / "design")
+            root = str(Path(tmp) / "spec")
             run(["--root", root, "add-part", "A"])
             _c, out, _e = run(["--root", root, "--json", "add-part", "B"])
             b_id = json.loads(out)["id"]

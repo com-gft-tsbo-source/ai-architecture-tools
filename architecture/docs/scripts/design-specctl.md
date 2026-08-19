@@ -2,6 +2,10 @@
 
 Objects are **Sections** of a specification/design document — a Markdown heading at any depth, together with the content directly under it, before its next sibling or child heading.
 
+## Store
+
+Store name `spec` (design.md, "File and Directory Parameters"): resolves to `<shared-dir>/spec.md` or `<shared-dir>/spec`. Default mode when neither exists yet: **file** — the primary use case is a single flowing document (like `design.md` itself), unlike the other three tools' more naturally directory-shaped object collections. Singular, not `specs`: one document ("the spec"), with potentially many ADRs governing parts of it — not a collection of many specs.
+
 ## Deviation from the general model
 
 In the other three tools, a metagroup path is pure classification — it has no content of its own, only objects nested under its leaf. `specctl` cannot work that way: a document like `design.md` carries prose under *every* heading level, not just at the deepest one (e.g. "## Metagroups" itself has text, and so does "### Object ID" beneath it). So for `specctl`, **every metagroup-path node is itself an object** — it has its own ID, Status, Content and History, in addition to being the parent path for whatever nests beneath it. `add-<metagroup-type>` therefore both establishes the path *and* creates that level's object in one step (see Operations).

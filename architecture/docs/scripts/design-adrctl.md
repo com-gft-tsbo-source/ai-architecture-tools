@@ -2,6 +2,10 @@
 
 Objects are ADRs (Architecture Decision Records) whose implementation in a codebase is to be verified.
 
+## Store
+
+Store name `adrs` (design.md, "File and Directory Parameters"): resolves to `<shared-dir>/adrs.md` or `<shared-dir>/adrs`. Default mode when neither exists yet: **directory** — the 2-level Domain/Component hierarchy reads more naturally as nested directories than as one growing file.
+
 ## Metagroups
 
 - `Domain=<name>`

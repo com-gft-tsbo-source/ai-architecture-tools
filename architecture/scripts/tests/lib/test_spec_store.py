@@ -406,31 +406,17 @@ class TestRenderAndHistory(unittest.TestCase):
             self.assertGreaterEqual(len(entries), 3)
 
 
-class TestMergedModeReadOnly(unittest.TestCase):
-    def test_write_operations_rejected_in_merged_mode(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path_a = Path(tmp) / "a.md"
-            path_b = Path(tmp) / "b.md"
-            SpecStore(root=path_a).add(1, ["FromA"])
-            SpecStore(root=path_b).add(1, ["FromB"])
-
-            merged = SpecStore(root=[path_a, path_b])
-            self.assertEqual(len(merged.list_all()), 2)
-            with self.assertRaises(SpecStoreError):
-                merged.add(1, ["New"])
-
-
 class TestDirectoryMode(unittest.TestCase):
     def test_root_directory_detected_and_created(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"  # does not exist yet, no file suffix
+            root = Path(tmp) / "spec"  # does not exist yet, no file suffix
             store = SpecStore(root=root)
             self.assertEqual(store.mode, "directory")
             self.assertTrue(root.is_dir())
 
     def test_add_creates_nested_directories_with_content_md(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             store = SpecStore(root=root)
             part = store.add(1, ["Concurrency"], description="Intro.")
             chapter = store.add(2, ["Concurrency", "Locking"], description="A lock.")
@@ -442,7 +428,7 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_persists_and_reads_back_across_invocations(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             SpecStore(root=root).add(1, ["Concurrency"], description="Intro.")
             store2 = SpecStore(root=root)
             sections = store2.list_all()
@@ -452,7 +438,7 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_hand_authored_preamble_file_is_read_and_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             root.mkdir()
             (root / "_preamble.md").write_text("# Design Doc\n\nSome intro text.\n", encoding="utf-8")
 
@@ -465,7 +451,7 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_nested_add_resolve_status_rename_reorder(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             store = SpecStore(root=root)
             store.add(1, ["A"])
             store.add(2, ["A", "A1"])
@@ -489,7 +475,7 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_render_and_combined_history(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             store = SpecStore(root=root)
             store.add(1, ["Concurrency"], description="Locking and friends.")
             rendered = store.render_plain()
@@ -501,7 +487,7 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_rewritten_tree_drops_stale_directories(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             store = SpecStore(root=root)
             first = store.add(1, ["First"])
             old_dir = root / f"001-{first.object_type}-{first.object_id}-first"
@@ -514,7 +500,7 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_move_relocates_directory_and_descendants_on_disk(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             store = SpecStore(root=root)
             store.add(1, ["A"])
             sub = store.add(2, ["A", "Sub"])
@@ -537,7 +523,7 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_duplicate_id_across_content_files_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             store = SpecStore(root=root)
             store.add(1, ["A"])
             second_dir = root / "002-XX____-dupe1d-b"
@@ -554,18 +540,20 @@ class TestDirectoryMode(unittest.TestCase):
             with self.assertRaises(SpecStoreError):
                 store.list_all()
 
-    def test_merged_mode_across_file_and_directory_roots(self):
+    def test_shares_root_with_another_tool(self):
         with tempfile.TemporaryDirectory() as tmp:
-            file_root = Path(tmp) / "a.md"
-            dir_root = Path(tmp) / "b"
-            SpecStore(root=file_root).add(1, ["FromFile"])
-            SpecStore(root=dir_root).add(1, ["FromDir"])
+            shared_root = Path(tmp) / "project"
+            spec_store = SpecStore(root=shared_root)
+            spec_store.add(1, ["Concurrency"])
+            # specctl defaults to single-file mode when nothing exists yet.
+            self.assertEqual(spec_store.root, shared_root / "spec.md")
 
-            merged = SpecStore(root=[file_root, dir_root])
-            names = {s.name for s in merged.list_all()}
-            self.assertEqual(names, {"FromFile", "FromDir"})
-            with self.assertRaises(SpecStoreError):
-                merged.add(1, ["New"])
+    def test_explicit_directory_candidate_forces_directory_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shared_root = Path(tmp) / "project"
+            store = SpecStore(root=shared_root / "spec")  # matches store name, not yet existing
+            self.assertEqual(store.mode, "directory")
+            self.assertEqual(store.root, shared_root / "spec")
 
 
 if __name__ == "__main__":

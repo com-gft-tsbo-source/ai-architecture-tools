@@ -14,9 +14,13 @@ structure ... einheitlich ... halten, auch wenn ein Tool das jeweilige
 Feature (noch) nicht braucht").
 
 Both single-file and directory mode are implemented (design-specctl.md,
-"Object Format"). The adrctl `spec-ref` auto-propagation is not wired up
-yet, though (design-specctl.md, "ADR Linkage", Implementation status) --
-`adr` is set manually via set-status --adr / set-adr.
+"Object Format"). `--root` resolves to specctl's `spec.md`/`spec` within a
+directory shared by all four tools (design.md, "File and Directory
+Parameters") -- the same `--root` a user already passes to `adrctl` also
+locates specctl's data, deterministically. The adrctl `spec-ref` auto-
+propagation itself is not wired up yet, though (design-specctl.md, "ADR
+Linkage", Implementation status) -- `adr` is set manually via
+set-status --adr / set-adr.
 """
 
 from __future__ import annotations
@@ -46,9 +50,9 @@ def _move_flag_name(level_type: str) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="specctl")
     parser.add_argument(
-        "--root", required=True, action="append",
-        help="Specification document: a file (single-file mode) or a directory (directory mode). "
-             "Repeatable: with more than one --root, operates strictly read-only across all of them, merged.",
+        "--root", required=True,
+        help="A directory shared by all four tools, or any single tool's own file/directory within "
+             "it -- resolved to specctl's spec.md / spec (design.md, 'File and Directory Parameters').",
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -232,10 +236,9 @@ def _print_result(args: argparse.Namespace, result: object) -> None:
 def main(argv: list[str]) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    roots = [Path(r) for r in args.root]
 
     try:
-        store = SpecStore(root=roots if len(roots) > 1 else roots[0])
+        store = SpecStore(root=Path(args.root))
         result = dispatch(store, args)
     except (SpecStoreError, CliError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

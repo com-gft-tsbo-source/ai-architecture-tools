@@ -38,9 +38,10 @@ def _flag_name(type_name: str) -> str:
 def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._SubParsersAction"]:
     parser = argparse.ArgumentParser(prog=spec.name)
     parser.add_argument(
-        "--root", required=True, action="append",
-        help="File (single-file mode) or directory (directory mode). Repeatable: "
-             "with more than one --root, operates strictly read-only across all of them, merged.",
+        "--root", required=True,
+        help="A directory shared by all four tools, or any single tool's own file/directory within "
+             "it -- resolved to this tool's <root_name>.md / <root_name> (design.md, "
+             "'File and Directory Parameters').",
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -264,10 +265,9 @@ def main(
         configure_parser(parser, subparsers)
 
     args = parser.parse_args(argv)
-    roots = [Path(r) for r in args.root]
-    store = Store(spec=spec, root=roots if len(roots) > 1 else roots[0])
 
     try:
+        store = Store(spec=spec, root=Path(args.root))
         result = dispatch(spec, store, args, extra_handlers)
     except (StoreError, CliError, DeferredOperationError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

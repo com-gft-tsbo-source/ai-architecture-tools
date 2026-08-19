@@ -16,16 +16,27 @@ Design-Dokumente maßgeblich — nicht der Code.
 
 ## Aktueller Implementierungsstand
 
-Kernmodell, Locking, Index-Dateien, Reorder, Multi-Root Read-Only-Merge sowie
-`taskctl.py`, `rulectl.py`, `adrctl.py` sind implementiert und laufen End-to-End
-— sowohl Directory-Mode als auch Single-File-Mode. `reindex` baut `.index.json`
-neu und erkennt/behebt Inkonsistenzen aktiv (verwaiste `.tmp`-Dateien werden
-entfernt, doppelte Nummern innerhalb einer Metagroup werden gemeldet).
-`add-<metagroup-type>` vergibt die Sortnummer automatisch (`max+1`), wenn keine
-explizit angegeben wird; `add --<metagroup-type>` akzeptiert zur Referenz auf
-existierende Pfade pro Segment Nummer, Name oder `Nummer-Name` (spezifiziert in
-`design.md`, CLI Contract; Begründung in `design-decisions.md`, Abschnitt
-"Amendments").
+Kernmodell, Locking, Index-Dateien, Reorder sowie `taskctl.py`, `rulectl.py`,
+`adrctl.py` sind implementiert und laufen End-to-End — sowohl Directory-Mode
+als auch Single-File-Mode. `reindex` baut `.index.json` neu und erkennt/behebt
+Inkonsistenzen aktiv (verwaiste `.tmp`-Dateien werden entfernt, doppelte
+Nummern innerhalb einer Metagroup werden gemeldet). `add-<metagroup-type>`
+vergibt die Sortnummer automatisch (`max+1`), wenn keine explizit angegeben
+wird; `add --<metagroup-type>` akzeptiert zur Referenz auf existierende Pfade
+pro Segment Nummer, Name oder `Nummer-Name` (spezifiziert in `design.md`, CLI
+Contract; Begründung in `design-decisions.md`, Abschnitt "Amendments").
+
+**`--root` ist projektweit gemeinsam** (`design.md`, "File and Directory
+Parameters"; `design-decisions.md`, "Amendments (2026-08-19, shared-root
+resolution)"): alle vier Tools nehmen denselben `--root`-Pfad entgegen und
+lösen ihn über `lib/store.py`s `resolve_root(given_path, name, default_mode)`
+zu ihrem eigenen `<name>.md`/`<name>` innerhalb des gemeinsamen Verzeichnisses
+auf (`ToolSpec.root_name`/`default_mode`: `tasks`/Directory, `rules`/Directory,
+`adrs`/Directory, `spec`/Single-File). Das macht `adrctl`s künftige
+`spec-ref`-Verknüpfung zu `specctl` eindeutig auflösbar, ohne einen separat
+konfigurierten Pfad. Multi-Root Read-Only-Merge (`--root` mehrfach) ist dafür
+ersatzlos entfallen — kein Tool hatte dafür einen echten Anwendungsfall.
+`lib/spec_store.py` nutzt `resolve_root` identisch (`_ROOT_NAME = "spec"`).
 
 `specctl.py` ist implementiert (Add je Ebene, Status inkl. ADR-Pflicht ab
 `stable`, `set-adr`, `set-description`, `rename`, `reorder`, `move-to-<Ebene>`,
@@ -42,11 +53,10 @@ Wiederverwendet werden die tatsächlich generischen Bausteine:
 `lib/history.py`, `lib/text.py` (`escape_signature_text`, `slugify` —
 Letzteres seit specctl auch von `lib/store.py` genutzt statt eines eigenen
 privaten Duplikats), `lib/metagroup.py` (`resolve_segment`,
-`assign_leaf_name`) sowie `lib/store.py`s `detect_mode` (Datei- vs.
-Directory-Erkennung anhand Dateiendung) und `lib/abbrev.py`, das dafür um
-die 4-/5-Ebenen-Breiten aus `design-specctl.md` ("Object Type")
-generalisiert wurde, ohne das Verhalten für die anderen drei Tools zu
-ändern (deren Breiten summierten schon vorher zu 6).
+`assign_leaf_name`) sowie `lib/store.py`s `resolve_root` (siehe oben) und
+`lib/abbrev.py`, das dafür um die 4-/5-Ebenen-Breiten aus `design-specctl.md`
+("Object Type") generalisiert wurde, ohne das Verhalten für die anderen drei
+Tools zu ändern (deren Breiten summierten schon vorher zu 6).
 
 specctls Directory-Mode weicht vom allgemeinen Modell ab: **jede Section ist
 ein Verzeichnis** (`<nr>-<type>-<id>-<slug>/`, nicht nur Blätter), mit einer
@@ -74,11 +84,11 @@ Teilbaum (Zyklus), zum aktuellen Elternpfad (No-op, `reorder` verwenden) und
 solche, die für die Section selbst oder einen Nachkommen die 5-Ebenen-Grenze
 überschreiten würden.
 
-104 Unit-/Integrationstests für specctl (Single-File- und Directory-Mode,
-inkl. `move`) kommen zu den 221 der anderen drei Tools/geteilten Module
-hinzu (214 plus 7 neue Tests für die 4-/5-Ebenen-Generalisierung von
-`lib/abbrev.py`) — 325 insgesamt, unter `tests/`
-(`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`).
+330 Unit-/Integrationstests insgesamt unter `tests/`
+(`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
+davon rund 104 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
+`move`) und mehrere neue Tests für `resolve_root` (Kollision, Default-Modus,
+`.md`-/Name-Override, Multi-Tool-Koexistenz unter einem `--root`).
 
 Noch offen:
 - `tasklist` (rulectl/adrctl) ist absichtlich nur als Stub vorhanden
@@ -88,6 +98,16 @@ Noch offen:
   adrctl, `lib/spec_link.py`, Auto-Propagation — `design-specctl.md`, "ADR
   Linkage") ist spezifiziert, aber bewusst noch nicht implementiert; `adr`
   wird bis dahin nur manuell über `set-status --adr` / `set-adr` gepflegt.
+- `resolve_root`-Lücke, beim Testen entdeckt, noch nicht entschieden: Zeigt
+  `--root` auf ein **existierendes Verzeichnis eines anderen Tools** (z. B.
+  `adrctl --root ./project/tasks`, wobei `tasks/` bereits taskctl gehört),
+  wird dieses Verzeichnis unverändert als *gemeinsames* Verzeichnis behandelt
+  (`design.md`: "path exists and is a directory → path itself") — adrctl
+  legt dann `./project/tasks/adrs/` an, verschachtelt unter dem fremden
+  Tool-Verzeichnis, statt dessen Elternverzeichnis als geteiltes Verzeichnis
+  zu erkennen. Nur der `.md`-Datei-Fall und der exakte Name-Match-Fall (beide
+  bestätigt) lösen das Elternverzeichnis auf; für ein fremdes, bereits
+  existierendes Tool-*Verzeichnis* gibt es noch keine analoge Regel.
 - Locking wurde nur innerhalb eines Prozesses (Threads) getestet, nicht
   über echte Multi-Prozess-Konkurrenz.
 
@@ -109,11 +129,11 @@ Noch offen:
 
 - Exit-Codes: `0` = ok, `1` = Fehler.
 - Fehlermeldungen → stderr, reguläre Ausgabe → stdout.
-- CLI-Struktur (Subcommands, `--json`-Flag, `--root` wiederholbar für
-  Read-Only-Merge, Positionsargumente ans Ende) einheitlich über alle vier
-  Tools halten, auch wenn ein Tool das jeweilige Feature (noch) nicht
-  braucht — das gilt für specctl trotz eigener CLI-Implementierung (kein
-  `lib/cliapp.py`) genauso.
+- CLI-Struktur (Subcommands, `--json`-Flag, `--root` als einzelner,
+  projektweit gemeinsamer Pfad, Positionsargumente ans Ende) einheitlich über
+  alle vier Tools halten, auch wenn ein Tool das jeweilige Feature (noch)
+  nicht braucht — das gilt für specctl trotz eigener CLI-Implementierung
+  (kein `lib/cliapp.py`) genauso.
 - Bei einer Änderung an einem Tool prüfen, ob dieselbe Änderung auch bei
   den anderen Sinn ergibt (z. B. neue CLI-Option, Statuslogik).
 
