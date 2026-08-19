@@ -1,0 +1,248 @@
+# Agent Tool Design Criteria
+
+This document describes the general design principles for CLI tools that support agentic AI workflows. Each tool manages "objects" that share the same semantic meaning within that tool.
+
+Tools:
+
+- taskctl — see design-taskctl.md
+- rulectl — see design-rulectl.md
+- adrctl — see design-adrctl.md
+
+## File and Directory Parameters
+
+- Tools store their data in files or directories.
+- If the tool receives a **file** as parameter, it reads/writes only that file. The file holds objects in *single-file mode* (see "Object Format" below).
+- If the tool receives a **directory** as parameter, it reads/writes only within that directory and its subdirectories, in *directory mode* — one object per file.
+- If the tool receives **multiple files and/or directories** (any mix), it operates strictly read-only across all of them, merging their information.
+
+## Managed Objects
+
+### Object ID
+
+- Every object has an ID.
+- Generated once, on creation, as a 6-character hexadecimal code derived from the object's initial content. It never changes afterwards, even if the content changes later.
+- May instead be supplied explicitly as a parameter at creation time; in that case it may be any free-form string.
+- Free-form IDs **must not contain `/`** (reserved for the `--id` path-selector syntax, see CLI Contract).
+
+### Metagroups
+
+- Metagroups classify objects along a tool-specific, hierarchical axis (e.g. Category for rulectl, Component for adrctl, Phase for taskctl).
+- A metagroup is a Type/Name tuple. The set of metagroup Types and their order is fixed per tool, with a maximum of **3 levels**.
+- Each metagroup Name is itself a (partial) path reflecting its position in the hierarchy, e.g.:
+
+      Type: Category
+      Name (level 1, Language):  Python
+      Name (level 2, Context):   Python/backend
+      Name (level 3, Category):  Python/backend/validation
+
+- **Every object belongs to exactly one metagroup** (one leaf-level path) — there is no multi-membership. If an object would logically belong to more than one path (e.g. an ADR affecting two components), the user manually creates a new metagroup that semantically represents the combination. This is a manual convention, not a tool feature.
+- The object's `Meta` section (see Object Format) lists the resolved value for every ancestor level of that one path, for easy filtering/display — this is a derived display of the single assignment, not independent membership.
+- A metagroup path that is referenced (e.g. via `add`/`set-<metagroup-type>`) but does not exist aborts the operation with an error, in both modes. Metagroup paths must be created explicitly first via `add-<metagroup-type> <name>` — tools never auto-create them.
+  - In **directory mode**, this mirrors the metagroup hierarchy 1:1 as nested subdirectories; `add-<metagroup-type> <name>` creates that directory.
+  - In **single-file mode**, there is no filesystem directory to create; `add-<metagroup-type> <name>` instead writes an entry to the file's `## Metagroups` bookkeeping section (see Object Format). This keeps the "must exist first" rule identical across both modes.
+- Every metagroup Name carries a 3-digit, zero-padded sort number as prefix: `<nr>-<name>` (e.g. `002-Implementation`). This number determines display/listing order and is stripped before deriving the Object Type (see below). By default it is assigned the same way as object numbers (see Numbering) — `max + 1` among sibling metagroups at creation — but `add-<metagroup-type>` also accepts the prefix supplied explicitly (`add-<metagroup-type> <nr>-<name>`), which is then used verbatim instead of being auto-assigned. There is no dedicated "reorder metagroup" operation; changing the order of an already-created metagroup is done via Rename (assigning a different `<nr>-<name>`).
+- **Changing an object's metagroup** (`set-<metagroup-type>`) re-derives everything that depends on it: a new Number (via `max + 1` in the new subpath — the old subpath's number becomes a gap), a new Object Type, a new Signature and file name, the file's physical location (directory mode) or its position within the file (single-file mode), and the `## Meta` section content. This is logged as a normal `M` history entry.
+
+### Metainfo
+
+- Every object may carry Metainfo: Type/Name tuples that provide context for the object's content (e.g. `weight`, `tool`, `assignee-type`). Available types are tool-specific.
+
+### Numbering
+
+- Every object has a running number, counted from 1 within its metagroup path (subpath), displayed 3-digit zero-padded.
+- Assigned automatically on creation as `max + 1` of the numbers currently used in that subpath — **not** the smallest free/gap number.
+- Deleting an object leaves a gap — numbers are never compacted.
+- Reordering an object moves it to a new position among its siblings. If an existing gap between the target neighbors can accommodate the new position, it is reused and no other object is touched. Otherwise, the numbers of the objects between the old and new position are shifted by one, renaming their files and updating their content accordingly.
+
+### Object Type
+
+The Object Type is a short, stable code derived from the object's metagroup, unique per distinct metagroup path combination, and forms part of the Signature and the file name.
+
+**Derivation** (unless an explicit abbreviation was supplied, see below):
+
+| Metagroup levels | Letters taken per level |
+|---|---|
+| 1 | 6 |
+| 2 | 3 + 3 |
+| 3 | 2 + 2 + 2 |
+
+- Letters are taken from the metagroup Name **after** stripping its `<nr>-` sort prefix.
+- If the result is shorter than 6 characters, it is right-padded with `_` to reach 6.
+- A tool may define an entirely different derivation (see design-taskctl.md for the one exception).
+
+**Explicit override:** an abbreviation may be supplied explicitly when creating a metagroup path (`add-<metagroup-type> <name> --abbrev <code>`). In directory mode it is stored in `.index.md`; in single-file mode it is stored alongside the path in the `## Metagroups` section. Either way it is then stable / write-once — later collisions elsewhere never change an abbreviation once assigned.
+
+**Collision resolution:** when the derived abbreviation for a *new* metagroup path collides with an existing one, resolve per colliding level: keep the letters of non-colliding levels unchanged; for the colliding level, keep the common prefix as an anchor and advance position by position through the source name until the first character is found that differs from the corresponding position in the already-assigned colliding name; use that character in place of the naturally-derived one.
+
+Example: `backend/login` → `baclog`. Adding `backend/logik` also naturally derives to `baclog` (collision). `login` and `logik` are identical through position 4 and first differ at position 5 (`n` vs. `k`), so the resolved abbreviation becomes `baclok` (`bac` unchanged + `lok`, keeping the 3-character width for that level).
+
+**If that is not sufficient** (e.g. two source names are identical, or the divergent character lies beyond the target width):
+1. Keep advancing beyond the normal target width, up to 3 extra characters (e.g. up to 9 total characters for a 6-character target, unpadded).
+2. If still colliding, append a numeric suffix: `baclok-2`, `baclok-3`, …
+3. If that still doesn't resolve it, abort with an error and require an explicit `--abbrev` override.
+
+**On the command line**, trailing `_` padding may be omitted when typing an Object Type — the tool re-pads before matching.
+
+**Stability:** the Object Type is always derived from the object's current metagroup assignment and is part of its file name. Once recorded (in `.index.md` or in a file's `## Metagroups` section), an abbreviation is never silently changed by a later, unrelated addition elsewhere.
+
+### Object Name
+
+Every object has a Name: single-line free text.
+
+### Object Signature
+
+Every object has a Signature: `<type>-<nr>-<id>-<name>[-<class>]`
+
+- `<type>` = the (padded) Object Type
+- `<nr>` = 3-digit, zero-padded running number
+- `<id>` = the object's ID
+- `<name>` = the object's Name
+- `<class>` = optional, tool-defined
+
+**Escaping:** every character in `<name>` (and any other free-text component) outside `[A-Za-z0-9]` is replaced with `_`. This mapping is one-way — reconstructing the original text from a Signature is neither possible nor required; Signatures are for display only, objects are resolved via ID (see `--id` in CLI Contract).
+
+### Object Status
+
+Every object has a Status. Valid values and any transition rules are tool-specific (see each tool's document). Unless a tool defines otherwise, status changes are manual — triggered by a user or an agent acting on instruction — there is no automatic transition logic.
+
+`--set-status` may be supplied together with `add` to choose any status as the object's **initial** value, even one that would be unreachable as a *transition* under the tool's normal rules (e.g. creating a taskctl task directly in `[~]`). This counts as an initial-value choice, not a transition, and therefore never requires `--force`.
+
+### Object History
+
+Every object has a History: a chronological, timestamped log of every management operation and, where applicable, every explicitly annotated progress log.
+
+**Format:**
+
+    - 2026-08-17T15:45:48: M [draft] -> [active] | Status set to active
+    - 2026-08-17T15:46:02: T [~] -> [~] |
+      > Research on signature escaping complete,
+      > proposal is in review.
+    - 2026-08-17T16:01:10: M | Description refined
+
+**Grammar (line-based; no parser required):**
+- A line starting with `- ` in column 0 begins a new entry.
+- A line starting with exactly `  > ` continues the previous entry's message.
+- Prefix `M` marks a management operation on the object (add, rename, content/metainfo/metagroup change, status change). The transition segment `[<old>] -> [<new>]` is shown only when the status actually changed.
+- A tool may define additional prefixes for its own operations (see design-taskctl.md for `T`).
+- Message text follows either inline after `" | "` on the header line, or as one or more `  > `-prefixed continuation lines — never both in the same entry. Message text must not itself contain a line starting with `  > ` or with `- ` in column 0.
+
+### User Content
+
+Objects are filled with user content, typically Markdown containing instructions or guidance for an agent or user. Tools request specific named blocks (e.g. `Description`); each tool defines which blocks it supports. Every block may contain Markdown and is stored with a `> ` prefix per line.
+
+## Object Format
+
+An object consists of exactly **one** level-1 heading and its nested sections:
+
+    # <signature>
+
+    ## Meta
+
+    - <metagroup-type>: <metagroup-name>
+    - <metainfo-type>: <metainfo-name>
+    ...
+
+    ## <object name>
+
+    > <description>
+
+    ### <optional section, tool-specific>
+
+    > <section content>
+
+    ## History
+
+    - 2026-08-17T15:45:48: M | ...
+
+- No YAML frontmatter is used, in either mode.
+- The `## Meta` section is a Markdown bullet list (`- Type: Name`), listing every ancestor level of the object's single metagroup path.
+- **Every level-1 heading marks a new object.** No exceptions — bookkeeping content (see below) always stays at level 2 or deeper so this rule never needs a special case.
+
+**Single-file mode:** multiple objects appear one after another in the same file, sorted by metagroup then number. Objects are separated by a horizontal rule (`---`) — only *between* objects, never before the first or after the last (a leading `---` would otherwise risk being misread as YAML frontmatter by generic Markdown tooling).
+
+If the file uses metagroups that need to be created ahead of any object (mirroring `add-<metagroup-type>` in directory mode), it starts with a `## Metagroups` section, before the first object's `# <signature>` heading:
+
+    ## Metagroups
+
+    - Phase: 001-Setup (abbrev: 001)
+    - Phase: 002-Implementation (abbrev: 002)
+
+    # <signature of first object>
+    ...
+
+This is plain Markdown (same bullet-list style as `## Meta`), holds one line per declared metagroup path with its Object Type abbreviation, and is the single-file-mode equivalent of `.index.md` (see Index Files) — a metagroup referenced by `set-<metagroup-type>` but missing from this section aborts with an error, exactly as an undeclared directory would in directory mode.
+
+**Directory mode:** exactly one object per file. Since the metagroup is already conveyed by the file's location in the directory tree, no additional metagroup-path heading is inserted and headings are not shifted — the template above is used unchanged.
+
+## Operations
+
+### Metagroup Operations
+- Create (`add-<metagroup-type> <name>`) — creates the metagroup's directory (directory mode) or its `## Metagroups` entry (single-file mode).
+- Rename
+- Show (`show-metagroups`)
+
+### Object Operations
+- Add
+- Reorder
+- Delete
+- Change status
+- Change content
+- Change metagroup (see "Changing an object's metagroup" above)
+- Display: short (single line)
+- Display: full description
+- Display: short + history
+
+### Operations Across All Objects
+- List all objects (short display)
+- List objects in specific metagroups
+- List objects with specific metainfo
+- List objects with a specific status
+- Historical overview: the combined history of all objects, newest first
+
+## Index Files
+
+Two files per metagroup-path directory (**directory mode only**), kept strictly separate. (The single-file-mode equivalent is the in-file `## Metagroups` section described under Object Format — there is only one file to scan, so a separate cache file is unnecessary there.)
+
+### `.index.md`
+Human-maintainable; holds the Object Type abbreviation for that path segment (see Object Type). Write-once / stable — never overwritten automatically once set, except by an explicit user edit or an explicit `--abbrev` override at creation time.
+
+### `.index.json`
+A pure performance cache, indexed by Object ID, listing only the **direct children** of that directory (no transitive aggregation across sub-levels). Written synchronously on every change that affects it.
+
+    {
+      "updated": "2026-08-17T16:20:00",
+      "objects": {
+        "a3f9c2": {
+          "nr": 5,
+          "type": "baclok",
+          "name": "Configure database connection",
+          "status": "active",
+          "file": "005-baclok-a3f9c2-configure-database-connection.md",
+          "meta": { "weight": "high", "tool": "eslint" }
+        }
+      }
+    }
+
+`meta` carries the object's Metainfo key/value pairs, so metainfo-based listing is also index-accelerated. `.index.json` can be rebuilt at any time from the object files via the explicit `reindex` command, which never modifies `.index.md`.
+
+## Concurrency / Locking
+
+- A lock is held for the duration of a single invocation only — never persisted between invocations. Its scope is exactly the target the tool was invoked on: the **single file** in single-file mode, or the **root directory** in directory mode. Two invocations operating on different files or different directory roots must never block each other.
+- Waiting instances time out after **3 minutes**; on timeout they steal the lock. A warning should be logged, recording the previous holder's PID/timestamp, since a slow (rather than crashed) holder could still be writing.
+- Writes go through a `<...>.tmp` file, renamed into place only on success, to protect against partial writes.
+- `reindex` should detect and help clean up residual inconsistencies (numbering gaps/duplicates, orphaned `.tmp` files) that a stolen lock or interrupted multi-file operation (e.g. an aborted reorder cascade) may leave behind.
+
+## CLI Contract
+
+- `--root <path>`: base directory for all file operations. Repeatable (`--root a --root b …`); with more than one value, the tools operate in the read-only merge mode described under "File and Directory Parameters" above — every mutating operation aborts with an error in that mode.
+- Subcommand style: `add`, `add-<metagroup-type> <name>`, `set-status`, `set-<metainfo-type>`, `set-<metagroup-type>`, `annotate`, `next`, `show`, `show-metagroups`, `reindex`, …
+- `add-<type> <name>` and `set-<type> <name>` share one uniform shape across metagroups and metainfo: a subcommand followed by a single positional value, e.g. `add-domain backend`, `set-domain backend`, `add-component frontend/mocking` (nested types take a path-like name spanning their own ancestors).
+- `set-*` operations are also available as inline flags on `add`, to create an object and populate its fields — including its metagroup — in a single call.
+- `add-<metagroup-type> <name> [--abbrev <code>]`: creates a metagroup path (and, optionally, its Object Type abbreviation) — as a directory in directory mode, or as a `## Metagroups` entry in single-file mode. Only the path's last segment is newly created; every ancestor segment must already exist and is resolved the same way as `--<metagroup-type>` below. If the last segment lacks a `<nr>-` sort prefix, one is auto-assigned (`max + 1` among its siblings, see Metagroups above); an explicitly supplied prefix is used verbatim.
+- `--<metagroup-type> <value>` — whether inline on `add` or anywhere else a metagroup path is referenced (not created) — resolves an *existing* path one `/`-separated segment at a time against that segment's siblings. Each segment may be given as the exact `<nr>-<name>` form, a bare number (`2`), or a bare name (`Implementation`). A segment matching more than one sibling (e.g. two same-named siblings with different numbers) aborts with an error rather than guessing.
+- `--name "..."`: the object's Name.
+- `--description "..."`: the object's Description (always available under this fixed name).
+- `--<user-section> "..."`: content for any other tool-defined user-content block.
+- `--message "..."`: the History log text for `set-status`, `annotate`, or any other logged operation.
+- `--id <value>`: object selector, resolved in order: (1) matches the Signature pattern, (2) contains `/` → interpreted as `<metagroup-path>/<nr>`, (3) otherwise treated as a raw ID. (This is why free-form IDs must not contain `/`.)
+- Positional parameters: only file or directory names, always last.

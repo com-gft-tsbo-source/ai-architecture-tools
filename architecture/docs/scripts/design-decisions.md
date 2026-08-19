@@ -1,0 +1,74 @@
+# Design Decisions — taskctl / rulectl / adrctl
+
+Status: **Finalized**, 2026-08-17. This is the rationale trail behind `design.md`, `design-taskctl.md`, `design-rulectl.md` and `design-adrctl.md` — those documents are the authoritative spec; this log records *what* was decided and *why*, for anyone reviewing or later revisiting a choice. Superseded intermediate proposals and resolved open questions from earlier drafts are omitted; only what actually landed is listed.
+
+## Scope
+`tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
+
+## Object ID
+6-character hex code hashed from initial content, or a free-form string supplied at creation. Free-form IDs may not contain `/`, because `/` is the discriminator the `--id` selector uses to recognize a metagroup-path reference (see CLI Contract). Frozen at creation, like everything else that must survive renames.
+
+## Metagroups
+- **Exactly one metagroup per object**, not "one or more" as originally drafted. A single object can only meaningfully sit at one point in a tree-shaped, path-based hierarchy; allowing multiple independent memberships would have required either an arbitrary tie-break for numbering/type-derivation (which subpath "owns" the object?) or a much more complex model. Cross-cutting cases (e.g. an ADR touching two components) are handled by the user manually creating a new metagroup that represents the combination — a naming convention, not a feature, so the tool stays simple.
+- **Max. 3 levels**, matching the deepest hierarchy already in use (rulectl: Language/Context/Category).
+- **Sort number embedded in the name** (`<nr>-<name>`, 3-digit zero-padded) rather than tracked separately, for every tool uniformly — this was originally a taskctl-only convention (`Phase=<nr>-<name>`) and was generalized once rulectl/adrctl also needed a defined listing order. Embedding it in the name avoids a second storage location and reuses the same numbering mechanism as objects.
+- **Directory mode mirrors the hierarchy 1:1 as subdirectories** — the natural way to give each path a stable, independently lockable, independently listable location, and the basis for per-directory index files.
+- **Single-file mode needs a `## Metagroups` bookkeeping block** because there's no directory to stand in for "this path exists." Two rejected alternatives and why: putting it in YAML frontmatter was rejected because we'd already eliminated frontmatter everywhere specifically to avoid a leading `---` being misread as frontmatter by generic tooling — reintroducing it for bookkeeping alone would undo that and add a second parser (YAML) alongside the Markdown-bullet convention used everywhere else. Treating the *first* H1 heading as a special bookkeeping block was rejected because it breaks the otherwise exceptionless "every H1 is an object" rule and doesn't scale to a file needing several declared metagroups. A level-2 `## Metagroups` section at the top of the file — same bullet-list style as `## Meta` — solves both: no new syntax, no exception to the H1 rule, holds arbitrarily many (including empty) declarations.
+- A referenced-but-missing metagroup path **always aborts with an error**, in both modes — no auto-vivification. Chosen for predictability: a script/agent that always calls `add-<type>` first shouldn't have to remember a mode-dependent exception.
+
+## Object Type
+- **Derived from the metagroup name's initial letters**: 6 letters for 1 level, 3+3 for 2 levels, 2+2+2 for 3 levels (always after stripping the `<nr>-` sort prefix — otherwise digits would dominate the abbreviation and collide constantly). Short, mnemonic, and directly tied to the classification it represents rather than an opaque counter.
+- **Manual override** via `--abbrev` at `add-<metagroup-type>` time, stored in `.index.md` (directory mode) or the `## Metagroups` section (single-file mode) — write-once, never silently changed later.
+- **Collision resolution**: keep the non-colliding levels' letters fixed, and for the colliding level advance position-by-position through the source name to the first character that differs from the already-assigned name at that position (e.g. `login`/`logik` differ only at position 5, so `logik` resolves to `lok` instead of `log`). This keeps existing, already-referenced abbreviations completely stable — only the newly-added, colliding one adapts — which matters because the abbreviation is embedded in every existing object's file name.
+- **Escalation if that's not enough**: extend up to 3 characters past the target width, then a numeric suffix, then abort and require `--abbrev`. Chosen as a graceful degradation ladder rather than either silently producing non-unique types or immediately forcing manual intervention on every collision.
+- **taskctl exception**: its Object Type is the (unpadded) Phase number, not a letter code — because Phase is a single, purely sequential axis, not a classification; a letter abbreviation would add no information there.
+
+## Numbering
+- **`max + 1`, not smallest-free-gap**, on creation. Reusing a freed number risks referencing ambiguity against History entries and old Signatures that already used it; monotonic growth avoids that entirely.
+- **Gaps are permanent** on delete.
+- **Reorder reuses an existing gap when the target position allows it**, falling back to a shifting cascade (renaming subsequent files) only when no gap is available. This was tightened from an initial "always cascade" rule specifically to reduce how many files/locks a routine reorder touches.
+- **Changing an object's metagroup re-derives everything downstream** in one atomic step: new number (`max+1` in the new subpath, old number becomes a gap), new type, new signature, new file name/location, updated `## Meta`. Logged as a single `M` history entry rather than as several separate ones, since it is conceptually one operation.
+
+## Signature & Escaping
+`<type>-<nr>-<id>-<name>[-<class>]`, with every non-`[A-Za-z0-9]` character in free-text components mapped to `_`. Explicitly **one-way** — no reverse-parsing of a Signature back into the original name is supported or needed, since objects are always resolved via ID, not by parsing their Signature. This was the simplification that let us drop an earlier, more complex reversible-escaping scheme.
+
+## Status
+- taskctl keeps its explicit state machine (`[ ]→[~]→[R]/[C]→[X]`, `[B]` from anywhere, rework path from `[R]`/`[C]`, `--force` for everything else) — it was already well-specified and is left as the model rulectl/adrctl deliberately do *not* need.
+- rulectl/adrctl: **no automatic transitions**, status changes only on explicit user/agent instruction. rulectl has no `--draft` flag (initial status is always `active`); adrctl's initial status is `proposed`.
+- **`--set-status` at `add` time may set any initial status**, even one a normal transition couldn't reach (e.g. a taskctl task created directly in `[~]`) — because choosing an initial value isn't a transition (there's no prior state to violate), so it never needs `--force`.
+
+## History Format
+`M` (management operation) / `T` (taskctl `annotate` progress log) prefixed, timestamped lines; `T` always shows `[<old>] -> [<new>]`, `M` only when the status actually changed. Continuation lines are indented `  > `. Deliberately **not** a formal grammar with a real parser — a line starting with `- ` in column 0 is always a new entry, a line starting with exactly `  > ` is always a continuation; that's sufficient and keeps every tool's implementation trivial.
+
+## Object / File Format
+- **Frontmatter dropped entirely**, in both modes — the original design used YAML frontmatter plus a redundant `## Meta` body section for the same data; removing frontmatter eliminated the duplication in one direction rather than the other; it also avoids the frontmatter-vs-horizontal-rule ambiguity for `---` in single-file mode.
+- **Exactly one H1 per object**, with `## Meta` / `## <name>` / `### <optional>` / `## History` as level-2/3 children. An earlier draft used two H1 sections per object (a "technical" and a "readable" section); that was revised once the rule "every H1 marks a new object" was introduced, since two H1s per object would make that rule ambiguous.
+- **Single-file mode separates objects with `---`**, used strictly *between* objects, never leading or trailing — specifically to avoid the file's first line being misread as a YAML frontmatter delimiter by generic Markdown tooling.
+- **Directory mode uses the object template unchanged** — no heading shift, no inserted metagroup-path heading — because the directory location already conveys the metagroup unambiguously; the shift/insert rule in an earlier draft was redundant once that was recognized.
+
+## Index Files
+- **`.index.md` and `.index.json` are separate files**, not merged, because they serve different lifecycles: `.index.md` is a small, human-editable, write-once source of truth (the Object Type abbreviation); `.index.json` is a disposable, tool-maintained performance cache (object metadata by ID, direct children only) that a `reindex` command can always regenerate from the object files without touching `.index.md`. Merging them would risk a routine reindex clobbering a manually-chosen abbreviation.
+- `.index.json` includes a `meta` block (Metainfo key/values) so metainfo-based listing is index-accelerated too, not just status/type/name.
+- Both are **directory-mode only** — in single-file mode there's only one file to scan, so a separate cache buys nothing; the `## Metagroups` section (see above) covers the one thing that still needed persisting (declared-but-empty metagroups and their abbreviations).
+
+## Concurrency / Locking
+- **Lock scope is exactly the invocation's target** — the single file, or the directory root — never something broader. This was tightened after an earlier draft's "lock the root directory" wording risked reading as a shared lock across unrelated targets, which would have made two invocations on two unrelated files block each other for no reason.
+- **3-minute timeout, then the lock is stolen** by the waiting instance (with a logged warning naming the previous holder's PID/timestamp). This accepts a small risk — a merely slow (not crashed) holder could in principle still be writing — in exchange for not requiring manual intervention on every stale lock; it's a deliberate simplicity-over-safety call.
+- **Writes go through `<...>.tmp` + rename-on-success** to protect individual files from partial writes; multi-file cascades (reorder, metagroup change) can still leave a partial cascade behind on a crash, which `reindex` is expected to help detect and clean up rather than the locking model preventing outright.
+
+## CLI Contract
+- **Subcommand style**, not `--flag`-only: `add`, `add-<type> <name>`, `set-status`, `set-<type> <name>`, `annotate`, `next`, `show`, `show-metagroups`, `reindex`. `set-*` operations are additionally available as inline flags on `add`, so creating an object and populating its fields (including its metagroup) doesn't require a second invocation.
+- **`add-<type> <name>` / `set-<type> <name>` share one uniform shape** across metagroups and metainfo — a deliberate simplification over the earlier, inconsistent `--add-<path>=<value>` sketch.
+- **`--id` selector** resolves, in order: Signature pattern → contains `/` (metagroup-path + number) → raw ID. This ordering (and the "no `/` in free-form IDs" rule above) is what keeps the three forms unambiguous without a separate disambiguating flag.
+- **`--message`** carries the History log text for `set-status`/`annotate`/other logged operations — previously missing from the contract entirely.
+
+## Language & Naming
+All field, parameter and status names are English in the final docs. Typos from the German drafts were corrected in the process: *Katergorie* → `Category`, *weigth* → `weight`, *assigne-type/-name* → `assignee-type`/`assignee-name`, *Sprache* → `Language`, *Komponente* → `Component`.
+
+## Amendments (2026-08-17, during implementation)
+
+Three refinements surfaced while implementing against this "finalized" design (`doc/architecture/corrections.md`), decided the same day and folded into `design.md` directly rather than kept as a separate errata list:
+
+- **`add-<metagroup-type>` auto-numbers by default.** The original text already specified `max + 1` numbering "at creation" for metagroups, same as objects, but the CLI Contract's own examples (`add-domain backend`) left it ambiguous whether a `<nr>-` prefix was still mandatory input. Clarified: the prefix is optional on `add-<metagroup-type>` — omitted, it's auto-assigned; supplied, it's used verbatim. Applies uniformly to **all three tools**, not just taskctl's Phase, per the general "keep CLI structure uniform" rule in `scripts/workctl/CLAUDE.md` — a tool-specific carve-out here would have been a needless asymmetry.
+- **Flexible `--<metagroup-type>` reference.** Referencing an *existing* metagroup path (on `add`, or wherever else a path is given) now resolves each `/`-separated segment against its siblings as either the exact `<nr>-<name>` form, a bare number, or a bare name — instead of requiring the exact stored string. Chosen to apply **per segment**, uniformly across single- and multi-level tools, rather than special-casing taskctl's one-level Phase; an agent or user citing "Setup" or "1" is far more natural than requiring the exact zero-padded form it doesn't necessarily know ahead of time. Ambiguous matches (e.g. two siblings sharing a stripped name) abort with an error — silently picking one would make the resolution unpredictable and hide a naming collision the user should probably fix.
+- **`--root` is repeatable**, directly implementing the read-only multi-root merge already described under "File and Directory Parameters" (which specified the *behavior* but not the CLI mechanism to trigger it). Chosen over positional trailing path arguments — despite the CLI Contract's separate "positional parameters: only file or directory names, always last" line inviting that reading — because a repeated flag keeps every root uniformly explicit and avoids ambiguity between "the primary root" and "additional merge roots" that two different syntaxes (`--root` plus bare positionals) would have introduced.
