@@ -167,7 +167,35 @@ validation)") deckte fünf Probleme auf, alle behoben:
   nur Existenz, bewusst nicht Status oder Rückverweis über `spec-ref` (siehe
   Amendment für die Begründung).
 
-398 Unit-/Integrationstests insgesamt unter `tests/`
+Ein Folge-Review (2026-08-20, `design-decisions.md`, "Amendments
+(2026-08-20, adr_lookup follow-up fixes)") deckte zwei weitere Probleme in
+`lib/adr_lookup.py` auf, beide behoben, sowie zwei Dokumentationsfehler:
+- **`check_adr_exists` legt bei einem fehlschlagenden Check kein `adrs/`
+  mehr an**: vorher wurde für jeden Aufruf ein normaler `Store` konstruiert,
+  dessen `__post_init__` im Directory-Mode unbedingt `mkdir(...,
+  exist_ok=True)` ausführt — auch bei einer rein validierenden Anfrage gegen
+  einen noch gar nicht existierenden adrctl-Store. Jetzt wird die Existenz
+  zuerst über `resolve_root` (reine Pfadlogik, kein Dateisystemzugriff)
+  geprüft; ein `Store` wird erst konstruiert, wenn der Zielort tatsächlich
+  existiert.
+- **`check_adr_exists` hält jetzt den adrctl-Store-Lock** während des
+  `store.get(adr_id)`-Aufrufs — vorher lief die Prüfung ganz ohne Lock, ein
+  gleichzeitiges `adrctl`-Schreiben konnte dazwischenlaufen. Das schließt nur
+  die "gar kein Lock"-Lücke; keine cross-store-Atomarität mit dem
+  nachfolgenden specctl-Schreibvorgang — die adrctl↔specctl-Verknüpfung
+  bleibt bewusst nicht-transaktional (siehe bestehendes Amendment).
+- **`add --set-status stable|deprecated` ist bewusst von der
+  ADR-Pflicht ausgenommen** (design-specctl.md, "Status") — die
+  Wahl eines initialen Status bei `add` ist eine "initial-value choice, not
+  a transition", derselbe Freibrief, den `design.md` ("Object Status")
+  bereits für `--force` gewährt; kein Code-Fix, nur die Ausnahme explizit
+  dokumentiert.
+- **Widersprüchlicher History-Text korrigiert** (design-specctl.md,
+  "Metainfo"): der `adr`-Eintrag behauptete, manuelles `set-adr` und
+  automatisches `receive_adr_link` würden "identisch" geloggt — tatsächlich
+  loggt nur der automatische Pfad einen `M`-History-Eintrag, `set-adr` nie.
+
+399 Unit-/Integrationstests insgesamt unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 104 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`), mehrere Tests für `resolve_root` (Kollision, Default-Modus,
@@ -178,11 +206,12 @@ generischen `after_dispatch`-Hook, End-to-End über `adrctl`/`specctl`:
 fehlendes Ziel), rund 27 Tests für `delete`, `set-<user-content-block>`,
 `list`-Filter und die `choices`-Validierung, rund 9 Tests für
 `group-<metagroup-type>` (Store- und CLI-Ebene, No-op-Ablehnung, unbekannter
-Pfad) und die `info-`-Umbenennung sowie rund 15 neue Tests für das
+Pfad) und die `info-`-Umbenennung, rund 15 Tests für das erste
 Korrektheits-Review: ID-Kollision (Store- und SpecStore-Ebene), das
 simulierte Schreib-Fehlschlagszenario für `set_metagroup` (alte Datei
 überlebt), `lib/adr_lookup.py`, und OpenQuestions über die CLI (inkl.
-ADR-Gating).
+ADR-Gating), sowie 2 weitere Tests aus dem Folge-Review: kein `adrs/` bei
+fehlschlagendem Check, Lock während des Checks gehalten.
 
 Noch offen:
 - `tasklist` (rulectl/adrctl) ist absichtlich nur als Stub vorhanden

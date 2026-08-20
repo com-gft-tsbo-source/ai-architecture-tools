@@ -93,11 +93,13 @@ Like single-file mode's whole-file rewrite, a directory-mode write clears and re
 
 No automatic transitions, per the `design.md` default. `stable` → `draft` (rework) requires `--force`, as does any other non-listed transition.
 
+**Exception, by design:** `add --set-status stable` (or `deprecated`) creates a Section directly in that status, with `adr` left unset — the ADR requirement above applies only to *transitions* (`set-status`), the same "an initial-value choice, not a transition" carve-out `design.md`, "Object Status", already grants generally (there, for `--force`; here, the same reasoning extends to the ADR requirement, since neither is a transition rule). A content change on such a Section still requires `--adr` the first time, same as any other `stable` Section with no `adr` set yet — the exception only ever concerns `add` itself.
+
 "Valid" means the referenced ADR actually **exists** in the `adrctl` store sharing this specctl store's root (`lib/adr_lookup.py`, resolved via the same shared-directory mechanism `lib/spec_link.py` uses for the reverse direction) — a non-empty string that names no real ADR is rejected, not merely accepted as long as it's non-empty. This does not check the ADR's own Status, nor that its `spec-ref` points back at this Section — see design-decisions.md, "Amendments", for the scope of what "valid" checks and what it deliberately doesn't.
 
 ## Metainfo
 
-- `adr`: ID of the single, currently-governing ADR (an `adrctl` object ID) for this Section. Optional in `draft`; required from `stable` onward, and validated for existence at that point (see Status above). Set either manually (`specctl set-adr <id>`, not validated — a correction tool, see Operations) or automatically by `adrctl` via the shared linkage mechanism below — whichever last touched it wins, both are logged identically.
+- `adr`: ID of the single, currently-governing ADR (an `adrctl` object ID) for this Section. Optional in `draft`; required from `stable` onward, and validated for existence at that point (see Status above). Set either manually (`specctl set-adr <id>`, not validated — a correction tool, see Operations) or automatically by `adrctl` via the shared linkage mechanism below — whichever last touched it wins takes effect, but the two are **not** logged identically: the automatic path (`receive_adr_link`) always appends an `M` History entry, `set-adr` never does (see History below and Operations' `set-adr` entry).
 
 ## History
 
