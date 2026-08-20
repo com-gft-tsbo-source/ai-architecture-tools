@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from lib import abbrev, locking, metagroup, numbering
+from lib import abbrev, adr_lookup, locking, metagroup, numbering
 from lib import store as generic_store
 from lib.atomicio import atomic_write_text
 from lib.clock import now_iso
@@ -284,6 +284,7 @@ class SpecStore:
         path_segments: list[str],
         *,
         description: str = "",
+        open_questions: str = "",
         object_id: Optional[str] = None,
         initial_status: Optional[str] = None,
         abbrev_override: Optional[str] = None,
@@ -322,6 +323,9 @@ class SpecStore:
                 canonical = "|".join(["/".join(full_path), description])
                 object_id = derive_id(canonical)
 
+            if any(s.object_id == object_id for s in sections):
+                raise SpecStoreError(f"object ID {object_id!r} already exists in this document")
+
             section = SpecSection(
                 object_id=object_id,
                 object_type=object_type,
@@ -330,6 +334,7 @@ class SpecStore:
                 status=status,
                 ancestor_levels=parent_levels,
                 content={"Description": description},
+                open_questions=open_questions,
                 history=[HistoryEntry(timestamp=now_iso(), prefix="M", message="Add")],
             )
             index = _insertion_index(sections, parent_levels)
@@ -386,6 +391,24 @@ class SpecStore:
 
     # -- status / content mutation ------------------------------------------
 
+    def _require_valid_adr(self, section: SpecSection, adr: Optional[str], *, context: str) -> str:
+        """Resolve and validate the ADR reference for an operation that
+        requires one (design-specctl.md, "Status": "a valid adr reference").
+        "Valid" means the ADR actually exists in the adrctl store sharing
+        this specctl store's root (lib/adr_lookup.py) -- not merely that the
+        field is non-empty."""
+        effective_adr = adr or section.adr
+        if not effective_adr:
+            raise SpecStoreError(
+                f"{context} requires a valid 'adr' reference "
+                f"(supply --adr, or set one first via set-adr)"
+            )
+        try:
+            adr_lookup.check_adr_exists(self.root.parent, effective_adr)
+        except adr_lookup.AdrLookupError as exc:
+            raise SpecStoreError(f"{context}: {exc}") from exc
+        return effective_adr
+
     def set_status(
         self, object_id: str, new_status: str, *, message: str = "", force: bool = False,
         adr: Optional[str] = None,
@@ -399,13 +422,9 @@ class SpecStore:
             self._validate_transition(old_status, new_status, force)
 
             if new_status in _ADR_REQUIRING_STATUSES:
-                effective_adr = adr or section.adr
-                if not effective_adr:
-                    raise SpecStoreError(
-                        f"transitioning to {new_status!r} requires a valid 'adr' reference "
-                        f"(supply --adr, or set one first via set-adr)"
-                    )
-                section.adr = effective_adr
+                section.adr = self._require_valid_adr(
+                    section, adr, context=f"transitioning to {new_status!r}"
+                )
 
             section.status = new_status
             if old_status != new_status:
@@ -468,14 +487,29 @@ class SpecStore:
             preamble, sections = self._read()
             _index, section = self._find_with_index(sections, object_id)
             if section.status in _ADR_REQUIRING_STATUSES:
-                effective_adr = adr or section.adr
-                if not effective_adr:
-                    raise SpecStoreError(
-                        f"content changes to a {section.status!r} section require a valid "
-                        f"'adr' reference (supply --adr, or set one first via set-adr)"
-                    )
-                section.adr = effective_adr
+                section.adr = self._require_valid_adr(
+                    section, adr, context=f"content changes to a {section.status!r} section"
+                )
             section.content["Description"] = description
+            self._write(preamble, sections)
+            return section
+
+    def set_open_questions(
+        self, object_id: str, open_questions: str, *, adr: Optional[str] = None
+    ) -> SpecSection:
+        """Change a Section's `OpenQuestions` (design-specctl.md, "User
+        Content") -- gated the same way `set_description` is, since it is
+        also Section content, not bookkeeping (design-specctl.md, "Status":
+        "any content change requires a valid adr reference" from stable
+        onward)."""
+        with self.lock():
+            preamble, sections = self._read()
+            _index, section = self._find_with_index(sections, object_id)
+            if section.status in _ADR_REQUIRING_STATUSES:
+                section.adr = self._require_valid_adr(
+                    section, adr, context=f"content changes to a {section.status!r} section"
+                )
+            section.open_questions = open_questions
             self._write(preamble, sections)
             return section
 

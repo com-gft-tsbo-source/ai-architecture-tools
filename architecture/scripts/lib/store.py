@@ -255,6 +255,13 @@ class Store:
                 )
                 object_id = derive_id(canonical)
 
+            existing_ids = (
+                {r.object_id for r, _p in self._load_all()} if self.mode == "directory"
+                else {r.object_id for r in sf_records}
+            )
+            if object_id in existing_ids:
+                raise StoreError(f"object ID {object_id!r} already exists in this store")
+
             record = ObjectRecord(
                 object_id=object_id,
                 object_type=object_type,
@@ -269,7 +276,7 @@ class Store:
 
             if self.mode == "directory":
                 file_path = directory / object_file_name(record)
-                file_path.write_text(objectfile.render_object(record, self.spec), encoding="utf-8")
+                atomicio.atomic_write_text(file_path, objectfile.render_object(record, self.spec))
                 self._rebuild_index(directory)
             else:
                 sf_records.append(record)
@@ -411,9 +418,14 @@ class Store:
                     )
                 )
 
-                old_path.unlink()
+                # Write the new file (atomically) before removing the old one --
+                # if the write fails partway, the object still exists at its old
+                # location instead of vanishing entirely (design.md, "Writes go
+                # through a <...>.tmp file"; the same order _dir_reorder already
+                # uses for its own file moves).
                 new_path = new_directory / object_file_name(record)
-                new_path.write_text(objectfile.render_object(record, self.spec), encoding="utf-8")
+                atomicio.atomic_write_text(new_path, objectfile.render_object(record, self.spec))
+                old_path.unlink()
                 self._rebuild_index(old_directory)
                 self._rebuild_index(new_directory)
                 return record
@@ -488,7 +500,7 @@ class Store:
                 )
             )
             new_path = directory / object_file_name(other_record)
-            new_path.write_text(objectfile.render_object(other_record, self.spec), encoding="utf-8")
+            atomicio.atomic_write_text(new_path, objectfile.render_object(other_record, self.spec))
             if new_path != other_path:
                 other_path.unlink()
 
@@ -500,7 +512,7 @@ class Store:
             )
         )
         new_path = directory / object_file_name(record)
-        new_path.write_text(objectfile.render_object(record, self.spec), encoding="utf-8")
+        atomicio.atomic_write_text(new_path, objectfile.render_object(record, self.spec))
         if new_path != path:
             path.unlink()
 
@@ -593,7 +605,7 @@ class Store:
     def _persist(self, record: ObjectRecord, ctx) -> None:
         if self.mode == "directory":
             path = ctx
-            path.write_text(objectfile.render_object(record, self.spec), encoding="utf-8")
+            atomicio.atomic_write_text(path, objectfile.render_object(record, self.spec))
             self._rebuild_index(path.parent)
         else:
             declarations, records = ctx

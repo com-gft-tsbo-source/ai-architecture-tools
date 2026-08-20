@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import adrctl
 import specctl
 
 
@@ -13,6 +14,22 @@ def run(argv):
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         code = specctl.main(argv)
     return code, out.getvalue(), err.getvalue()
+
+
+def run_adrctl(argv):
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = adrctl.main(argv)
+    return code, out.getvalue(), err.getvalue()
+
+
+def make_adr(tmp: str) -> str:
+    """Create a real ADR sharing tmp's root, for tests exercising specctl's
+    ADR-existence validation (lib/adr_lookup.py) -- a bare string no longer
+    satisfies `set-status --adr`/`set-description --adr`."""
+    run_adrctl(["--root", tmp, "add-domain", "Backend"])
+    _c, out, _e = run_adrctl(["--root", tmp, "--json", "add", "--name", "Test ADR", "--domain", "Backend"])
+    return json.loads(out)["id"]
 
 
 class TestAddAndShow(unittest.TestCase):
@@ -51,6 +68,7 @@ class TestAddAndShow(unittest.TestCase):
 class TestStatusAndAdrFlow(unittest.TestCase):
     def test_stable_requires_adr_then_succeeds_with_it(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             object_id = json.loads(out)["id"]
@@ -59,16 +77,17 @@ class TestStatusAndAdrFlow(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("adr", err)
 
-            code, out, _err = run(["--root", root, "set-status", object_id, "stable", "--adr", "b1c2d3"])
+            code, out, _err = run(["--root", root, "set-status", object_id, "stable", "--adr", adr_id])
             self.assertEqual(code, 0)
             self.assertIn("stable", out)
 
     def test_backward_transition_requires_force(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             object_id = json.loads(out)["id"]
-            run(["--root", root, "set-status", object_id, "stable", "--adr", "b1c2d3"])
+            run(["--root", root, "set-status", object_id, "stable", "--adr", adr_id])
 
             code, _out, err = run(["--root", root, "set-status", object_id, "draft"])
             self.assertEqual(code, 1)
@@ -79,10 +98,11 @@ class TestStatusAndAdrFlow(unittest.TestCase):
 
     def test_set_adr_then_status_transition_succeeds(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             object_id = json.loads(out)["id"]
-            self.assertEqual(run(["--root", root, "set-adr", object_id, "b1c2d3"])[0], 0)
+            self.assertEqual(run(["--root", root, "set-adr", object_id, adr_id])[0], 0)
             self.assertEqual(run(["--root", root, "set-status", object_id, "stable"])[0], 0)
 
 
@@ -100,12 +120,41 @@ class TestDescriptionEditing(unittest.TestCase):
 
     def test_stable_content_change_requires_adr(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             object_id = json.loads(out)["id"]
-            run(["--root", root, "set-status", object_id, "stable", "--adr", "b1c2d3"])
+            run(["--root", root, "set-status", object_id, "stable", "--adr", adr_id])
 
             code, _out, _err = run(["--root", root, "set-description", object_id, "v2"])
+            self.assertEqual(code, 0)  # already-set adr satisfies it
+
+
+class TestOpenQuestionsEditing(unittest.TestCase):
+    def test_set_at_creation_and_via_set_open_questions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            _c, out, _e = run(
+                ["--root", root, "--json", "add-part", "Concurrency", "--open-questions", "Q1?"]
+            )
+            data = json.loads(out)
+            self.assertEqual(data["open_questions"], "Q1?")
+            object_id = data["id"]
+
+            code, _out, _err = run(["--root", root, "set-open-questions", object_id, "Q2?"])
+            self.assertEqual(code, 0)
+            _c, out, _e = run(["--root", root, "--json", "show", object_id])
+            self.assertEqual(json.loads(out)["open_questions"], "Q2?")
+
+    def test_stable_change_requires_adr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
+            root = str(Path(tmp) / "design.md")
+            _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
+            object_id = json.loads(out)["id"]
+            run(["--root", root, "set-status", object_id, "stable", "--adr", adr_id])
+
+            code, _out, err = run(["--root", root, "set-open-questions", object_id, "Q?"])
             self.assertEqual(code, 0)  # already-set adr satisfies it
 
 
@@ -194,11 +243,12 @@ class TestMove(unittest.TestCase):
 class TestListAndRender(unittest.TestCase):
     def test_list_filters_by_status(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
             run(["--root", root, "add-part", "A"])
             _c, out, _e = run(["--root", root, "--json", "add-part", "B"])
             b_id = json.loads(out)["id"]
-            run(["--root", root, "set-status", b_id, "stable", "--adr", "x"])
+            run(["--root", root, "set-status", b_id, "stable", "--adr", adr_id])
 
             _c, out, _e = run(["--root", root, "list", "--status", "stable"])
             self.assertEqual(out.strip(), f"stable B_____-002-{b_id}-B")
@@ -227,13 +277,14 @@ class TestListAndRender(unittest.TestCase):
 
     def test_list_adr_filter(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
             _c, out, _e = run(["--root", root, "--json", "add-part", "A"])
             a_id = json.loads(out)["id"]
             run(["--root", root, "add-part", "B"])
-            run(["--root", root, "set-status", a_id, "stable", "--adr", "x1"])
+            run(["--root", root, "set-status", a_id, "stable", "--adr", adr_id])
 
-            code, out, _err = run(["--root", root, "list", "--adr", "x1"])
+            code, out, _err = run(["--root", root, "list", "--adr", adr_id])
             self.assertEqual(code, 0)
             self.assertIn("A", out)
             self.assertNotIn("B_____", out)
@@ -318,6 +369,7 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_status_rename_reorder_render(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             root = str(Path(tmp) / "spec")
             run(["--root", root, "add-part", "A"])
             _c, out, _e = run(["--root", root, "--json", "add-part", "B"])
@@ -326,7 +378,7 @@ class TestDirectoryMode(unittest.TestCase):
             code, _out, err = run(["--root", root, "set-status", b_id, "stable"])
             self.assertEqual(code, 1)
             self.assertIn("adr", err)
-            self.assertEqual(run(["--root", root, "set-status", b_id, "stable", "--adr", "b1c2d3"])[0], 0)
+            self.assertEqual(run(["--root", root, "set-status", b_id, "stable", "--adr", adr_id])[0], 0)
 
             self.assertEqual(run(["--root", root, "rename", b_id, "B Renamed"])[0], 0)
             _c, out, _e = run(["--root", root, "list"])

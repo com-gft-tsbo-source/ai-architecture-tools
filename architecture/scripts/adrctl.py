@@ -23,33 +23,12 @@ import sys
 from pathlib import Path
 
 from lib import cliapp, spec_link
+from lib.adrctl_spec import build_spec
 from lib.model import ObjectRecord
 from lib.store import Store
-from lib.toolspec import MetagroupLevelSpec, MetainfoSpec, StatusSpec, ToolSpec
+from lib.toolspec import ToolSpec
 
 _SPEC_LINK_TRIGGERS = ("add", "set-status", "info-spec-ref")
-
-
-def build_spec() -> ToolSpec:
-    return ToolSpec(
-        name="adrctl",
-        metagroup_levels=(
-            MetagroupLevelSpec(type="Domain"),
-            MetagroupLevelSpec(type="Component"),
-        ),
-        metainfo=(
-            MetainfoSpec(type="superseded-by"),
-            MetainfoSpec(type="spec-ref"),
-        ),
-        status=StatusSpec(
-            codes=("proposed", "accepted", "deprecated", "superseded", "rejected"),
-            initial="proposed",
-        ),
-        user_content_blocks=("Motivation", "Description", "Rationale"),
-        root_name="adrs",
-        default_mode="directory",
-        deferred_operations=("tasklist",),
-    )
 
 
 def _handle_spec_link(

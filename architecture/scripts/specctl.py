@@ -67,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
             help=f"'/'-separated path of {depth} heading name(s), ancestors then the new leaf",
         )
         level_parser.add_argument("--description", default="")
+        level_parser.add_argument("--open-questions", dest="open_questions", default="")
         level_parser.add_argument("--id", dest="object_id", default=None, help="Explicit free-form Object ID")
         level_parser.add_argument("--set-status", dest="set_status", default=None)
         level_parser.add_argument("--abbrev", default=None)
@@ -86,6 +87,16 @@ def build_parser() -> argparse.ArgumentParser:
     description_parser.add_argument("id")
     description_parser.add_argument("value")
     description_parser.add_argument(
+        "--adr", default=None,
+        help="Governing ADR ID; required if the Section is stable/deprecated and none is set yet",
+    )
+
+    open_questions_parser = subparsers.add_parser(
+        "set-open-questions", help="Change a Section's OpenQuestions content"
+    )
+    open_questions_parser.add_argument("id")
+    open_questions_parser.add_argument("value")
+    open_questions_parser.add_argument(
         "--adr", default=None,
         help="Governing ADR ID; required if the Section is stable/deprecated and none is set yet",
     )
@@ -151,6 +162,7 @@ def dispatch(store: SpecStore, args: argparse.Namespace) -> object:
             try:
                 return store.add(
                     depth, path_segments, description=args.description,
+                    open_questions=args.open_questions,
                     object_id=args.object_id, initial_status=args.set_status,
                     abbrev_override=args.abbrev,
                 )
@@ -165,6 +177,9 @@ def dispatch(store: SpecStore, args: argparse.Namespace) -> object:
 
     if command == "set-description":
         return store.set_description(args.id, args.value, adr=args.adr)
+
+    if command == "set-open-questions":
+        return store.set_open_questions(args.id, args.value, adr=args.adr)
 
     if command == "rename":
         return store.rename(args.id, args.name)

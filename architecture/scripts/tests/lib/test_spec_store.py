@@ -2,11 +2,23 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from lib.adrctl_spec import build_spec as build_adrctl_spec
 from lib.spec_store import SpecStore, SpecStoreError
+from lib.store import Store as GenericStore
 
 
 def make_store(tmp_dir: str) -> SpecStore:
     return SpecStore(root=Path(tmp_dir) / "design.md")
+
+
+def make_adr(tmp_dir: str, adr_id: str = "b1c2d3") -> str:
+    """Create a real ADR sharing tmp_dir's root, for tests exercising
+    specctl's ADR-existence validation (lib/adr_lookup.py) -- a bare string
+    no longer satisfies `set_status`/`set_description`/`set_open_questions`."""
+    store = GenericStore(spec=build_adrctl_spec(), root=Path(tmp_dir))
+    store.add_metagroup_path(["Backend"])
+    store.add(metagroup_path=["Backend"], name="Test ADR", object_id=adr_id)
+    return adr_id
 
 
 class TestAdd(unittest.TestCase):
@@ -19,6 +31,13 @@ class TestAdd(unittest.TestCase):
             self.assertEqual(section.level, 1)
             self.assertEqual(section.status, "draft")
             self.assertEqual(section.description(), "Locking and friends.")
+
+    def test_explicit_object_id_collision_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["Concurrency"], object_id="dup-id")
+            with self.assertRaises(SpecStoreError):
+                store.add(1, ["Other"], object_id="dup-id")
 
     def test_add_nested_chapter_resolves_parent_by_name(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -111,25 +130,28 @@ class TestStatusAndAdr(unittest.TestCase):
 
     def test_draft_to_stable_with_inline_adr(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             store = make_store(tmp)
             section = store.add(1, ["Concurrency"])
-            updated = store.set_status(section.object_id, "stable", adr="b1c2d3")
+            updated = store.set_status(section.object_id, "stable", adr=adr_id)
             self.assertEqual(updated.status, "stable")
-            self.assertEqual(updated.adr, "b1c2d3")
+            self.assertEqual(updated.adr, adr_id)
 
     def test_draft_to_stable_with_preset_adr(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             store = make_store(tmp)
             section = store.add(1, ["Concurrency"])
-            store.set_adr(section.object_id, "b1c2d3")
+            store.set_adr(section.object_id, adr_id)
             updated = store.set_status(section.object_id, "stable")
             self.assertEqual(updated.status, "stable")
 
     def test_stable_to_draft_requires_force(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             store = make_store(tmp)
             section = store.add(1, ["Concurrency"])
-            store.set_status(section.object_id, "stable", adr="b1c2d3")
+            store.set_status(section.object_id, "stable", adr=adr_id)
             with self.assertRaises(SpecStoreError):
                 store.set_status(section.object_id, "draft")
             updated = store.set_status(section.object_id, "draft", force=True)
@@ -146,9 +168,10 @@ class TestStatusAndAdr(unittest.TestCase):
 
     def test_status_change_logged(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             store = make_store(tmp)
             section = store.add(1, ["Concurrency"])
-            store.set_status(section.object_id, "stable", adr="b1c2d3")
+            store.set_status(section.object_id, "stable", adr=adr_id)
             after = store.resolve_id(section.object_id)
             self.assertEqual(len(after.history), 2)  # Add + status change
             self.assertEqual(after.history[-1].old_status, "draft")
@@ -201,6 +224,42 @@ class TestReceiveAdrLink(unittest.TestCase):
                 store.receive_adr_link("nope", "b1c2d3")
 
 
+class TestAdrValidation(unittest.TestCase):
+    def test_set_status_rejects_nonexistent_adr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            with self.assertRaises(SpecStoreError):
+                store.set_status(section.object_id, "stable", adr="doesnotexist")
+
+    def test_set_description_rejects_nonexistent_adr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"], initial_status="stable")
+            with self.assertRaises(SpecStoreError):
+                store.set_description(section.object_id, "v2", adr="doesnotexist")
+
+    def test_set_open_questions_rejects_nonexistent_adr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"], initial_status="stable")
+            with self.assertRaises(SpecStoreError):
+                store.set_open_questions(section.object_id, "q?", adr="doesnotexist")
+
+    def test_set_open_questions_succeeds_with_real_adr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            updated = store.set_open_questions(section.object_id, "Thread-safe?", adr=None)
+            self.assertEqual(updated.open_questions, "Thread-safe?")  # draft: no adr needed
+
+            store.set_status(section.object_id, "stable", adr=adr_id)
+            updated = store.set_open_questions(section.object_id, "Revised?")
+            self.assertEqual(updated.open_questions, "Revised?")
+            self.assertEqual(updated.adr, adr_id)
+
+
 class TestSetDescription(unittest.TestCase):
     def test_draft_content_change_untracked(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -218,23 +277,25 @@ class TestSetDescription(unittest.TestCase):
         # field is then still unset, so a content change must still supply
         # one.
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp, "c4d5e6")
             store = make_store(tmp)
             section = store.add(1, ["Concurrency"], description="v1", initial_status="stable")
             self.assertIsNone(section.adr)
             with self.assertRaises(SpecStoreError):
                 store.set_description(section.object_id, "v2")
-            updated = store.set_description(section.object_id, "v2", adr="c4d5e6")
+            updated = store.set_description(section.object_id, "v2", adr=adr_id)
             self.assertEqual(updated.description(), "v2")
-            self.assertEqual(updated.adr, "c4d5e6")
+            self.assertEqual(updated.adr, adr_id)
 
     def test_stable_content_change_reuses_already_set_adr(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             store = make_store(tmp)
             section = store.add(1, ["Concurrency"], description="v1")
-            store.set_status(section.object_id, "stable", adr="b1c2d3")
+            store.set_status(section.object_id, "stable", adr=adr_id)
             updated = store.set_description(section.object_id, "v2")
             self.assertEqual(updated.description(), "v2")
-            self.assertEqual(updated.adr, "b1c2d3")
+            self.assertEqual(updated.adr, adr_id)
 
 
 class TestRename(unittest.TestCase):
@@ -493,10 +554,11 @@ class TestRenderAndHistory(unittest.TestCase):
 
     def test_combined_history_newest_first(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             store = make_store(tmp)
             a = store.add(1, ["A"])
             store.add(1, ["B"])
-            store.set_status(a.object_id, "stable", adr="b1c2d3")
+            store.set_status(a.object_id, "stable", adr=adr_id)
             entries = store.combined_history()
             self.assertEqual(entries[0][1].prefix, "M")
             self.assertGreaterEqual(len(entries), 3)
@@ -547,6 +609,7 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_nested_add_resolve_status_rename_reorder(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             root = Path(tmp) / "spec"
             store = SpecStore(root=root)
             store.add(1, ["A"])
@@ -566,7 +629,7 @@ class TestDirectoryMode(unittest.TestCase):
 
             with self.assertRaises(SpecStoreError):
                 store.set_status(b.object_id, "stable")
-            updated = store.set_status(b.object_id, "stable", adr="b1c2d3")
+            updated = store.set_status(b.object_id, "stable", adr=adr_id)
             self.assertEqual(updated.status, "stable")
 
     def test_render_and_combined_history(self):

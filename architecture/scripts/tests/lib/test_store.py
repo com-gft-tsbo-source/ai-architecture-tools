@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from lib import index
 from lib.store import Store, StoreError, object_file_name, resolve_root
@@ -172,6 +173,21 @@ class TestAddAndGet(unittest.TestCase):
             store = self._new_store(tmp)
             record = store.add(metagroup_path=["001-Setup"], name="First", object_id="my-id")
             self.assertEqual(record.object_id, "my-id")
+
+    def test_explicit_object_id_collision_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._new_store(tmp)
+            store.add(metagroup_path=["001-Setup"], name="First", object_id="dup-id")
+            with self.assertRaises(StoreError):
+                store.add(metagroup_path=["001-Setup"], name="Second", object_id="dup-id")
+
+    def test_explicit_object_id_collision_across_metagroups_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._new_store(tmp)
+            store.add_metagroup_path(["002-Implementation"])
+            store.add(metagroup_path=["001-Setup"], name="First", object_id="dup-id")
+            with self.assertRaises(StoreError):
+                store.add(metagroup_path=["002-Implementation"], name="Second", object_id="dup-id")
 
     def test_explicit_object_id_with_slash_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -432,6 +448,27 @@ class TestSetMetagroup(unittest.TestCase):
             with self.assertRaises(StoreError):
                 store.set_metagroup(record.object_id, ["Nonexistent"])
 
+    def test_old_file_survives_a_failed_write_of_the_new_one(self):
+        """Write-new-then-delete-old (not the reverse): if the new file's
+        write fails, the object must still exist at its old location
+        instead of vanishing entirely."""
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks")
+            store.add_metagroup_path(["001-Setup"])
+            store.add_metagroup_path(["002-Implementation"])
+            record = store.add(metagroup_path=["001-Setup"], name="First")
+            old_path = Path(tmp) / "tasks" / "001-Setup" / object_file_name(record)
+            self.assertTrue(old_path.is_file())
+
+            with patch("lib.store.atomicio.atomic_write_text", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    store.set_metagroup(record.object_id, ["002-Implementation"])
+
+            self.assertTrue(old_path.is_file(), "old file must survive a failed new-file write")
+            new_dir = Path(tmp) / "tasks" / "002-Implementation"
+            object_files = [p for p in new_dir.glob("*.md") if not p.name.startswith(".")]
+            self.assertEqual(object_files, [])
+
 
 class TestDelete(unittest.TestCase):
     def test_directory_mode_removes_object(self):
@@ -491,6 +528,13 @@ class TestSingleFileMode(unittest.TestCase):
             created = store.add(metagroup_path=["001-Setup"], name="First task", description="Do it.")
             self.assertEqual(store.get(created.object_id).name, "First task")
             self.assertEqual(len(store.list_all()), 1)
+
+    def test_explicit_object_id_collision_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._new_store(tmp)
+            store.add(metagroup_path=["001-Setup"], name="First", object_id="dup-id")
+            with self.assertRaises(StoreError):
+                store.add(metagroup_path=["001-Setup"], name="Second", object_id="dup-id")
 
     def test_numbers_increment_within_metagroup(self):
         with tempfile.TemporaryDirectory() as tmp:

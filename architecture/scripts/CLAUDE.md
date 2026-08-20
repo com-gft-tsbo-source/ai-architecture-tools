@@ -141,7 +141,33 @@ Noch offen aus dem Spec-vs-Implementierung-Abgleich (siehe `design.md`,
 im Contract dokumentiert, noch nicht implementiert. specctl deckt das
 implizit über sein eigenes `rename` ab.
 
-383 Unit-/Integrationstests insgesamt unter `tests/`
+Ein Korrektheits-Review (2026-08-20, `design-decisions.md`, "Amendments
+(2026-08-20, correctness review: ID uniqueness, atomic writes, ADR
+validation)") deckte fünf Probleme auf, alle behoben:
+- **Object-ID-Eindeutigkeit** wird jetzt bei `add` geprüft — sowohl
+  `lib/store.py` (taskctl/rulectl/adrctl) als auch `lib/spec_store.py`
+  (specctl); vorher wurde nur die Syntax geprüft, eine Kollision mit einer
+  bereits existierenden ID wurde still akzeptiert.
+- **Directory-Mode-Objektschreibvorgänge in `lib/store.py` sind jetzt
+  atomar** (`atomicio.atomic_write_text`, `.tmp` + `os.replace`) an allen
+  fünf bisher direkten `path.write_text(...)`-Stellen (`add`,
+  `set_metagroup`, `_dir_reorder` x2, `_persist`) — `lib/spec_store.py` war
+  bereits durchgehend atomar.
+- **`set_metagroup`s Schreibreihenfolge** ist jetzt konsistent mit
+  `_dir_reorder`: neue Datei zuerst (atomar) schreiben, dann erst die alte
+  löschen — vorher umgekehrt, was bei einem Fehler zwischen beiden Schritten
+  das Objekt an keinem Ort mehr existieren ließ.
+- **`OpenQuestions`** (specctl) ist jetzt über die CLI erreichbar:
+  `add-<Ebene> ... --open-questions` und `set-open-questions` — vorher nur
+  im Modell vorhanden, nie exponiert.
+- **specctls ADR-Validierung prüft jetzt echte Existenz** im adrctl-Store
+  (`lib/adr_lookup.py`, `SpecStore._require_valid_adr`) statt nur
+  Nichtleerheit — dafür wurde `adrctl.py`s `ToolSpec` nach `lib/adrctl_spec.py`
+  extrahiert (einzige Quelle der Wahrheit, keine Duplikation). Geprüft wird
+  nur Existenz, bewusst nicht Status oder Rückverweis über `spec-ref` (siehe
+  Amendment für die Begründung).
+
+398 Unit-/Integrationstests insgesamt unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 104 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`), mehrere Tests für `resolve_root` (Kollision, Default-Modus,
@@ -150,9 +176,13 @@ für die `spec-ref`-Verknüpfung (`receive_adr_link`, `lib/spec_link.py`, den
 generischen `after_dispatch`-Hook, End-to-End über `adrctl`/`specctl`:
 `add --spec-ref`, `set-status`-Re-Propagation, retroaktives `info-spec-ref`,
 fehlendes Ziel), rund 27 Tests für `delete`, `set-<user-content-block>`,
-`list`-Filter und die `choices`-Validierung sowie rund 9 neue Tests für
+`list`-Filter und die `choices`-Validierung, rund 9 Tests für
 `group-<metagroup-type>` (Store- und CLI-Ebene, No-op-Ablehnung, unbekannter
-Pfad) und die `info-`-Umbenennung.
+Pfad) und die `info-`-Umbenennung sowie rund 15 neue Tests für das
+Korrektheits-Review: ID-Kollision (Store- und SpecStore-Ebene), das
+simulierte Schreib-Fehlschlagszenario für `set_metagroup` (alte Datei
+überlebt), `lib/adr_lookup.py`, und OpenQuestions über die CLI (inkl.
+ADR-Gating).
 
 Noch offen:
 - `tasklist` (rulectl/adrctl) ist absichtlich nur als Stub vorhanden
@@ -222,6 +252,12 @@ architecture/scripts/
     │                      # Numbering, History, Text, Abbrev, Clock, ...)
     ├── model.py, objectfile.py, singlefile.py, store.py, toolspec.py, index.py, render.py
     │                      # generisches Objektformat: taskctl/rulectl/adrctl
+    ├── adrctl_spec.py     # adrctls ToolSpec (aus adrctl.py extrahiert, einzige Quelle der
+    │                      # Wahrheit -- ermöglicht lib/adr_lookup.py, ohne adrctl.py zu importieren)
+    ├── adr_lookup.py      # specctl -> adrctl: prüft Existenz einer ADR-ID im adrctl-Store
+    │                      # (SpecStore._require_valid_adr) -- eigenes Modul statt in
+    │                      # spec_link.py, um einen Zirkelimport mit spec_store.py zu vermeiden
+    ├── spec_link.py       # adrctl -> specctl: automatische spec-ref-Propagation
     └── spec_model.py, spec_comment.py, spec_document.py, spec_store.py, spec_render.py
                            # specctl-eigenes, leichtgewichtiges Format (design-specctl.md)
 ```

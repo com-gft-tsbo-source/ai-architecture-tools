@@ -93,9 +93,11 @@ Like single-file mode's whole-file rewrite, a directory-mode write clears and re
 
 No automatic transitions, per the `design.md` default. `stable` → `draft` (rework) requires `--force`, as does any other non-listed transition.
 
+"Valid" means the referenced ADR actually **exists** in the `adrctl` store sharing this specctl store's root (`lib/adr_lookup.py`, resolved via the same shared-directory mechanism `lib/spec_link.py` uses for the reverse direction) — a non-empty string that names no real ADR is rejected, not merely accepted as long as it's non-empty. This does not check the ADR's own Status, nor that its `spec-ref` points back at this Section — see design-decisions.md, "Amendments", for the scope of what "valid" checks and what it deliberately doesn't.
+
 ## Metainfo
 
-- `adr`: ID of the single, currently-governing ADR (an `adrctl` object ID) for this Section. Optional in `draft`; required from `stable` onward. Set either manually (`specctl set-adr <id>`) or automatically by `adrctl` via the shared linkage mechanism below — whichever last touched it wins, both are logged identically.
+- `adr`: ID of the single, currently-governing ADR (an `adrctl` object ID) for this Section. Optional in `draft`; required from `stable` onward, and validated for existence at that point (see Status above). Set either manually (`specctl set-adr <id>`, not validated — a correction tool, see Operations) or automatically by `adrctl` via the shared linkage mechanism below — whichever last touched it wins, both are logged identically.
 
 ## History
 
@@ -121,6 +123,7 @@ In addition to the general operations from `design.md`, adapted per the deviatio
 
 - `add-<metagroup-type> <name>` creates the path segment **and** its object in one step (see "Deviation from the general model") — there is no separate content-less path-declaration step to run first. `<name>` is the full `/`-separated path of heading texts, ancestors then the new leaf (the general model's own shape for `add-<type> <name>`, e.g. `add-component frontend/mocking`) — there is no separate `--name` flag, since the path's leaf segment *is* the Section's heading text.
 - `set-description <id> <value>`: change a Section's `Description` content — the general model's "Change content" operation (`design.md`: `set-<user-content-block>`). Accepts `--adr <id>` inline for the ADR-gating case described under Status.
+- `set-open-questions <id> <value>`: change a Section's `OpenQuestions` content (see User Content above) — same shape and same ADR-gating as `set-description`, since it is also Section content, not bookkeeping. Also settable at creation via `add-<metagroup-type> ... --open-questions <value>`.
 - `set-adr <id> <value>`: manually set or correct the `adr` Metainfo field. Normally driven automatically by `adrctl` (see ADR Linkage), but available directly for manual correction or for documents not yet backed by an ADR store. Not logged in History (see History above).
 - `rename <id> <name>`: change a Section's heading text without moving it. Cascades: every descendant's stored ancestor path embeds this Section's own `<nr>-<name>` segment (see Object Format) and is rewritten accordingly.
 - `reorder <id> --after <nr>`: move a Section to a new position among its siblings (same parent), per the general model's Numbering/Reorder rules. A Section's own subtree moves with it; renumbering a sibling cascades into its descendants' ancestor paths the same way `rename` does.

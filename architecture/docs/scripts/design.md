@@ -38,7 +38,7 @@ There is no multi-root, read-only merge mode — `--root` takes exactly one path
 
 ### Object ID
 
-- Every object has an ID.
+- Every object has an ID, **unique within its store** — `add` rejects an explicit `--id` (or, astronomically unlikely, a derived one) that already exists there.
 - Generated once, on creation, as a 6-character hexadecimal code derived from the object's initial content. It never changes afterwards, even if the content changes later.
 - May instead be supplied explicitly as a parameter at creation time; in that case it may be any free-form string.
 - Free-form IDs **must not contain `/`** (reserved for the `--id` path-selector syntax, see CLI Contract).
