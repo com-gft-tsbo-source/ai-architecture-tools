@@ -13,6 +13,11 @@ to the other three tools regardless (architecture/scripts/CLAUDE.md: "CLI
 structure ... einheitlich ... halten, auch wenn ein Tool das jeweilige
 Feature (noch) nicht braucht").
 
+`init <title> [--preamble <value>]` must run once before any other write
+(design-specctl.md, "Title and Preamble") -- it creates the document and
+sets its Title, the field every other mutating operation checks for to
+tell an initialized document apart from an empty one.
+
 Both single-file and directory mode are implemented (design-specctl.md,
 "Object Format"). `--root` resolves to specctl's `spec.md`/`spec` within a
 directory shared by all four tools (design.md, "File and Directory
@@ -56,6 +61,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    init_parser = subparsers.add_parser(
+        "init", help="Create the document and set its Title/Preamble -- required before any other write"
+    )
+    init_parser.add_argument("title")
+    init_parser.add_argument("--preamble", default="")
+
+    title_parser = subparsers.add_parser("set-title", help="Change the document's Title")
+    title_parser.add_argument("value")
+
+    preamble_parser = subparsers.add_parser("set-preamble", help="Change the document's Preamble")
+    preamble_parser.add_argument("value")
 
     for depth, level_type in enumerate(LEVEL_TYPES, start=1):
         level_parser = subparsers.add_parser(
@@ -151,6 +168,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 def dispatch(store: SpecStore, args: argparse.Namespace) -> object:
     command = args.command
+
+    if command == "init":
+        try:
+            return store.init(args.title, preamble=args.preamble)
+        except SpecStoreError as exc:
+            raise CliError(str(exc)) from exc
+
+    if command == "set-title":
+        return store.set_title(args.value)
+
+    if command == "set-preamble":
+        return store.set_preamble(args.value)
 
     for depth, level_type in enumerate(LEVEL_TYPES, start=1):
         if command == _level_flag_name(level_type):

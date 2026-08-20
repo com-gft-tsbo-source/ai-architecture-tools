@@ -21,6 +21,14 @@ general model, where those cache an Object Type *shared* by every object
 under one metagroup leaf, a specctl Section already carries its own Object
 Type directly (design-specctl.md, "Object Format": stored in the metadata
 comment, not re-derived) -- a parallel index would just duplicate it.
+
+`init` must run before any other mutating operation (`_require_initialized`,
+called by every one of them except `init` itself): it gives the document its
+Title, the field every other operation checks for to tell an initialized
+store apart from an empty one (design-specctl.md, "Title and Preamble").
+Read-only operations (list_all, render_plain, resolve_path,
+combined_history) stay tolerant of an uninitialized store instead, the same
+way the other three tools tolerate an empty one.
 """
 
 from __future__ import annotations
@@ -43,6 +51,7 @@ from lib.spec_document import (
     parse_section_block,
     render_document,
     render_section_block,
+    validate_preamble,
 )
 from lib.spec_model import LEVEL_TYPES, MAX_LEVEL, STATUS_CODES, STATUS_INITIAL, SpecSection
 from lib.text import slugify
@@ -51,6 +60,7 @@ _ADR_REQUIRING_STATUSES = ("stable", "deprecated")
 _FORWARD_TRANSITIONS = {"draft": "stable", "stable": "deprecated"}
 _CONTENT_FILENAME = "_content.md"
 _PREAMBLE_FILENAME = "_preamble.md"
+_TITLE_FILENAME = "_title.md"
 
 
 class SpecStoreError(Exception):
@@ -138,32 +148,99 @@ class SpecStore:
 
     # -- read/write -----------------------------------------------------
 
-    def _read(self) -> tuple[str, list[SpecSection]]:
+    def _read(self) -> tuple[str, str, list[SpecSection]]:
         return self._dir_read() if self.mode == "directory" else self._file_read()
 
-    def _write(self, preamble: str, sections: list[SpecSection]) -> None:
+    def _write(self, title: str, preamble: str, sections: list[SpecSection]) -> None:
         if self.mode == "directory":
-            self._dir_write(preamble, sections)
+            self._dir_write(title, preamble, sections)
         else:
-            self._file_write(preamble, sections)
+            self._file_write(title, preamble, sections)
 
-    def _file_read(self) -> tuple[str, list[SpecSection]]:
+    def _require_initialized(self, title: str) -> None:
+        """Guard for every operation that mutates a Spec (design-specctl.md,
+        "Title and Preamble"): the document must already exist -- created via
+        `init`, which is the only thing that ever gives it a Title -- before
+        anything else may write to it. Read-only operations (list, render,
+        history, resolve_path) deliberately do not call this and stay
+        tolerant of an uninitialized store, returning empty results instead,
+        the same way the other three tools tolerate an empty store."""
+        if not title:
+            raise SpecStoreError(
+                "this specctl document has not been initialized yet -- run 'init <title>' first"
+            )
+
+    @staticmethod
+    def _validate_title(title: str) -> str:
+        title = title.strip()
+        if not title:
+            raise SpecStoreError("title must not be empty")
+        if "\n" in title:
+            raise SpecStoreError("title must be a single line")
+        return title
+
+    # -- init / Title / Preamble -----------------------------------------
+
+    def init(self, title: str, preamble: str = "") -> str:
+        """Create the document and set its Title/Preamble (design-specctl.md,
+        "Title and Preamble") -- the one operation every other mutating
+        operation now requires to have already run (`_require_initialized`).
+        Rejects re-running on an already-initialized store, the same way
+        `add` rejects an ID collision, rather than silently overwriting an
+        existing Title/Preamble -- use `set-title`/`set-preamble` for that."""
+        title = self._validate_title(title)
+        try:
+            validate_preamble(preamble)
+        except SpecDocumentError as exc:
+            raise SpecStoreError(str(exc)) from exc
+        with self.lock():
+            existing_title, _preamble, _sections = self._read()
+            if existing_title:
+                raise SpecStoreError(
+                    "this specctl document is already initialized -- "
+                    "use set-title/set-preamble to change it"
+                )
+            self._write(title, preamble, [])
+            return title
+
+    def set_title(self, title: str) -> str:
+        title = self._validate_title(title)
+        with self.lock():
+            existing_title, preamble, sections = self._read()
+            self._require_initialized(existing_title)
+            self._write(title, preamble, sections)
+            return title
+
+    def set_preamble(self, preamble: str) -> str:
+        try:
+            validate_preamble(preamble)
+        except SpecDocumentError as exc:
+            raise SpecStoreError(str(exc)) from exc
+        with self.lock():
+            title, _preamble, sections = self._read()
+            self._require_initialized(title)
+            self._write(title, preamble, sections)
+            return preamble
+
+    def _file_read(self) -> tuple[str, str, list[SpecSection]]:
         if not self.root.exists():
-            return "", []
+            return "", "", []
         text = self.root.read_text(encoding="utf-8")
         try:
             return parse_document(text)
         except SpecDocumentError as exc:
             raise SpecStoreError(str(exc)) from exc
 
-    def _file_write(self, preamble: str, sections: list[SpecSection]) -> None:
+    def _file_write(self, title: str, preamble: str, sections: list[SpecSection]) -> None:
         self.root.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(self.root, render_document(preamble, sections))
+        atomic_write_text(self.root, render_document(title, preamble, sections))
 
     def _dir_name_for(self, section: SpecSection) -> str:
         return f"{section.number:03d}-{section.object_type}-{section.object_id}-{slugify(section.name)}"
 
-    def _dir_read(self) -> tuple[str, list[SpecSection]]:
+    def _dir_read(self) -> tuple[str, str, list[SpecSection]]:
+        title_path = self.root / _TITLE_FILENAME
+        title = title_path.read_text(encoding="utf-8").strip() if title_path.exists() else ""
         preamble_path = self.root / _PREAMBLE_FILENAME
         preamble = preamble_path.read_text(encoding="utf-8").rstrip("\n") if preamble_path.exists() else ""
 
@@ -173,7 +250,7 @@ class SpecStore:
             check_duplicate_ids(sections)
         except SpecDocumentError as exc:
             raise SpecStoreError(str(exc)) from exc
-        return preamble, sections
+        return title, preamble, sections
 
     def _dir_read_children(
         self, directory: Path, ancestor_levels: tuple[str, ...], sections: list[SpecSection]
@@ -197,7 +274,7 @@ class SpecStore:
             sections.append(section)
             self._dir_read_children(child_dir, ancestor_levels + (section.own_name,), sections)
 
-    def _dir_write(self, preamble: str, sections: list[SpecSection]) -> None:
+    def _dir_write(self, title: str, preamble: str, sections: list[SpecSection]) -> None:
         # Directory mode has no delete/create diffing -- like single-file
         # mode's whole-file rewrite, every write clears and rebuilds the
         # whole tree from the in-memory `sections` list (locked for the
@@ -214,6 +291,12 @@ class SpecStore:
             else:
                 entry.unlink()
 
+        # Unlike _preamble.md (optional, only written if non-empty),
+        # _title.md is always written: it is the mandatory marker
+        # `_require_initialized`/init rely on to tell an initialized store
+        # apart from an uninitialized one, since __post_init__ already
+        # unconditionally creates the directory itself either way.
+        atomic_write_text(self.root / _TITLE_FILENAME, title + "\n")
         if preamble.strip():
             atomic_write_text(self.root / _PREAMBLE_FILENAME, preamble.rstrip("\n") + "\n")
 
@@ -244,7 +327,7 @@ class SpecStore:
         '--<metagroup-type> <value>' resolves each segment against its
         siblings). Used by `list --under` (design.md, "List objects in
         specific metagroups")."""
-        _preamble, sections = self._read()
+        _title, _preamble, sections = self._read()
         return self._resolve_ancestor_path(sections, given_segments)
 
     def delete(self, object_id: str, *, cascade: bool = False) -> SpecSection:
@@ -257,7 +340,8 @@ class SpecStore:
         Leaves a permanent numbering gap among the remaining siblings, same
         as the general model (design.md, "Numbering")."""
         with self.lock():
-            preamble, sections = self._read()
+            title, preamble, sections = self._read()
+            self._require_initialized(title)
             index, section = self._find_with_index(sections, object_id)
             end = _subtree_end(sections, index)
             descendant_count = end - index - 1
@@ -267,7 +351,7 @@ class SpecStore:
                     "use --force-delete to delete the whole subtree"
                 )
             del sections[index:end]
-            self._write(preamble, sections)
+            self._write(title, preamble, sections)
             return section
 
     def _find_with_index(self, sections: list[SpecSection], object_id: str) -> tuple[int, SpecSection]:
@@ -298,7 +382,8 @@ class SpecStore:
             )
 
         with self.lock():
-            preamble, sections = self._read()
+            title, preamble, sections = self._read()
+            self._require_initialized(title)
             given_parents, given_leaf = path_segments[:-1], path_segments[-1]
             parent_levels = self._resolve_ancestor_path(sections, given_parents)
             siblings = _direct_children_own_names(sections, parent_levels)
@@ -339,13 +424,13 @@ class SpecStore:
             )
             index = _insertion_index(sections, parent_levels)
             sections.insert(index, section)
-            self._write(preamble, sections)
+            self._write(title, preamble, sections)
             return section
 
     # -- read ---------------------------------------------------------------
 
     def list_all(self) -> list[SpecSection]:
-        _preamble, sections = self._read()
+        _title, _preamble, sections = self._read()
         return sections
 
     def resolve_id(self, token: str) -> SpecSection:
@@ -374,8 +459,10 @@ class SpecStore:
     def render_plain(self) -> str:
         """The `render` operation: comment-stripped Markdown, headings and
         content only (design-specctl.md, Operations)."""
-        preamble, sections = self._read()
-        parts = [preamble] if preamble.strip() else []
+        title, preamble, sections = self._read()
+        parts = [f"# {title}"] if title else []
+        if preamble.strip():
+            parts.append(preamble)
         for s in sections:
             lines = [f"{s.heading_mark} {s.name}"]
             description = s.description()
@@ -416,7 +503,8 @@ class SpecStore:
         if new_status not in STATUS_CODES:
             raise SpecStoreError(f"invalid status {new_status!r} for specctl")
         with self.lock():
-            preamble, sections = self._read()
+            title, preamble, sections = self._read()
+            self._require_initialized(title)
             _index, section = self._find_with_index(sections, object_id)
             old_status = section.status
             self._validate_transition(old_status, new_status, force)
@@ -440,7 +528,7 @@ class SpecStore:
             elif message:
                 section.history.append(HistoryEntry(timestamp=now_iso(), prefix="M", message=message))
 
-            self._write(preamble, sections)
+            self._write(title, preamble, sections)
             return section
 
     def _validate_transition(self, old_status: str, new_status: str, force: bool) -> None:
@@ -459,10 +547,11 @@ class SpecStore:
         Add/Rename/Move/Status, the only categories specctl's History tracks
         -- the authoritative trail lives in the ADR itself."""
         with self.lock():
-            preamble, sections = self._read()
+            title, preamble, sections = self._read()
+            self._require_initialized(title)
             _index, section = self._find_with_index(sections, object_id)
             section.adr = adr_id
-            self._write(preamble, sections)
+            self._write(title, preamble, sections)
             return section
 
     def receive_adr_link(self, object_id: str, adr_id: str, *, message: str = "") -> SpecSection:
@@ -473,25 +562,27 @@ class SpecStore:
         attached), so it *is* logged as an `M` History entry here, the
         same as any other Status-adjacent field driven by an external event."""
         with self.lock():
-            preamble, sections = self._read()
+            title, preamble, sections = self._read()
+            self._require_initialized(title)
             _index, section = self._find_with_index(sections, object_id)
             section.adr = adr_id
             section.history.append(
                 HistoryEntry(timestamp=now_iso(), prefix="M", message=message or f"adr={adr_id}")
             )
-            self._write(preamble, sections)
+            self._write(title, preamble, sections)
             return section
 
     def set_description(self, object_id: str, description: str, *, adr: Optional[str] = None) -> SpecSection:
         with self.lock():
-            preamble, sections = self._read()
+            title, preamble, sections = self._read()
+            self._require_initialized(title)
             _index, section = self._find_with_index(sections, object_id)
             if section.status in _ADR_REQUIRING_STATUSES:
                 section.adr = self._require_valid_adr(
                     section, adr, context=f"content changes to a {section.status!r} section"
                 )
             section.content["Description"] = description
-            self._write(preamble, sections)
+            self._write(title, preamble, sections)
             return section
 
     def set_open_questions(
@@ -503,21 +594,23 @@ class SpecStore:
         "any content change requires a valid adr reference" from stable
         onward)."""
         with self.lock():
-            preamble, sections = self._read()
+            title, preamble, sections = self._read()
+            self._require_initialized(title)
             _index, section = self._find_with_index(sections, object_id)
             if section.status in _ADR_REQUIRING_STATUSES:
                 section.adr = self._require_valid_adr(
                     section, adr, context=f"content changes to a {section.status!r} section"
                 )
             section.open_questions = open_questions
-            self._write(preamble, sections)
+            self._write(title, preamble, sections)
             return section
 
     # -- rename / reorder -----------------------------------------------
 
     def rename(self, object_id: str, new_name: str) -> SpecSection:
         with self.lock():
-            preamble, sections = self._read()
+            title, preamble, sections = self._read()
+            self._require_initialized(title)
             index, section = self._find_with_index(sections, object_id)
             if new_name == section.name:
                 return section
@@ -530,12 +623,13 @@ class SpecStore:
             section.history.append(
                 HistoryEntry(timestamp=now_iso(), prefix="M", message=f"Rename from {old_name!r}")
             )
-            self._write(preamble, sections)
+            self._write(title, preamble, sections)
             return section
 
     def reorder(self, object_id: str, insert_after: int) -> SpecSection:
         with self.lock():
-            preamble, sections = self._read()
+            title, preamble, sections = self._read()
+            self._require_initialized(title)
             index, section = self._find_with_index(sections, object_id)
             parent_levels = section.ancestor_levels
             child_indices = [i for i, s in enumerate(sections) if s.ancestor_levels == parent_levels]
@@ -563,7 +657,7 @@ class SpecStore:
                 )
 
             sections = self._reorder_children_blocks(sections, parent_levels)
-            self._write(preamble, sections)
+            self._write(title, preamble, sections)
             return self._find_with_index(sections, object_id)[1]
 
     def _reorder_children_blocks(
@@ -605,7 +699,8 @@ class SpecStore:
             )
 
         with self.lock():
-            preamble, sections = self._read()
+            title, preamble, sections = self._read()
+            self._require_initialized(title)
             index, section = self._find_with_index(sections, object_id)
             old_prefix = section.path_levels
             end = _subtree_end(sections, index)
@@ -656,5 +751,5 @@ class SpecStore:
             insertion_index = _insertion_index(remaining, new_parent_levels)
             sections = remaining[:insertion_index] + moved_block + remaining[insertion_index:]
 
-            self._write(preamble, sections)
+            self._write(title, preamble, sections)
             return self._find_with_index(sections, object_id)[1]

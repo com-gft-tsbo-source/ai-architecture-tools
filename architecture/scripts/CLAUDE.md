@@ -38,9 +38,10 @@ konfigurierten Pfad. Multi-Root Read-Only-Merge (`--root` mehrfach) ist dafür
 ersatzlos entfallen — kein Tool hatte dafür einen echten Anwendungsfall.
 `lib/spec_store.py` nutzt `resolve_root` identisch (`_ROOT_NAME = "spec"`).
 
-`specctl.py` ist implementiert (Add je Ebene, Status inkl. ADR-Pflicht ab
-`stable`, `set-adr`, `set-description`, `rename`, `reorder`, `move-to-<Ebene>`,
-`delete`, `show`, `list`, `history`, `render`) — **sowohl Single-File- als auch Directory-Mode**
+`specctl.py` ist implementiert (`init`, `set-title`, `set-preamble`, Add je
+Ebene, Status inkl. ADR-Pflicht ab `stable`, `set-adr`, `set-description`,
+`rename`, `reorder`, `move-to-<Ebene>`, `delete`, `show`, `list`, `history`,
+`render`) — **sowohl Single-File- als auch Directory-Mode**
 (`design-specctl.md`, "Object Format"). Es nutzt bewusst *nicht*
 `lib/cliapp.py` und `lib/objectfile.py`/`lib/singlefile.py`/`lib/store.py`:
 deren generisches Objektformat (Signature-Heading, `## Meta`-Bulletliste,
@@ -195,10 +196,32 @@ Ein Folge-Review (2026-08-20, `design-decisions.md`, "Amendments
   automatisches `receive_adr_link` würden "identisch" geloggt — tatsächlich
   loggt nur der automatische Pfad einen `M`-History-Eintrag, `set-adr` nie.
 
-399 Unit-/Integrationstests insgesamt unter `tests/`
+**specctl hat jetzt eine explizite `init`-Lebenszyklus-Operation**
+(`design-decisions.md`, "Amendments (2026-08-20, specctl `init` lifecycle)"):
+Titel (`# <title>`) und Preamble waren zuvor opake, nie vom Tool berührte
+Textblöcke ohne CLI-Zugriff; jetzt sind beide echte, vom Tool verwaltete
+Felder. `init <title> [--preamble <value>]` legt das Dokument an; jede
+andere schreibende Operation prüft jetzt, ob das Dokument bereits
+initialisiert wurde, und scheitert sonst (`SpecStore._require_initialized`)
+— anders als `taskctl`/`rulectl`/`adrctl`, die weiterhin bei der ersten
+`add` still einen leeren Store anlegen (dort gibt es kein Titel/Preamble-
+Konzept, das eine explizite Init rechtfertigen würde). `set-title`/
+`set-preamble` ändern beide nachträglich. Im Directory-Mode ersetzt eine
+neue Pflichtdatei `_title.md` (immer geschrieben) die bisherige
+Existenzprüfung über das Verzeichnis selbst — `SpecStore.__post_init__`
+legt das Verzeichnis ohnehin unbedingt an (dasselbe Problem, das
+`lib/adr_lookup.py`s `check_adr_exists`-Fix am selben Tag schon für den
+adrctl-Store gelöst hat), das Verzeichnis existiert also auch unabhängig davon, ob `init` schon
+lief. Eine neue Preamble-Validierung (`lib/spec_document.py`s
+`validate_preamble`) lehnt Preamble-Text ab, der selbst wie eine
+Section-Überschrift aussieht (`##` bis `######`) — sonst würde `set-preamble`
+das Dokument beim nächsten Lesen stillschweigend korrumpieren können.
+
+437 Unit-/Integrationstests insgesamt unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
-davon rund 104 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
-`move`), mehrere Tests für `resolve_root` (Kollision, Default-Modus,
+davon rund 170 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
+`move`, `init`/`set-title`/`set-preamble` und die Init-Pflicht für jede
+andere schreibende Operation), mehrere Tests für `resolve_root` (Kollision, Default-Modus,
 `.md`-/Name-Override, Multi-Tool-Koexistenz unter einem `--root`), 17 Tests
 für die `spec-ref`-Verknüpfung (`receive_adr_link`, `lib/spec_link.py`, den
 generischen `after_dispatch`-Hook, End-to-End über `adrctl`/`specctl`:

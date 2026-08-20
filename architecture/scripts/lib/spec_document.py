@@ -3,13 +3,16 @@
 
 Walks the Markdown heading structure directly -- '##' through '######' are
 Sections at depth 1-5 (design-specctl.md, "Metagroups": Part..Point).
-Everything before the first such heading (the document's own '# <title>'
-and any preamble) is preserved verbatim and never touched. Ancestry is
-tracked with a plain depth-stack as sections are walked top to bottom: a
-new heading's ancestors are whatever remains on the stack once entries at
-its own depth or deeper are popped -- which is also what naturally rejects
-a heading that skips a depth (design-specctl.md: "adding a level 4 heading
-requires its enclosing ... objects to already exist").
+Everything before the first such heading is the document's own Title
+('# <title>', mandatory, always the very first line -- SpecStore.init()
+is the only thing that ever produces one) and an optional Preamble beneath
+it, both specctl-managed fields (design-specctl.md, "Title and Preamble")
+rather than opaque, untouched text. Ancestry is tracked with a plain
+depth-stack as sections are walked top to bottom: a new heading's ancestors
+are whatever remains on the stack once entries at its own depth or deeper
+are popped -- which is also what naturally rejects a heading that skips a
+depth (design-specctl.md: "adding a level 4 heading requires its enclosing
+... objects to already exist").
 """
 
 from __future__ import annotations
@@ -20,19 +23,52 @@ from lib.spec_comment import CommentData, extract_comment, parse_comment, render
 from lib.spec_model import SpecModelError, SpecSection
 
 _HEADING_RE = re.compile(r"^(#{2,6}) (.+)$")
+_TITLE_RE = re.compile(r"^# (.+)$")
 
 
 class SpecDocumentError(Exception):
     pass
 
 
-def parse_document(text: str) -> tuple[str, list[SpecSection]]:
+def _split_title(head_lines: list[str]) -> tuple[str, str]:
+    """Split the text before the first Section heading into (title,
+    preamble). The first line must be the document's own '# <title>' --
+    a document only ever comes from SpecStore.init()/_write(), which always
+    writes one first (design-specctl.md, "Title and Preamble")."""
+    first_line = head_lines[0] if head_lines else ""
+    match = _TITLE_RE.match(first_line)
+    if not match:
+        raise SpecDocumentError(
+            "document has no '# <title>' heading as its first line -- "
+            "run 'specctl init <title>' first"
+        )
+    remainder = head_lines[1:]
+    if remainder and remainder[0] == "":
+        remainder = remainder[1:]
+    return match.group(1), "\n".join(remainder).rstrip("\n")
+
+
+def validate_preamble(preamble: str) -> None:
+    """Reject preamble text containing a line that would itself be misread
+    as a Section heading on the next parse (`_HEADING_RE`) -- silently
+    swallowed into `blocks` instead of staying preamble text otherwise."""
+    for line in preamble.split("\n"):
+        if _HEADING_RE.match(line):
+            raise SpecDocumentError(
+                f"preamble must not contain a Markdown heading line ({line!r}) -- "
+                "it would be misread as a Section on the next read"
+            )
+
+
+def parse_document(text: str) -> tuple[str, str, list[SpecSection]]:
     lines = text.split("\n")
     first_index = next((i for i, line in enumerate(lines) if _HEADING_RE.match(line)), None)
-    if first_index is None:
-        return text, []
+    head_lines = lines if first_index is None else lines[:first_index]
+    title, preamble = _split_title(head_lines)
 
-    preamble = "\n".join(lines[:first_index]).rstrip("\n")
+    if first_index is None:
+        return title, preamble, []
+
     blocks = _split_into_blocks(lines[first_index:])
 
     sections: list[SpecSection] = []
@@ -51,11 +87,13 @@ def parse_document(text: str) -> tuple[str, list[SpecSection]]:
         stack.append(section)
 
     check_duplicate_ids(sections)
-    return preamble, sections
+    return title, preamble, sections
 
 
-def render_document(preamble: str, sections: list[SpecSection]) -> str:
-    parts = [preamble] if preamble.strip() else []
+def render_document(title: str, preamble: str, sections: list[SpecSection]) -> str:
+    parts = [f"# {title}"]
+    if preamble.strip():
+        parts.append(preamble)
     for section in sections:
         parts.append(render_section_block(section))
     return "\n\n".join(parts).rstrip("\n") + "\n"

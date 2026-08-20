@@ -16,6 +16,15 @@ def run(argv):
     return code, out.getvalue(), err.getvalue()
 
 
+def run_init(root, title="Design Doc"):
+    """Every specctl store must be explicitly initialized before any other
+    write (design-specctl.md, "Store") -- call this first in any test that
+    goes on to add/modify Sections."""
+    code, out, err = run(["--root", root, "init", title])
+    assert code == 0, f"init failed: {err!r}"
+    return code, out, err
+
+
 def run_adrctl(argv):
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -32,10 +41,69 @@ def make_adr(tmp: str) -> str:
     return json.loads(out)["id"]
 
 
+class TestInitCommand(unittest.TestCase):
+    def test_init_creates_document_with_title(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out, _err = run(["--root", tmp, "init", "Design Doc"])
+            self.assertEqual(code, 0)
+            self.assertIn("Design Doc", out)
+            content = (Path(tmp) / "spec.md").read_text(encoding="utf-8")
+            self.assertTrue(content.startswith("# Design Doc\n"))
+
+    def test_init_with_preamble(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, _out, _err = run(["--root", tmp, "init", "Design Doc", "--preamble", "Some intro."])
+            self.assertEqual(code, 0)
+            content = (Path(tmp) / "spec.md").read_text(encoding="utf-8")
+            self.assertEqual(content, "# Design Doc\n\nSome intro.\n")
+
+    def test_add_before_init_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            code, _out, err = run(["--root", root, "add-part", "Concurrency"])
+            self.assertEqual(code, 1)
+            self.assertIn("init", err)
+
+    def test_init_twice_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            run_init(root)
+            code, _out, err = run(["--root", root, "init", "Different Title"])
+            self.assertEqual(code, 1)
+            self.assertIn("already initialized", err)
+
+    def test_set_title(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_init(tmp)
+            code, out, _err = run(["--root", tmp, "set-title", "New Title"])
+            self.assertEqual(code, 0)
+            self.assertIn("New Title", out)
+            content = (Path(tmp) / "spec.md").read_text(encoding="utf-8")
+            self.assertTrue(content.startswith("# New Title\n"))
+
+    def test_set_preamble(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_init(tmp)
+            code, _out, _err = run(["--root", tmp, "set-preamble", "New intro."])
+            self.assertEqual(code, 0)
+            content = (Path(tmp) / "spec.md").read_text(encoding="utf-8")
+            self.assertIn("New intro.", content)
+
+    def test_list_and_render_tolerate_uninitialized_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            code, out, _err = run(["--root", root, "list"])
+            self.assertEqual(code, 0)
+            self.assertEqual(out.strip(), "")
+            code, out, _err = run(["--root", root, "render"])
+            self.assertEqual(code, 0)
+
+
 class TestAddAndShow(unittest.TestCase):
     def test_nested_add_and_json_show(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             self.assertEqual(
                 run(["--root", root, "add-part", "Concurrency", "--description", "Intro."])[0], 0
             )
@@ -53,6 +121,7 @@ class TestAddAndShow(unittest.TestCase):
     def test_wrong_path_depth_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             code, _out, err = run(["--root", root, "add-chapter", "OnlyOneSegment"])
             self.assertEqual(code, 1)
             self.assertIn("2-segment", err)
@@ -60,6 +129,7 @@ class TestAddAndShow(unittest.TestCase):
     def test_missing_parent_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             code, _out, err = run(["--root", root, "add-chapter", "Nonexistent/Locking"])
             self.assertEqual(code, 1)
             self.assertIn("no metagroup segment matches", err)
@@ -70,6 +140,7 @@ class TestStatusAndAdrFlow(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             object_id = json.loads(out)["id"]
 
@@ -85,6 +156,7 @@ class TestStatusAndAdrFlow(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             object_id = json.loads(out)["id"]
             run(["--root", root, "set-status", object_id, "stable", "--adr", adr_id])
@@ -100,6 +172,7 @@ class TestStatusAndAdrFlow(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             object_id = json.loads(out)["id"]
             self.assertEqual(run(["--root", root, "set-adr", object_id, adr_id])[0], 0)
@@ -110,6 +183,7 @@ class TestDescriptionEditing(unittest.TestCase):
     def test_draft_content_change_untracked(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency", "--description", "v1"])
             object_id = json.loads(out)["id"]
             self.assertEqual(run(["--root", root, "set-description", object_id, "v2"])[0], 0)
@@ -122,6 +196,7 @@ class TestDescriptionEditing(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             object_id = json.loads(out)["id"]
             run(["--root", root, "set-status", object_id, "stable", "--adr", adr_id])
@@ -134,6 +209,7 @@ class TestOpenQuestionsEditing(unittest.TestCase):
     def test_set_at_creation_and_via_set_open_questions(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(
                 ["--root", root, "--json", "add-part", "Concurrency", "--open-questions", "Q1?"]
             )
@@ -150,6 +226,7 @@ class TestOpenQuestionsEditing(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             object_id = json.loads(out)["id"]
             run(["--root", root, "set-status", object_id, "stable", "--adr", adr_id])
@@ -162,6 +239,7 @@ class TestRenameAndReorder(unittest.TestCase):
     def test_rename_updates_signature(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             object_id = json.loads(out)["id"]
             code, out, _err = run(["--root", root, "--json", "rename", object_id, "Renamed"])
@@ -171,6 +249,7 @@ class TestRenameAndReorder(unittest.TestCase):
     def test_reorder_moves_sibling(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             run(["--root", root, "add-part", "A"])
             run(["--root", root, "add-part", "B"])
             _c, out, _e = run(["--root", root, "--json", "add-part", "C"])
@@ -186,6 +265,7 @@ class TestMove(unittest.TestCase):
     def test_move_reparents_section_and_subtree(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             run(["--root", root, "add-part", "A"])
             _c, out, _e = run(["--root", root, "--json", "add-chapter", "A/Sub"])
             sub_id = json.loads(out)["id"]
@@ -204,6 +284,7 @@ class TestMove(unittest.TestCase):
     def test_move_to_part_needs_no_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             run(["--root", root, "add-part", "A"])
             _c, out, _e = run(["--root", root, "--json", "add-chapter", "A/Sub"])
             sub_id = json.loads(out)["id"]
@@ -215,6 +296,7 @@ class TestMove(unittest.TestCase):
     def test_move_rejects_cycle(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(["--root", root, "--json", "add-part", "A"])
             a_id = json.loads(out)["id"]
             run(["--root", root, "add-chapter", "A/Sub"])
@@ -226,6 +308,7 @@ class TestMove(unittest.TestCase):
     def test_move_rejects_depth_cap_violation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             run(["--root", root, "add-part", "A"])
             _c, out, _e = run(["--root", root, "--json", "add-chapter", "A/A1"])
             a1_id = json.loads(out)["id"]
@@ -245,6 +328,7 @@ class TestListAndRender(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             run(["--root", root, "add-part", "A"])
             _c, out, _e = run(["--root", root, "--json", "add-part", "B"])
             b_id = json.loads(out)["id"]
@@ -256,6 +340,7 @@ class TestListAndRender(unittest.TestCase):
     def test_render_strips_comments(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             run(["--root", root, "add-part", "Concurrency", "--description", "Intro."])
             _code, out, _err = run(["--root", root, "render"])
             self.assertNotIn("<!--", out)
@@ -265,6 +350,7 @@ class TestListAndRender(unittest.TestCase):
     def test_list_under_includes_descendants_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             run(["--root", root, "add-part", "Concurrency"])
             run(["--root", root, "add-chapter", "Concurrency/Locking"])
             run(["--root", root, "add-part", "Other"])
@@ -279,6 +365,7 @@ class TestListAndRender(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             adr_id = make_adr(tmp)
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(["--root", root, "--json", "add-part", "A"])
             a_id = json.loads(out)["id"]
             run(["--root", root, "add-part", "B"])
@@ -294,6 +381,7 @@ class TestDeleteCommand(unittest.TestCase):
     def test_deletes_leaf_section(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             part_id = json.loads(out)["id"]
 
@@ -307,6 +395,7 @@ class TestDeleteCommand(unittest.TestCase):
     def test_rejects_deleting_section_with_children(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             part_id = json.loads(out)["id"]
             run(["--root", root, "add-chapter", "Concurrency/Locking"])
@@ -318,6 +407,7 @@ class TestDeleteCommand(unittest.TestCase):
     def test_force_delete_cascades(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
+            run_init(root)
             _c, out, _e = run(["--root", root, "--json", "add-part", "Concurrency"])
             part_id = json.loads(out)["id"]
             run(["--root", root, "add-chapter", "Concurrency/Locking"])
@@ -334,6 +424,7 @@ class TestSharesRootWithOtherTools(unittest.TestCase):
     def test_specctl_and_adrctl_coexist_under_the_same_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             shared_root = str(Path(tmp) / "project")
+            run_init(shared_root)
             run(["--root", shared_root, "add-part", "Concurrency"])
             code, out, _err = run(["--root", shared_root, "list"])
             self.assertEqual(code, 0)
@@ -345,6 +436,7 @@ class TestDirectoryMode(unittest.TestCase):
     def test_nested_add_and_show(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "spec")
+            run_init(root)
             self.assertEqual(
                 run(["--root", root, "add-part", "Concurrency", "--description", "Intro."])[0], 0
             )
@@ -361,6 +453,7 @@ class TestDirectoryMode(unittest.TestCase):
     def test_creates_directory_tree_on_disk(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "spec"
+            run_init(str(root))
             run(["--root", str(root), "add-part", "Concurrency"])
             self.assertTrue(root.is_dir())
             children = [p for p in root.iterdir() if p.is_dir()]
@@ -371,6 +464,7 @@ class TestDirectoryMode(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             adr_id = make_adr(tmp)
             root = str(Path(tmp) / "spec")
+            run_init(root)
             run(["--root", root, "add-part", "A"])
             _c, out, _e = run(["--root", root, "--json", "add-part", "B"])
             b_id = json.loads(out)["id"]

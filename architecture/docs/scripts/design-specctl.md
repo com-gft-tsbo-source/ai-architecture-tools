@@ -6,6 +6,8 @@ Objects are **Sections** of a specification/design document — a Markdown headi
 
 Store name `spec` (design.md, "File and Directory Parameters"): resolves to `<shared-dir>/spec.md` or `<shared-dir>/spec`. Default mode when neither exists yet: **file** — the primary use case is a single flowing document (like `design.md` itself), unlike the other three tools' more naturally directory-shaped object collections. Singular, not `specs`: one document ("the spec"), with potentially many ADRs governing parts of it — not a collection of many specs.
 
+Unlike the other three tools, a specctl store is not auto-vivified on first write: `init <title>` must run once, explicitly, before any other operation may modify it (see "Title and Preamble" and "Operations" below) — every mutating operation aborts otherwise.
+
 ## Deviation from the general model
 
 In the other three tools, a metagroup path is pure classification — it has no content of its own, only objects nested under its leaf. `specctl` cannot work that way: a document like `design.md` carries prose under *every* heading level, not just at the deepest one (e.g. "## Metagroups" itself has text, and so does "### Object ID" beneath it). So for `specctl`, **every metagroup-path node is itself an object** — it has its own ID, Status, Content and History, in addition to being the parent path for whatever nests beneath it. `add-<metagroup-type>` therefore both establishes the path *and* creates that level's object in one step (see Operations).
@@ -24,9 +26,18 @@ This also resolves what would otherwise be "arbitrary heading depth": since a me
 | 4 | Subsection | `#####` |
 | 5 | Point | `######` |
 
-The document's own `# <title>` is not a `specctl` object. This is also why 5 is the natural cap, not an arbitrary choice: Markdown offers heading depths `#` through `######`; reserving `#` for the document title leaves exactly 5 usable depths.
+The document's own `# <title>` is not a `specctl` **object** — it has no ID, Status, or History, and is never a metagroup path node. This is also why 5 is the natural cap, not an arbitrary choice: Markdown offers heading depths `#` through `######`; reserving `#` for the document title leaves exactly 5 usable depths.
 
 Not every branch needs all 5 levels — a Chapter may hold Points directly, skipping Section/Subsection, exactly as a shallower branch is allowed under the general metagroup model. As with the other tools, a path segment must be created before anything is added under it: adding a `#####` heading requires its enclosing `####`/`###`/`##` objects to already exist (this falls out naturally from Markdown nesting, not from an extra check).
+
+## Title and Preamble
+
+Not `specctl` objects (see Metagroups above), but still `specctl`-managed fields, not opaque pass-through text: the document's own `# <title>` line, and an optional free-text Preamble beneath it (before the first Section heading).
+
+- **Title** is mandatory once the document exists — a document without one is, by definition, an uninitialized one (see Store above). Set at creation via `init <title>`; changed afterward via `set-title <value>`. Must be a single line.
+- **Preamble** is optional, defaults to empty. Set at creation via `init --preamble <value>`; changed afterward via `set-preamble <value>`. Must not itself contain a line that looks like a Section heading (`##` through `######`) — such a line would be misread as the start of a Section on the next read, silently corrupting the document.
+
+Single-file mode stores both as the literal first lines of the document (`# <title>`, then the Preamble, then the first Section heading); directory mode stores them as `_title.md` (always written) and `_preamble.md` (written only if non-empty) at the root directory (see Object Format below).
 
 ## Object Type
 
@@ -81,7 +92,7 @@ Example:
 - `_content.md` — that Section's own heading + metadata comment + `Description`, in the exact same format as one block of the single-file mode (see Object Format above) — a directory-mode `_content.md` and a single-file-mode heading block are byte-for-byte interchangeable modulo surrounding context.
 - one further such directory per child Section, recursively.
 
-There is no `.index.md`/`.index.json`: those general-model files cache an Object Type *shared* by every object filed under one metagroup leaf, but a specctl Section already carries its own Object Type directly in `_content.md` (see Object Format) — a parallel index would only duplicate it, not serve a distinct purpose. The document's preamble (its own `# <title>` and any intro text, kept verbatim in single-file mode) has no single file to live in in directory mode either; it is instead an optional `_preamble.md` at the root directory itself.
+There is no `.index.md`/`.index.json`: those general-model files cache an Object Type *shared* by every object filed under one metagroup leaf, but a specctl Section already carries its own Object Type directly in `_content.md` (see Object Format) — a parallel index would only duplicate it, not serve a distinct purpose. The document's Title and Preamble (see "Title and Preamble" above) have no single file to live in in directory mode either; they are instead `_title.md` (mandatory, the marker that tells an initialized store apart from an empty one) and `_preamble.md` (optional, written only if non-empty) at the root directory itself.
 
 Like single-file mode's whole-file rewrite, a directory-mode write clears and rebuilds the whole tree from the in-memory Section list on every change — there is no incremental file-level diffing. This is simpler and, since the whole `--root` directory is understood to be exclusively managed by `specctl` (design.md, "File and Directory Parameters"), safe; it is not atomic across the multiple directories/files touched by one write, the same limitation the general model's directory mode already has for an interrupted reorder cascade (design.md, "Concurrency / Locking").
 
@@ -121,8 +132,11 @@ Deviates from the general model: only `M` entries for **Add**, **Rename**, **Mov
 
 ## Operations
 
-In addition to the general operations from `design.md`, adapted per the deviations above:
+In addition to the general operations from `design.md`, adapted per the deviations above. Every operation below except `init` itself, `list`, `render`, and `history` requires the document to already be initialized (see Store above) and aborts otherwise:
 
+- `init <title> [--preamble <value>]`: create the document and set its Title/Preamble (see "Title and Preamble" above). Must run exactly once before anything else may modify the document — rejected if the document is already initialized (the same "fail, don't silently overwrite" behavior `add` already has for an ID collision).
+- `set-title <value>`: change the document's Title.
+- `set-preamble <value>`: change the document's Preamble.
 - `add-<metagroup-type> <name>` creates the path segment **and** its object in one step (see "Deviation from the general model") — there is no separate content-less path-declaration step to run first. `<name>` is the full `/`-separated path of heading texts, ancestors then the new leaf (the general model's own shape for `add-<type> <name>`, e.g. `add-component frontend/mocking`) — there is no separate `--name` flag, since the path's leaf segment *is* the Section's heading text.
 - `set-description <id> <value>`: change a Section's `Description` content — the general model's "Change content" operation (`design.md`: `set-<user-content-block>`). Accepts `--adr <id>` inline for the ADR-gating case described under Status.
 - `set-open-questions <id> <value>`: change a Section's `OpenQuestions` content (see User Content above) — same shape and same ADR-gating as `set-description`, since it is also Section content, not bookkeeping. Also settable at creation via `add-<metagroup-type> ... --open-questions <value>`.

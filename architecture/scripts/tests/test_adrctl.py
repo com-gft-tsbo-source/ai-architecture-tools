@@ -78,6 +78,7 @@ class TestSpecRefLinkage(unittest.TestCase):
     def test_add_with_spec_ref_propagates_adr_into_spec(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "adrs")
+            run_specctl(["--root", root, "init", "Design Doc"])
             _c, out, _e = run_specctl(["--root", root, "--json", "add-part", "Concurrency"])
             section_id = json.loads(out)["id"]
 
@@ -103,6 +104,7 @@ class TestSpecRefLinkage(unittest.TestCase):
     def test_set_status_re_propagates(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "adrs")
+            run_specctl(["--root", root, "init", "Design Doc"])
             _c, out, _e = run_specctl(["--root", root, "--json", "add-part", "Concurrency"])
             section_id = json.loads(out)["id"]
 
@@ -125,6 +127,7 @@ class TestSpecRefLinkage(unittest.TestCase):
     def test_set_spec_ref_retroactively_attaches(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "adrs")
+            run_specctl(["--root", root, "init", "Design Doc"])
             _c, out, _e = run_specctl(["--root", root, "--json", "add-part", "Concurrency"])
             section_id = json.loads(out)["id"]
 

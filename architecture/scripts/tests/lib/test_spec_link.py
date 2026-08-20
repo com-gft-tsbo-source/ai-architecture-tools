@@ -11,6 +11,7 @@ class TestPropagate(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             store = SpecStore(root=root)
+            store.init("Design Doc")
             section = store.add(1, ["Concurrency"])
             before = len(section.history)
 
@@ -25,7 +26,9 @@ class TestPropagate(unittest.TestCase):
     def test_default_message_when_none_given(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            section = SpecStore(root=root).add(1, ["Concurrency"])
+            store = SpecStore(root=root)
+            store.init("Design Doc")
+            section = store.add(1, ["Concurrency"])
 
             propagate(root, section.object_id, "b1c2d3")
 
@@ -38,6 +41,7 @@ class TestPropagate(unittest.TestCase):
             (root / "spec").mkdir()
             store = SpecStore(root=root)
             self.assertEqual(store.mode, "directory")
+            store.init("Design Doc")
             section = store.add(1, ["Concurrency"])
 
             propagate(root, section.object_id, "b1c2d3")
@@ -48,7 +52,9 @@ class TestPropagate(unittest.TestCase):
     def test_missing_target_raises_spec_link_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            SpecStore(root=root).add(1, ["Concurrency"])
+            store = SpecStore(root=root)
+            store.init("Design Doc")
+            store.add(1, ["Concurrency"])
 
             with self.assertRaises(SpecLinkError):
                 propagate(root, "doesnotexist", "b1c2d3")
@@ -56,7 +62,9 @@ class TestPropagate(unittest.TestCase):
     def test_error_message_names_the_spec_ref(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            SpecStore(root=root).add(1, ["Concurrency"])
+            store = SpecStore(root=root)
+            store.init("Design Doc")
+            store.add(1, ["Concurrency"])
 
             with self.assertRaises(SpecLinkError) as ctx:
                 propagate(root, "doesnotexist", "b1c2d3")
