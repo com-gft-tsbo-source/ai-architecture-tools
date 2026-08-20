@@ -38,9 +38,10 @@ def _flag_name(type_name: str) -> str:
 def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._SubParsersAction"]:
     parser = argparse.ArgumentParser(prog=spec.name)
     parser.add_argument(
-        "--root", required=True, action="append",
-        help="File (single-file mode) or directory (directory mode). Repeatable: "
-             "with more than one --root, operates strictly read-only across all of them, merged.",
+        "--root", required=True,
+        help="A directory shared by all four tools, or any single tool's own file/directory within "
+             "it -- resolved to this tool's <root_name>.md / <root_name> (design.md, "
+             "'File and Directory Parameters').",
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -77,14 +78,32 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
 
     for metainfo in spec.metainfo:
         metainfo_parser = subparsers.add_parser(
-            f"set-{_flag_name(metainfo.type)}", help=f"Set {metainfo.type} on an object"
+            f"info-{_flag_name(metainfo.type)}", help=f"Set {metainfo.type} on an object"
         )
         metainfo_parser.add_argument("id")
         metainfo_parser.add_argument("value")
 
+    for level in spec.metagroup_levels:
+        group_parser = subparsers.add_parser(
+            f"group-{_flag_name(level.type)}",
+            help=f"Reassign an object to a different, existing {level.type} metagroup path",
+        )
+        group_parser.add_argument("id")
+        group_parser.add_argument("value", help="Existing metagroup path, e.g. 'Python/backend'")
+
+    for block in spec.user_content_blocks:
+        content_parser = subparsers.add_parser(
+            f"set-{_flag_name(block)}", help=f"Change {block} content on an object"
+        )
+        content_parser.add_argument("id")
+        content_parser.add_argument("value")
+
     show_parser = subparsers.add_parser("show", help="Display an object")
     show_parser.add_argument("id")
     show_parser.add_argument("--history", action="store_true", help="Include History")
+
+    delete_parser = subparsers.add_parser("delete", help="Delete an object")
+    delete_parser.add_argument("id")
 
     reorder_parser = subparsers.add_parser("reorder", help="Move an object to a new position among its siblings")
     reorder_parser.add_argument("id")
@@ -97,6 +116,16 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
 
     list_parser = subparsers.add_parser("list", help="List objects")
     list_parser.add_argument("--status", default=None)
+    for level in spec.metagroup_levels:
+        list_parser.add_argument(
+            f"--{_flag_name(level.type)}", dest=f"metagroup__{level.type}", default=None,
+            help=f"List only objects under this {level.type} metagroup path, including descendants",
+        )
+    for metainfo in spec.metainfo:
+        list_parser.add_argument(
+            f"--{_flag_name(metainfo.type)}", dest=f"metainfo__{metainfo.type}", default=None,
+            help=f"List only objects whose {metainfo.type} metainfo equals this value",
+        )
 
     return parser, subparsers
 
@@ -165,12 +194,23 @@ def dispatch(spec: ToolSpec, store: Store, args: argparse.Namespace, extra_handl
         return store.set_status(args.id, args.status, message=args.message, force=args.force)
 
     for metainfo in spec.metainfo:
-        if command == f"set-{_flag_name(metainfo.type)}":
+        if command == f"info-{_flag_name(metainfo.type)}":
             return store.set_metainfo(args.id, metainfo.type, args.value)
+
+    for level in spec.metagroup_levels:
+        if command == f"group-{_flag_name(level.type)}":
+            return store.set_metagroup(args.id, args.value.split("/"))
+
+    for block in spec.user_content_blocks:
+        if command == f"set-{_flag_name(block)}":
+            return store.set_content(args.id, block, args.value)
 
     if command == "show":
         record = store.resolve_id(args.id)
         return record
+
+    if command == "delete":
+        return store.delete(args.id)
 
     if command == "reorder":
         return store.reorder(args.id, args.insert_after)
@@ -188,6 +228,21 @@ def dispatch(spec: ToolSpec, store: Store, args: argparse.Namespace, extra_handl
         records = store.list_all()
         if args.status is not None:
             records = [r for r in records if r.status == args.status]
+        supplied_metagroup = [
+            (level.type, getattr(args, f"metagroup__{level.type}"))
+            for level in spec.metagroup_levels
+            if getattr(args, f"metagroup__{level.type}") is not None
+        ]
+        if len(supplied_metagroup) > 1:
+            flags = ", ".join(f"--{_flag_name(l.type)}" for l in spec.metagroup_levels)
+            raise CliError(f"list accepts at most one of [{flags}] as a metagroup filter")
+        if supplied_metagroup:
+            segments = store.resolve_metagroup_path(supplied_metagroup[0][1].split("/"))
+            records = [r for r in records if list(r.metagroup_levels[:len(segments)]) == segments]
+        for metainfo in spec.metainfo:
+            value = getattr(args, f"metainfo__{metainfo.type}")
+            if value is not None:
+                records = [r for r in records if r.metainfo_value(metainfo.type) == value]
         return records
 
     raise CliError(f"unknown command: {command}")
@@ -256,6 +311,7 @@ def main(
     *,
     extra_handlers: Optional[dict[str, Handler]] = None,
     configure_parser: Optional[Callable[[argparse.ArgumentParser, "argparse._SubParsersAction"], None]] = None,
+    after_dispatch: Optional[Callable[[ToolSpec, Store, argparse.Namespace, object], None]] = None,
 ) -> int:
     if extra_handlers is None:
         extra_handlers = {}
@@ -264,11 +320,12 @@ def main(
         configure_parser(parser, subparsers)
 
     args = parser.parse_args(argv)
-    roots = [Path(r) for r in args.root]
-    store = Store(spec=spec, root=roots if len(roots) > 1 else roots[0])
 
     try:
+        store = Store(spec=spec, root=Path(args.root))
         result = dispatch(spec, store, args, extra_handlers)
+        if after_dispatch is not None:
+            after_dispatch(spec, store, args, result)
     except (StoreError, CliError, DeferredOperationError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

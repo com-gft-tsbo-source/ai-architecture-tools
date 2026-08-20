@@ -2,11 +2,190 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from lib.adrctl_spec import build_spec as build_adrctl_spec
 from lib.spec_store import SpecStore, SpecStoreError
+from lib.store import Store as GenericStore
 
 
-def make_store(tmp_dir: str) -> SpecStore:
+def make_store(tmp_dir: str, title: str = "Design Doc") -> SpecStore:
+    store = SpecStore(root=Path(tmp_dir) / "design.md")
+    store.init(title)
+    return store
+
+
+def reopen_store(tmp_dir: str) -> SpecStore:
+    """Reopen an already-initialized store from a previous invocation --
+    unlike make_store, does not call init() again (init rejects running
+    twice on the same document)."""
     return SpecStore(root=Path(tmp_dir) / "design.md")
+
+
+def make_adr(tmp_dir: str, adr_id: str = "b1c2d3") -> str:
+    """Create a real ADR sharing tmp_dir's root, for tests exercising
+    specctl's ADR-existence validation (lib/adr_lookup.py) -- a bare string
+    no longer satisfies `set_status`/`set_description`/`set_open_questions`."""
+    store = GenericStore(spec=build_adrctl_spec(), root=Path(tmp_dir))
+    store.add_metagroup_path(["Backend"])
+    store.add(metagroup_path=["Backend"], name="Test ADR", object_id=adr_id)
+    return adr_id
+
+
+class TestInit(unittest.TestCase):
+    def test_init_sets_title(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            title = store.init("Design Doc")
+            self.assertEqual(title, "Design Doc")
+
+    def test_init_sets_preamble(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            store.init("Design Doc", preamble="Some intro text.")
+            content = store.root.read_text(encoding="utf-8")
+            self.assertEqual(content, "# Design Doc\n\nSome intro text.\n")
+
+    def test_init_without_preamble(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            store.init("Design Doc")
+            content = store.root.read_text(encoding="utf-8")
+            self.assertEqual(content, "# Design Doc\n")
+
+    def test_init_twice_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            with self.assertRaises(SpecStoreError):
+                store.init("Different Title")
+
+    def test_init_empty_title_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            with self.assertRaises(SpecStoreError):
+                store.init("   ")
+
+    def test_init_multiline_title_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            with self.assertRaises(SpecStoreError):
+                store.init("Line one\nLine two")
+
+    def test_init_preamble_with_heading_line_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            with self.assertRaises(SpecStoreError):
+                store.init("Design Doc", preamble="## Looks like a Section")
+
+    def test_init_directory_mode_writes_title_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "spec"
+            store = SpecStore(root=root)
+            store.init("Design Doc")
+            self.assertEqual((root / "_title.md").read_text(encoding="utf-8").strip(), "Design Doc")
+            self.assertFalse((root / "_preamble.md").exists())  # optional, empty here
+
+    def test_init_directory_mode_writes_preamble_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "spec"
+            store = SpecStore(root=root)
+            store.init("Design Doc", preamble="Some intro text.")
+            self.assertEqual(
+                (root / "_preamble.md").read_text(encoding="utf-8"), "Some intro text.\n"
+            )
+
+
+class TestSetTitle(unittest.TestCase):
+    def test_changes_title(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.set_title("New Title")
+            content = store.root.read_text(encoding="utf-8")
+            self.assertTrue(content.startswith("# New Title\n"))
+
+    def test_before_init_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            with self.assertRaises(SpecStoreError):
+                store.set_title("New Title")
+
+    def test_empty_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            with self.assertRaises(SpecStoreError):
+                store.set_title("")
+
+    def test_preserves_preamble_and_sections(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp, title="Original")
+            section = store.add(1, ["Concurrency"])
+            store.set_title("Renamed Doc")
+            after = store.resolve_id(section.object_id)
+            self.assertEqual(after.name, "Concurrency")
+
+
+class TestSetPreamble(unittest.TestCase):
+    def test_changes_preamble(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.set_preamble("New intro text.")
+            content = store.root.read_text(encoding="utf-8")
+            self.assertIn("New intro text.", content)
+
+    def test_before_init_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            with self.assertRaises(SpecStoreError):
+                store.set_preamble("New intro text.")
+
+    def test_heading_line_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            with self.assertRaises(SpecStoreError):
+                store.set_preamble("## Looks like a Section")
+
+    def test_preserves_sections(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            store.set_preamble("New intro.")
+            after = store.resolve_id(section.object_id)
+            self.assertEqual(after.name, "Concurrency")
+
+
+class TestRequiresInitialization(unittest.TestCase):
+    """Every mutating operation must reject running on an uninitialized
+    store (design-specctl.md, "Store") -- spot-checked across a
+    representative subset, not exhaustively every method."""
+
+    def test_add_before_init_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            with self.assertRaises(SpecStoreError):
+                store.add(1, ["Concurrency"])
+
+    def test_delete_before_init_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            with self.assertRaises(SpecStoreError):
+                store.delete("nope")
+
+    def test_rename_before_init_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            with self.assertRaises(SpecStoreError):
+                store.rename("nope", "New Name")
+
+    def test_move_before_init_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            with self.assertRaises(SpecStoreError):
+                store.move("nope", 1, [])
+
+    def test_read_operations_tolerate_uninitialized_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpecStore(root=Path(tmp) / "design.md")
+            self.assertEqual(store.list_all(), [])
+            self.assertEqual(store.combined_history(), [])
+            self.assertEqual(store.render_plain(), "\n")
 
 
 class TestAdd(unittest.TestCase):
@@ -19,6 +198,13 @@ class TestAdd(unittest.TestCase):
             self.assertEqual(section.level, 1)
             self.assertEqual(section.status, "draft")
             self.assertEqual(section.description(), "Locking and friends.")
+
+    def test_explicit_object_id_collision_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["Concurrency"], object_id="dup-id")
+            with self.assertRaises(SpecStoreError):
+                store.add(1, ["Other"], object_id="dup-id")
 
     def test_add_nested_chapter_resolves_parent_by_name(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -58,7 +244,7 @@ class TestAdd(unittest.TestCase):
     def test_add_persists_across_invocations(self):
         with tempfile.TemporaryDirectory() as tmp:
             make_store(tmp).add(1, ["Concurrency"])
-            store2 = make_store(tmp)
+            store2 = reopen_store(tmp)
             sections = store2.list_all()
             self.assertEqual(len(sections), 1)
             self.assertEqual(sections[0].name, "Concurrency")
@@ -111,25 +297,28 @@ class TestStatusAndAdr(unittest.TestCase):
 
     def test_draft_to_stable_with_inline_adr(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             store = make_store(tmp)
             section = store.add(1, ["Concurrency"])
-            updated = store.set_status(section.object_id, "stable", adr="b1c2d3")
+            updated = store.set_status(section.object_id, "stable", adr=adr_id)
             self.assertEqual(updated.status, "stable")
-            self.assertEqual(updated.adr, "b1c2d3")
+            self.assertEqual(updated.adr, adr_id)
 
     def test_draft_to_stable_with_preset_adr(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             store = make_store(tmp)
             section = store.add(1, ["Concurrency"])
-            store.set_adr(section.object_id, "b1c2d3")
+            store.set_adr(section.object_id, adr_id)
             updated = store.set_status(section.object_id, "stable")
             self.assertEqual(updated.status, "stable")
 
     def test_stable_to_draft_requires_force(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             store = make_store(tmp)
             section = store.add(1, ["Concurrency"])
-            store.set_status(section.object_id, "stable", adr="b1c2d3")
+            store.set_status(section.object_id, "stable", adr=adr_id)
             with self.assertRaises(SpecStoreError):
                 store.set_status(section.object_id, "draft")
             updated = store.set_status(section.object_id, "draft", force=True)
@@ -146,13 +335,96 @@ class TestStatusAndAdr(unittest.TestCase):
 
     def test_status_change_logged(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             store = make_store(tmp)
             section = store.add(1, ["Concurrency"])
-            store.set_status(section.object_id, "stable", adr="b1c2d3")
+            store.set_status(section.object_id, "stable", adr=adr_id)
             after = store.resolve_id(section.object_id)
             self.assertEqual(len(after.history), 2)  # Add + status change
             self.assertEqual(after.history[-1].old_status, "draft")
             self.assertEqual(after.history[-1].new_status, "stable")
+
+
+class TestReceiveAdrLink(unittest.TestCase):
+    def test_updates_adr_field(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            updated = store.receive_adr_link(section.object_id, "b1c2d3")
+            self.assertEqual(updated.adr, "b1c2d3")
+
+    def test_logs_history_entry_with_default_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            before = len(section.history)
+            store.receive_adr_link(section.object_id, "b1c2d3")
+            after = store.resolve_id(section.object_id)
+            self.assertEqual(len(after.history), before + 1)
+            self.assertEqual(after.history[-1].prefix, "M")
+            self.assertEqual(after.history[-1].message, "adr=b1c2d3")
+
+    def test_logs_history_entry_with_custom_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            store.receive_adr_link(section.object_id, "b1c2d3", message="adr=b1c2d3")
+            after = store.resolve_id(section.object_id)
+            self.assertEqual(after.history[-1].message, "adr=b1c2d3")
+
+    def test_unlike_set_adr_receive_adr_link_is_logged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            manual = len(store.resolve_id(section.object_id).history)
+            store.set_adr(section.object_id, "aaaaaa")
+            after_manual = len(store.resolve_id(section.object_id).history)
+            self.assertEqual(after_manual, manual)
+            store.receive_adr_link(section.object_id, "bbbbbb")
+            after_automatic = len(store.resolve_id(section.object_id).history)
+            self.assertEqual(after_automatic, manual + 1)
+
+    def test_unknown_id_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            with self.assertRaises(SpecStoreError):
+                store.receive_adr_link("nope", "b1c2d3")
+
+
+class TestAdrValidation(unittest.TestCase):
+    def test_set_status_rejects_nonexistent_adr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            with self.assertRaises(SpecStoreError):
+                store.set_status(section.object_id, "stable", adr="doesnotexist")
+
+    def test_set_description_rejects_nonexistent_adr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"], initial_status="stable")
+            with self.assertRaises(SpecStoreError):
+                store.set_description(section.object_id, "v2", adr="doesnotexist")
+
+    def test_set_open_questions_rejects_nonexistent_adr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"], initial_status="stable")
+            with self.assertRaises(SpecStoreError):
+                store.set_open_questions(section.object_id, "q?", adr="doesnotexist")
+
+    def test_set_open_questions_succeeds_with_real_adr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
+            store = make_store(tmp)
+            section = store.add(1, ["Concurrency"])
+            updated = store.set_open_questions(section.object_id, "Thread-safe?", adr=None)
+            self.assertEqual(updated.open_questions, "Thread-safe?")  # draft: no adr needed
+
+            store.set_status(section.object_id, "stable", adr=adr_id)
+            updated = store.set_open_questions(section.object_id, "Revised?")
+            self.assertEqual(updated.open_questions, "Revised?")
+            self.assertEqual(updated.adr, adr_id)
 
 
 class TestSetDescription(unittest.TestCase):
@@ -172,23 +444,25 @@ class TestSetDescription(unittest.TestCase):
         # field is then still unset, so a content change must still supply
         # one.
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp, "c4d5e6")
             store = make_store(tmp)
             section = store.add(1, ["Concurrency"], description="v1", initial_status="stable")
             self.assertIsNone(section.adr)
             with self.assertRaises(SpecStoreError):
                 store.set_description(section.object_id, "v2")
-            updated = store.set_description(section.object_id, "v2", adr="c4d5e6")
+            updated = store.set_description(section.object_id, "v2", adr=adr_id)
             self.assertEqual(updated.description(), "v2")
-            self.assertEqual(updated.adr, "c4d5e6")
+            self.assertEqual(updated.adr, adr_id)
 
     def test_stable_content_change_reuses_already_set_adr(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             store = make_store(tmp)
             section = store.add(1, ["Concurrency"], description="v1")
-            store.set_status(section.object_id, "stable", adr="b1c2d3")
+            store.set_status(section.object_id, "stable", adr=adr_id)
             updated = store.set_description(section.object_id, "v2")
             self.assertEqual(updated.description(), "v2")
-            self.assertEqual(updated.adr, "b1c2d3")
+            self.assertEqual(updated.adr, adr_id)
 
 
 class TestRename(unittest.TestCase):
@@ -385,6 +659,56 @@ class TestMove(unittest.TestCase):
                 store.move(b.object_id, 2, ["Nonexistent"])
 
 
+class TestDelete(unittest.TestCase):
+    def test_deletes_leaf_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            leaf = store.add(2, ["A", "Sub"])
+            deleted = store.delete(leaf.object_id)
+            self.assertEqual(deleted.object_id, leaf.object_id)
+            names = [s.name for s in store.list_all()]
+            self.assertEqual(names, ["A"])
+
+    def test_rejects_deleting_section_with_children_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            parent = store.add(1, ["A"])
+            store.add(2, ["A", "Sub"])
+            with self.assertRaises(SpecStoreError):
+                store.delete(parent.object_id)
+            # nothing was removed
+            self.assertEqual(len(store.list_all()), 2)
+
+    def test_force_delete_cascades_whole_subtree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            parent = store.add(1, ["A"])
+            store.add(2, ["A", "Sub"])
+            store.add(3, ["A", "Sub", "Grand"])
+            store.add(1, ["B"])
+
+            store.delete(parent.object_id, cascade=True)
+
+            names = [s.name for s in store.list_all()]
+            self.assertEqual(names, ["B"])
+
+    def test_unknown_id_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            with self.assertRaises(SpecStoreError):
+                store.delete("nope")
+
+    def test_leaves_numbering_gap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            first = store.add(1, ["First"])
+            store.add(1, ["Second"])
+            store.delete(first.object_id)
+            third = store.add(1, ["Third"])
+            self.assertEqual(third.number, 3)
+
+
 class TestRenderAndHistory(unittest.TestCase):
     def test_render_strips_comments(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -397,41 +721,29 @@ class TestRenderAndHistory(unittest.TestCase):
 
     def test_combined_history_newest_first(self):
         with tempfile.TemporaryDirectory() as tmp:
+            adr_id = make_adr(tmp)
             store = make_store(tmp)
             a = store.add(1, ["A"])
             store.add(1, ["B"])
-            store.set_status(a.object_id, "stable", adr="b1c2d3")
+            store.set_status(a.object_id, "stable", adr=adr_id)
             entries = store.combined_history()
             self.assertEqual(entries[0][1].prefix, "M")
             self.assertGreaterEqual(len(entries), 3)
 
 
-class TestMergedModeReadOnly(unittest.TestCase):
-    def test_write_operations_rejected_in_merged_mode(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path_a = Path(tmp) / "a.md"
-            path_b = Path(tmp) / "b.md"
-            SpecStore(root=path_a).add(1, ["FromA"])
-            SpecStore(root=path_b).add(1, ["FromB"])
-
-            merged = SpecStore(root=[path_a, path_b])
-            self.assertEqual(len(merged.list_all()), 2)
-            with self.assertRaises(SpecStoreError):
-                merged.add(1, ["New"])
-
-
 class TestDirectoryMode(unittest.TestCase):
     def test_root_directory_detected_and_created(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"  # does not exist yet, no file suffix
+            root = Path(tmp) / "spec"  # does not exist yet, no file suffix
             store = SpecStore(root=root)
             self.assertEqual(store.mode, "directory")
             self.assertTrue(root.is_dir())
 
     def test_add_creates_nested_directories_with_content_md(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             store = SpecStore(root=root)
+            store.init("Design Doc")
             part = store.add(1, ["Concurrency"], description="Intro.")
             chapter = store.add(2, ["Concurrency", "Locking"], description="A lock.")
 
@@ -442,8 +754,10 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_persists_and_reads_back_across_invocations(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
-            SpecStore(root=root).add(1, ["Concurrency"], description="Intro.")
+            root = Path(tmp) / "spec"
+            first_store = SpecStore(root=root)
+            first_store.init("Design Doc")
+            first_store.add(1, ["Concurrency"], description="Intro.")
             store2 = SpecStore(root=root)
             sections = store2.list_all()
             self.assertEqual(len(sections), 1)
@@ -452,21 +766,24 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_hand_authored_preamble_file_is_read_and_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             root.mkdir()
-            (root / "_preamble.md").write_text("# Design Doc\n\nSome intro text.\n", encoding="utf-8")
+            (root / "_title.md").write_text("Design Doc\n", encoding="utf-8")
+            (root / "_preamble.md").write_text("Some intro text.\n", encoding="utf-8")
 
             store = SpecStore(root=root)
             self.assertEqual(store.list_all(), [])
             # A write (e.g. `add`) must not drop the hand-authored preamble.
             store.add(1, ["Concurrency"])
             preamble_text = (root / "_preamble.md").read_text(encoding="utf-8")
-            self.assertEqual(preamble_text, "# Design Doc\n\nSome intro text.\n")
+            self.assertEqual(preamble_text, "Some intro text.\n")
 
     def test_nested_add_resolve_status_rename_reorder(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            adr_id = make_adr(tmp)
+            root = Path(tmp) / "spec"
             store = SpecStore(root=root)
+            store.init("Design Doc")
             store.add(1, ["A"])
             store.add(2, ["A", "A1"])
             b = store.add(1, ["B"])
@@ -484,13 +801,14 @@ class TestDirectoryMode(unittest.TestCase):
 
             with self.assertRaises(SpecStoreError):
                 store.set_status(b.object_id, "stable")
-            updated = store.set_status(b.object_id, "stable", adr="b1c2d3")
+            updated = store.set_status(b.object_id, "stable", adr=adr_id)
             self.assertEqual(updated.status, "stable")
 
     def test_render_and_combined_history(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             store = SpecStore(root=root)
+            store.init("Design Doc")
             store.add(1, ["Concurrency"], description="Locking and friends.")
             rendered = store.render_plain()
             self.assertNotIn("<!--", rendered)
@@ -501,8 +819,9 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_rewritten_tree_drops_stale_directories(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             store = SpecStore(root=root)
+            store.init("Design Doc")
             first = store.add(1, ["First"])
             old_dir = root / f"001-{first.object_type}-{first.object_id}-first"
             self.assertTrue(old_dir.is_dir())
@@ -512,10 +831,25 @@ class TestDirectoryMode(unittest.TestCase):
             new_dir = root / f"001-{first.object_type}-{first.object_id}-renamed"
             self.assertTrue(new_dir.is_dir())
 
+    def test_force_delete_removes_directory_and_descendants_on_disk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "spec"
+            store = SpecStore(root=root)
+            store.init("Design Doc")
+            parent = store.add(1, ["Concurrency"])
+            store.add(2, ["Concurrency", "Locking"])
+            parent_dir = root / f"001-{parent.object_type}-{parent.object_id}-concurrency"
+            self.assertTrue(parent_dir.is_dir())
+
+            store.delete(parent.object_id, cascade=True)
+            self.assertFalse(parent_dir.is_dir())
+            self.assertEqual(store.list_all(), [])
+
     def test_move_relocates_directory_and_descendants_on_disk(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             store = SpecStore(root=root)
+            store.init("Design Doc")
             store.add(1, ["A"])
             sub = store.add(2, ["A", "Sub"])
             store.add(3, ["A", "Sub", "Grand"])
@@ -537,8 +871,9 @@ class TestDirectoryMode(unittest.TestCase):
 
     def test_duplicate_id_across_content_files_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "design"
+            root = Path(tmp) / "spec"
             store = SpecStore(root=root)
+            store.init("Design Doc")
             store.add(1, ["A"])
             second_dir = root / "002-XX____-dupe1d-b"
             second_dir.mkdir()
@@ -554,18 +889,21 @@ class TestDirectoryMode(unittest.TestCase):
             with self.assertRaises(SpecStoreError):
                 store.list_all()
 
-    def test_merged_mode_across_file_and_directory_roots(self):
+    def test_shares_root_with_another_tool(self):
         with tempfile.TemporaryDirectory() as tmp:
-            file_root = Path(tmp) / "a.md"
-            dir_root = Path(tmp) / "b"
-            SpecStore(root=file_root).add(1, ["FromFile"])
-            SpecStore(root=dir_root).add(1, ["FromDir"])
+            shared_root = Path(tmp) / "project"
+            spec_store = SpecStore(root=shared_root)
+            spec_store.init("Design Doc")
+            spec_store.add(1, ["Concurrency"])
+            # specctl defaults to single-file mode when nothing exists yet.
+            self.assertEqual(spec_store.root, shared_root / "spec.md")
 
-            merged = SpecStore(root=[file_root, dir_root])
-            names = {s.name for s in merged.list_all()}
-            self.assertEqual(names, {"FromFile", "FromDir"})
-            with self.assertRaises(SpecStoreError):
-                merged.add(1, ["New"])
+    def test_explicit_directory_candidate_forces_directory_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shared_root = Path(tmp) / "project"
+            store = SpecStore(root=shared_root / "spec")  # matches store name, not yet existing
+            self.assertEqual(store.mode, "directory")
+            self.assertEqual(store.root, shared_root / "spec")
 
 
 if __name__ == "__main__":

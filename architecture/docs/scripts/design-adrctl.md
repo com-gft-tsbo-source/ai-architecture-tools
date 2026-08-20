@@ -2,6 +2,10 @@
 
 Objects are ADRs (Architecture Decision Records) whose implementation in a codebase is to be verified.
 
+## Store
+
+Store name `adrs` (design.md, "File and Directory Parameters"): resolves to `<shared-dir>/adrs.md` or `<shared-dir>/adrs`. Default mode when neither exists yet: **directory** — the 2-level Domain/Component hierarchy reads more naturally as nested directories than as one growing file.
+
 ## Metagroups
 
 - `Domain=<name>`
@@ -12,7 +16,7 @@ An ADR affecting more than one component gets its own, dedicated metagroup path 
 ## Metainfo
 
 - `superseded-by=<id of the ADR>` — only set when status is `superseded`.
-- `spec-ref=<file>#<id>` — repeatable; names the specctl Section(s) this ADR governs. Whenever this ADR is created or has its status changed, the shared `lib/spec_link.py` module (used by both `adrctl.py` and `specctl.py`) automatically updates the `adr` Metainfo field on every referenced specctl object, logging the change there too. See design-specctl.md, "ADR Linkage", for the full mechanism. A `spec-ref` pointing at a file or object ID that doesn't exist aborts the operation. **Deferred — not yet implemented** (see design-specctl.md, "ADR Linkage", Implementation status): `specctl` ships first, standalone; this field and its propagation follow in a later change.
+- `spec-ref=<id>` — names the specctl Section this ADR governs. Single-valued, like every other Metainfo field (design-decisions.md, "Amendments": kept single-valued rather than generalizing the shared Metainfo mechanism for this one field's repeatable use case) — one ADR names at most one governed Section; setting it again replaces the previous value. No file component: `spec-ref` resolves within the same shared `--root` directory the triggering `adrctl` invocation itself received (design.md, "File and Directory Parameters"), so the target specctl store is found the same way `adrctl`'s own store is. After a successful `add`, `set-status`, or `info-spec-ref` that leaves `spec-ref` set, the shared `lib/spec_link.py` module (used by both `adrctl.py` and `specctl.py`) updates the `adr` Metainfo field on the referenced specctl Section and logs an `M` History entry there (`lib/spec_store.py`'s `receive_adr_link` — see design-specctl.md, "ADR Linkage", for the full mechanism and its distinction from the manual `set-adr`). A `spec-ref` naming a Section that doesn't exist aborts the `adrctl` operation (exit code 1) — the ADR itself remains persisted regardless, since the two stores are not updated transactionally (design-decisions.md, "Amendments").
 
 ## Status
 

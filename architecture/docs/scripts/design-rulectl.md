@@ -2,6 +2,10 @@
 
 Objects are checks that can be applied to a code or data base.
 
+## Store
+
+Store name `rules` (design.md, "File and Directory Parameters"): resolves to `<shared-dir>/rules.md` or `<shared-dir>/rules`. Default mode when neither exists yet: **directory** — the 3-level Language/Context/Category hierarchy reads more naturally as nested directories than as one growing file.
+
 ## Metagroups
 
 - `Language=Go|Python|C|Java|...`

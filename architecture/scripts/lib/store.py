@@ -1,10 +1,11 @@
-"""Object storage orchestration: mode detection, locking, CRUD, --id
+"""Object storage orchestration: --root resolution, locking, CRUD, --id
 resolution, (directory mode) index maintenance and reindex repair.
 
-Mode detection for a --root that does not exist yet (first invocation): a
-path with a file suffix (e.g. "tasks.md") is treated as single-file mode;
-anything else is treated as directory mode and created. design.md does not
-specify this case explicitly -- this is a documented implementation choice.
+--root resolution (design.md, "File and Directory Parameters"): a shared
+directory holds every tool's data under a fixed per-tool store name
+(ToolSpec.root_name); resolve_root() implements the two-step algorithm
+(derive the shared directory, then find/create <name>.md or <name> within
+it) that all four tools use identically.
 """
 
 from __future__ import annotations
@@ -26,10 +27,61 @@ class StoreError(Exception):
     pass
 
 
-def detect_mode(path: Path) -> str:
-    if path.exists():
-        return "file" if path.is_file() else "directory"
-    return "file" if path.suffix else "directory"
+def _validate_metainfo_choice(spec: ToolSpec, metainfo_type: str, value: str) -> None:
+    """Enforce MetainfoSpec.choices, if the type declares a fixed value set
+    (design.md, "Metainfo": "Available types are tool-specific" -- some of
+    those types are closed enums, e.g. taskctl's `review`)."""
+    for metainfo in spec.metainfo:
+        if metainfo.type == metainfo_type:
+            if metainfo.choices is not None and value not in metainfo.choices:
+                raise StoreError(
+                    f"invalid value {value!r} for metainfo {metainfo_type!r} "
+                    f"(choices: {', '.join(metainfo.choices)})"
+                )
+            return
+
+
+def resolve_root(given_path: Path, name: str, default_mode: str) -> tuple[Path, str]:
+    """Resolve a --root argument to this tool's actual file-or-directory
+    target and mode, per design.md "File and Directory Parameters". Pure
+    path logic only (aside from .exists()/.is_file() checks) -- callers are
+    responsible for creating the resolved target (mkdir for directory mode;
+    file mode is created lazily on first write, same as before)."""
+    given_path = Path(given_path)
+    looks_like_file = given_path.is_file() or (
+        not given_path.exists() and given_path.suffix == ".md"
+    )
+    # A bare path whose own name already matches this tool's store name
+    # (e.g. a first invocation of "adrctl --root ./project/adrs") also
+    # names the target directly, symmetric to the .md case above -- without
+    # this, it would fall through to "given_path is the shared directory"
+    # and double-nest to ./project/adrs/adrs.
+    looks_like_own_target = given_path.name == name
+    shared_dir = given_path.parent if (looks_like_file or looks_like_own_target) else given_path
+
+    file_candidate = shared_dir / f"{name}.md"
+    dir_candidate = shared_dir / name
+
+    if file_candidate.exists() and dir_candidate.exists():
+        raise StoreError(
+            f"both {file_candidate} and {dir_candidate} exist for store {name!r} -- ambiguous, remove one"
+        )
+    if file_candidate.exists():
+        return file_candidate, "file"
+    if dir_candidate.exists():
+        return dir_candidate, "directory"
+
+    # Neither exists yet (first invocation for this tool). An explicitly
+    # named candidate overrides the tool's own default (design-decisions.md,
+    # "Amendments (2026-08-19, shared-root resolution)").
+    if given_path == file_candidate:
+        return file_candidate, "file"
+    if given_path == dir_candidate:
+        return dir_candidate, "directory"
+
+    if default_mode == "file":
+        return file_candidate, "file"
+    return dir_candidate, "directory"
 
 
 def object_file_name(record: ObjectRecord) -> str:
@@ -52,34 +104,26 @@ class ReindexReport:
 
 @dataclass
 class Store:
-    """A single --root normally maps to one Store. Passing a list of more
-    than one root switches to "merged" mode (design.md: "If the tool
-    receives multiple files and/or directories ... it operates strictly
-    read-only across all of them, merging their information") -- every
-    write operation raises StoreError in that mode."""
+    """A single --root maps to one Store, resolved via resolve_root() to
+    this tool's actual file-or-directory target (design.md, "File and
+    Directory Parameters")."""
 
     spec: ToolSpec
-    root: Path | list[Path]
+    root: Path
     mode: str = field(init=False)
 
     def __post_init__(self) -> None:
-        roots = [Path(r) for r in self.root] if isinstance(self.root, list) else [Path(self.root)]
-        if len(roots) > 1:
-            self.mode = "merged"
-            self.root = roots
-            self._sub_stores = [Store(self.spec, r) for r in roots]
-            return
-        self.root = roots[0]
-        self.mode = detect_mode(self.root)
+        self.root, self.mode = resolve_root(Path(self.root), self.spec.root_name, self.spec.default_mode)
         if self.mode == "directory":
             self.root.mkdir(parents=True, exist_ok=True)
+        else:
+            # File mode still needs its parent (the shared directory) to
+            # exist before lock() can create the sibling .lock file -- the
+            # file itself is still created lazily, on first write.
+            self.root.parent.mkdir(parents=True, exist_ok=True)
 
     def lock(self) -> locking.FileLock:
         return locking.FileLock(self.root)
-
-    def _require_writable(self) -> None:
-        if self.mode == "merged":
-            raise StoreError("multiple --root values were given; this operation is read-only in that mode")
 
     # -- metagroup ------------------------------------------------------
 
@@ -93,7 +137,6 @@ class Store:
         otherwise a sort number is auto-assigned (max+1 among its siblings,
         corrections.md: 'add-phase: Parameter ohne Nummer, Nummer
         automatisch wählen')."""
-        self._require_writable()
         with self.lock():
             given_parents, given_leaf = path_segments[:-1], path_segments[-1]
             if self.mode == "directory":
@@ -125,11 +168,6 @@ class Store:
         return metagroup.sf_object_type_for(declarations, self._sf_resolve_path(declarations, path_segments))
 
     def metagroup_paths(self) -> list[tuple[str, ...]]:
-        if self.mode == "merged":
-            paths: list[tuple[str, ...]] = []
-            for sub in self._sub_stores:
-                paths.extend(sub.metagroup_paths())
-            return paths
         if self.mode == "directory":
             return list(metagroup.dir_collect_known_types(self.root).values())
         declarations, _records = self._sf_read()
@@ -145,16 +183,22 @@ class Store:
 
     def _dir_resolve_path(self, given_segments: list[str]) -> list[str]:
         resolved: list[str] = []
-        for given in given_segments:
-            siblings = metagroup.dir_sibling_names(self.root, resolved)
-            resolved.append(metagroup.resolve_segment(siblings, given))
+        try:
+            for given in given_segments:
+                siblings = metagroup.dir_sibling_names(self.root, resolved)
+                resolved.append(metagroup.resolve_segment(siblings, given))
+        except metagroup.MetagroupError as exc:
+            raise StoreError(str(exc)) from exc
         return resolved
 
     def _sf_resolve_path(self, declarations, given_segments: list[str]) -> list[str]:
         resolved: list[str] = []
-        for given in given_segments:
-            siblings = metagroup.sf_sibling_names(declarations, resolved)
-            resolved.append(metagroup.resolve_segment(siblings, given))
+        try:
+            for given in given_segments:
+                siblings = metagroup.sf_sibling_names(declarations, resolved)
+                resolved.append(metagroup.resolve_segment(siblings, given))
+        except metagroup.MetagroupError as exc:
+            raise StoreError(str(exc)) from exc
         return resolved
 
     # -- add --------------------------------------------------------------
@@ -170,10 +214,11 @@ class Store:
         object_id: Optional[str] = None,
         initial_status: Optional[str] = None,
     ) -> ObjectRecord:
-        self._require_writable()
         content = dict(content or {})
         content.setdefault("Description", description)
         metainfo = metainfo or {}
+        for metainfo_type, value in metainfo.items():
+            _validate_metainfo_choice(self.spec, metainfo_type, value)
 
         with self.lock():
             declarations: list[MetagroupDeclaration] = []
@@ -210,6 +255,13 @@ class Store:
                 )
                 object_id = derive_id(canonical)
 
+            existing_ids = (
+                {r.object_id for r, _p in self._load_all()} if self.mode == "directory"
+                else {r.object_id for r in sf_records}
+            )
+            if object_id in existing_ids:
+                raise StoreError(f"object ID {object_id!r} already exists in this store")
+
             record = ObjectRecord(
                 object_id=object_id,
                 object_type=object_type,
@@ -224,7 +276,7 @@ class Store:
 
             if self.mode == "directory":
                 file_path = directory / object_file_name(record)
-                file_path.write_text(objectfile.render_object(record, self.spec), encoding="utf-8")
+                atomicio.atomic_write_text(file_path, objectfile.render_object(record, self.spec))
                 self._rebuild_index(directory)
             else:
                 sf_records.append(record)
@@ -234,23 +286,11 @@ class Store:
     # -- read ---------------------------------------------------------------
 
     def get(self, object_id: str) -> ObjectRecord:
-        if self.mode == "merged":
-            for sub in self._sub_stores:
-                try:
-                    return sub.get(object_id)
-                except StoreError:
-                    continue
-            raise StoreError(f"no object with ID {object_id!r}")
         if self.mode == "directory":
             return self._find(object_id)[0]
         return self._sf_find(object_id)[0]
 
     def list_all(self) -> list[ObjectRecord]:
-        if self.mode == "merged":
-            records: list[ObjectRecord] = []
-            for sub in self._sub_stores:
-                records.extend(sub.list_all())
-            return records
         if self.mode == "directory":
             return [record for record, _path in self._load_all()]
         _declarations, records = self._sf_read()
@@ -283,7 +323,6 @@ class Store:
     def set_status(
         self, object_id: str, new_status: str, *, message: str = "", force: bool = False
     ) -> ObjectRecord:
-        self._require_writable()
         if new_status not in self.spec.status.codes:
             raise StoreError(f"invalid status {new_status!r} for {self.spec.name}")
         with self.lock():
@@ -306,7 +345,7 @@ class Store:
             return record
 
     def set_metainfo(self, object_id: str, metainfo_type: str, value: str) -> ObjectRecord:
-        self._require_writable()
+        _validate_metainfo_choice(self.spec, metainfo_type, value)
         with self.lock():
             record, ctx = self._locate(object_id)
             record.metainfo = [e for e in record.metainfo if e.type != metainfo_type]
@@ -317,8 +356,108 @@ class Store:
             self._persist(record, ctx)
             return record
 
+    def set_content(self, object_id: str, block: str, value: str) -> ObjectRecord:
+        """Change one of the object's user-content blocks after creation
+        (design.md, "Object Operations": "Change content") -- the generic
+        model previously only let a block be set inline at `add` time."""
+        with self.lock():
+            record, ctx = self._locate(object_id)
+            record.content[block] = value
+            record.history.append(
+                HistoryEntry(timestamp=now_iso(), prefix="M", message=f"{block} changed")
+            )
+            self._persist(record, ctx)
+            return record
+
+    def delete(self, object_id: str) -> ObjectRecord:
+        """Remove an object entirely (design.md, "Object Operations": Delete).
+        Leaves a permanent numbering gap (design.md, "Numbering": "Deleting an
+        object leaves a gap -- numbers are never compacted") -- no renumbering
+        of siblings happens here, unlike `reorder`."""
+        with self.lock():
+            if self.mode == "directory":
+                record, path = self._find(object_id)
+                path.unlink()
+                self._rebuild_index(path.parent)
+            else:
+                record, declarations, records = self._sf_find(object_id)
+                records = [r for r in records if r.object_id != object_id]
+                self._sf_write(declarations, records)
+            return record
+
+    def set_metagroup(self, object_id: str, metagroup_path: list[str]) -> ObjectRecord:
+        """Change metagroup (design.md, "Changing an object's metagroup"):
+        reassign an object to a different, already-existing metagroup path,
+        re-deriving its Number (`max+1` in the new subpath -- the old
+        subpath's number becomes a gap), Object Type, and Signature/file
+        name/location -- the same re-derivation `add` performs for a
+        brand-new object. `metagroup_path` is resolved against *existing*
+        siblings only, same as `--<metagroup-type>` elsewhere (design.md,
+        CLI Contract) -- it never creates a new metagroup path."""
+        with self.lock():
+            if self.mode == "directory":
+                record, old_path = self._find(object_id)
+                new_segments = self._dir_resolve_path(metagroup_path)
+                if new_segments == list(record.metagroup_levels):
+                    raise StoreError(
+                        "object is already assigned to that metagroup path -- use 'reorder' "
+                        "to change its position among unchanged siblings instead"
+                    )
+                new_object_type = metagroup.dir_object_type_for(self.root, new_segments)
+                new_directory = metagroup.level_directory(self.root, new_segments)
+                sibling_numbers = [r.number for r, _p in self._load_directory(new_directory)]
+
+                old_directory = old_path.parent
+                record.metagroup_levels = tuple(new_segments)
+                record.object_type = new_object_type
+                record.number = numbering.next_number(sibling_numbers)
+                record.history.append(
+                    HistoryEntry(
+                        timestamp=now_iso(), prefix="M",
+                        message=f"metagroup changed to {'/'.join(new_segments)}",
+                    )
+                )
+
+                # Write the new file (atomically) before removing the old one --
+                # if the write fails partway, the object still exists at its old
+                # location instead of vanishing entirely (design.md, "Writes go
+                # through a <...>.tmp file"; the same order _dir_reorder already
+                # uses for its own file moves).
+                new_path = new_directory / object_file_name(record)
+                atomicio.atomic_write_text(new_path, objectfile.render_object(record, self.spec))
+                old_path.unlink()
+                self._rebuild_index(old_directory)
+                self._rebuild_index(new_directory)
+                return record
+
+            declarations, records = self._sf_read()
+            record = next((r for r in records if r.object_id == object_id), None)
+            if record is None:
+                raise StoreError(f"no object with ID {object_id!r}")
+            new_segments = self._sf_resolve_path(declarations, metagroup_path)
+            if new_segments == list(record.metagroup_levels):
+                raise StoreError(
+                    "object is already assigned to that metagroup path -- use 'reorder' "
+                    "to change its position among unchanged siblings instead"
+                )
+            new_object_type = metagroup.sf_object_type_for(declarations, new_segments)
+            sibling_numbers = [
+                r.number for r in records
+                if r.object_id != object_id and list(r.metagroup_levels) == new_segments
+            ]
+            record.metagroup_levels = tuple(new_segments)
+            record.object_type = new_object_type
+            record.number = numbering.next_number(sibling_numbers)
+            record.history.append(
+                HistoryEntry(
+                    timestamp=now_iso(), prefix="M",
+                    message=f"metagroup changed to {'/'.join(new_segments)}",
+                )
+            )
+            self._sf_write(declarations, records)
+            return record
+
     def annotate(self, object_id: str, message: str) -> ObjectRecord:
-        self._require_writable()
         with self.lock():
             record, ctx = self._locate(object_id)
             record.history.append(
@@ -336,7 +475,6 @@ class Store:
         """Move an object to a new position among its metagroup siblings,
         right after sibling number `insert_after` (0 = before all siblings).
         Delegates the actual plan (gap reuse vs. cascade) to lib/numbering.py."""
-        self._require_writable()
         with self.lock():
             if self.mode == "directory":
                 return self._dir_reorder(object_id, insert_after)
@@ -362,7 +500,7 @@ class Store:
                 )
             )
             new_path = directory / object_file_name(other_record)
-            new_path.write_text(objectfile.render_object(other_record, self.spec), encoding="utf-8")
+            atomicio.atomic_write_text(new_path, objectfile.render_object(other_record, self.spec))
             if new_path != other_path:
                 other_path.unlink()
 
@@ -374,7 +512,7 @@ class Store:
             )
         )
         new_path = directory / object_file_name(record)
-        new_path.write_text(objectfile.render_object(record, self.spec), encoding="utf-8")
+        atomicio.atomic_write_text(new_path, objectfile.render_object(record, self.spec))
         if new_path != path:
             path.unlink()
 
@@ -467,7 +605,7 @@ class Store:
     def _persist(self, record: ObjectRecord, ctx) -> None:
         if self.mode == "directory":
             path = ctx
-            path.write_text(objectfile.render_object(record, self.spec), encoding="utf-8")
+            atomicio.atomic_write_text(path, objectfile.render_object(record, self.spec))
             self._rebuild_index(path.parent)
         else:
             declarations, records = ctx

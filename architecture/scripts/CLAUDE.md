@@ -16,20 +16,32 @@ Design-Dokumente maßgeblich — nicht der Code.
 
 ## Aktueller Implementierungsstand
 
-Kernmodell, Locking, Index-Dateien, Reorder, Multi-Root Read-Only-Merge sowie
-`taskctl.py`, `rulectl.py`, `adrctl.py` sind implementiert und laufen End-to-End
-— sowohl Directory-Mode als auch Single-File-Mode. `reindex` baut `.index.json`
-neu und erkennt/behebt Inkonsistenzen aktiv (verwaiste `.tmp`-Dateien werden
-entfernt, doppelte Nummern innerhalb einer Metagroup werden gemeldet).
-`add-<metagroup-type>` vergibt die Sortnummer automatisch (`max+1`), wenn keine
-explizit angegeben wird; `add --<metagroup-type>` akzeptiert zur Referenz auf
-existierende Pfade pro Segment Nummer, Name oder `Nummer-Name` (spezifiziert in
-`design.md`, CLI Contract; Begründung in `design-decisions.md`, Abschnitt
-"Amendments").
+Kernmodell, Locking, Index-Dateien, Reorder sowie `taskctl.py`, `rulectl.py`,
+`adrctl.py` sind implementiert und laufen End-to-End — sowohl Directory-Mode
+als auch Single-File-Mode. `reindex` baut `.index.json` neu und erkennt/behebt
+Inkonsistenzen aktiv (verwaiste `.tmp`-Dateien werden entfernt, doppelte
+Nummern innerhalb einer Metagroup werden gemeldet). `add-<metagroup-type>`
+vergibt die Sortnummer automatisch (`max+1`), wenn keine explizit angegeben
+wird; `add --<metagroup-type>` akzeptiert zur Referenz auf existierende Pfade
+pro Segment Nummer, Name oder `Nummer-Name` (spezifiziert in `design.md`, CLI
+Contract; Begründung in `design-decisions.md`, Abschnitt "Amendments").
 
-`specctl.py` ist implementiert (Add je Ebene, Status inkl. ADR-Pflicht ab
-`stable`, `set-adr`, `set-description`, `rename`, `reorder`, `move-to-<Ebene>`,
-`show`, `list`, `history`, `render`) — **sowohl Single-File- als auch Directory-Mode**
+**`--root` ist projektweit gemeinsam** (`design.md`, "File and Directory
+Parameters"; `design-decisions.md`, "Amendments (2026-08-19, shared-root
+resolution)"): alle vier Tools nehmen denselben `--root`-Pfad entgegen und
+lösen ihn über `lib/store.py`s `resolve_root(given_path, name, default_mode)`
+zu ihrem eigenen `<name>.md`/`<name>` innerhalb des gemeinsamen Verzeichnisses
+auf (`ToolSpec.root_name`/`default_mode`: `tasks`/Directory, `rules`/Directory,
+`adrs`/Directory, `spec`/Single-File). Das macht `adrctl`s künftige
+`spec-ref`-Verknüpfung zu `specctl` eindeutig auflösbar, ohne einen separat
+konfigurierten Pfad. Multi-Root Read-Only-Merge (`--root` mehrfach) ist dafür
+ersatzlos entfallen — kein Tool hatte dafür einen echten Anwendungsfall.
+`lib/spec_store.py` nutzt `resolve_root` identisch (`_ROOT_NAME = "spec"`).
+
+`specctl.py` ist implementiert (`init`, `set-title`, `set-preamble`, Add je
+Ebene, Status inkl. ADR-Pflicht ab `stable`, `set-adr`, `set-description`,
+`rename`, `reorder`, `move-to-<Ebene>`, `delete`, `show`, `list`, `history`,
+`render`) — **sowohl Single-File- als auch Directory-Mode**
 (`design-specctl.md`, "Object Format"). Es nutzt bewusst *nicht*
 `lib/cliapp.py` und `lib/objectfile.py`/`lib/singlefile.py`/`lib/store.py`:
 deren generisches Objektformat (Signature-Heading, `## Meta`-Bulletliste,
@@ -42,11 +54,10 @@ Wiederverwendet werden die tatsächlich generischen Bausteine:
 `lib/history.py`, `lib/text.py` (`escape_signature_text`, `slugify` —
 Letzteres seit specctl auch von `lib/store.py` genutzt statt eines eigenen
 privaten Duplikats), `lib/metagroup.py` (`resolve_segment`,
-`assign_leaf_name`) sowie `lib/store.py`s `detect_mode` (Datei- vs.
-Directory-Erkennung anhand Dateiendung) und `lib/abbrev.py`, das dafür um
-die 4-/5-Ebenen-Breiten aus `design-specctl.md` ("Object Type")
-generalisiert wurde, ohne das Verhalten für die anderen drei Tools zu
-ändern (deren Breiten summierten schon vorher zu 6).
+`assign_leaf_name`) sowie `lib/store.py`s `resolve_root` (siehe oben) und
+`lib/abbrev.py`, das dafür um die 4-/5-Ebenen-Breiten aus `design-specctl.md`
+("Object Type") generalisiert wurde, ohne das Verhalten für die anderen drei
+Tools zu ändern (deren Breiten summierten schon vorher zu 6).
 
 specctls Directory-Mode weicht vom allgemeinen Modell ab: **jede Section ist
 ein Verzeichnis** (`<nr>-<type>-<id>-<slug>/`, nicht nur Blätter), mit einer
@@ -63,7 +74,7 @@ präorder `list[SpecSection]`-Repräsentation, sodass sämtliche CRUD-Methoden
 bleiben — nur `_read`/`_write` verzweigen.
 
 `move-to-<metagroup-type>` (das allgemeine Modell nennt es
-`set-<metagroup-type>`, design.md: "Changing an object's metagroup ...
+`group-<metagroup-type>`, design.md: "Changing an object's metagroup ...
 re-derives everything downstream") verschiebt eine Section zu einem neuen
 Elternpfad — bei specctl trifft das den **gesamten verschobenen Teilbaum**,
 nicht nur die Section selbst: jedes Nachkommen-Object-Type wird aus seinem
@@ -74,20 +85,182 @@ Teilbaum (Zyklus), zum aktuellen Elternpfad (No-op, `reorder` verwenden) und
 solche, die für die Section selbst oder einen Nachkommen die 5-Ebenen-Grenze
 überschreiten würden.
 
-104 Unit-/Integrationstests für specctl (Single-File- und Directory-Mode,
-inkl. `move`) kommen zu den 221 der anderen drei Tools/geteilten Module
-hinzu (214 plus 7 neue Tests für die 4-/5-Ebenen-Generalisierung von
-`lib/abbrev.py`) — 325 insgesamt, unter `tests/`
-(`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`).
+Ein Spec-vs-Implementierung-Abgleich (2026-08-19) deckte mehrere in
+`design.md` bereits dokumentierte, aber nie verdrahtete Operationen auf; die
+folgenden wurden daraufhin nachgezogen (`design-decisions.md`, "Amendments
+(2026-08-19, closing spec/implementation gaps)"):
+- **`delete <id>`** bei allen vier Tools. Bei taskctl/rulectl/adrctl eine
+  einfache Entfernung (Objekt ist immer Metagroup-Blatt, keine Kinder
+  möglich); bei specctl lehnt `delete` eine Section mit Kind-Sections ab,
+  außer `--force-delete` löscht den gesamten Teilbaum. Hinterlässt wie jede
+  Löschung eine dauerhafte Nummernlücke, wird nirgends nachträglich geloggt.
+- **`set-<user-content-block> <id> <value>`** bei taskctl/rulectl/adrctl
+  (z. B. `set-description`, rulectls `set-procedure`, adrctls
+  `set-motivation`/`set-rationale`) — dieselbe `<verb>-<type>`-Form wie bei
+  Metagroups/Metainfo, jetzt auch für Content-Blöcke. specctl hatte
+  `set-description` bereits.
+- **`list`-Filter** bei allen vier Tools: `--<metagroup-type> <path>`
+  (taskctl/rulectl/adrctl) bzw. `--under <path>` (specctl) — inklusive aller
+  Nachfahren, nicht nur exakter Treffer; `--<metainfo-type> <value>`
+  (taskctl/rulectl/adrctl) bzw. `--adr <id>` (specctl) — exakter Treffer.
+  Höchstens ein Metagroup-Filter pro Aufruf, Metainfo-Filter kombinieren
+  sich (AND).
+- **`MetainfoSpec.choices` wird jetzt durchgesetzt** (`lib/store.py`,
+  `_validate_metainfo_choice`, greift bei `add` und `info-<metainfo-type>`)
+  — vorher war das Feld deklariert (z. B. taskctls `review`), aber nie
+  geprüft; ein ungültiger Wert wurde still akzeptiert und fiel bei taskctl
+  sogar still auf den 3-Schritt-Pfad zurück statt zu scheitern.
+
+**Drei getrennte Verb-Präfixe statt eines gemeinsamen `set-`** für die drei
+objektbezogenen Update-Achsen (`design-decisions.md`, "Amendments
+(2026-08-19, three-verb command namespace + Change metagroup)"): `group-<Metagroup-Typ>`
+(Change metagroup), `info-<Metainfo-Typ>` (Metainfo, vormals
+`set-<Metainfo-Typ>` — betrifft auch adrctls `info-spec-ref`/
+`info-superseded-by`), `set-<Content-Block>` (Change content, unverändert).
+Fest im generischen Engine-Code verankert (`lib/cliapp.py`), nicht als
+konfigurierbares `ToolSpec`-Feld — macht die drei Namensräume kollisionsfrei,
+ohne pro Tool wählbare Präfixe (die kein Tool je gebraucht hat). Damit ist
+**Change metagroup** (`group-<metagroup-type> <id> <path>`) jetzt für
+taskctl/rulectl/adrctl implementiert (`lib/store.py`s `set_metagroup`):
+weist einem Objekt einen anderen, bereits existierenden Metagroup-Pfad zu,
+leitet Nummer/Object-Type/Speicherort neu ab (wie `add`), lehnt No-op
+(aktueller Pfad) mit Verweis auf `reorder` ab. Da ein Objekt im generischen
+Modell immer ein Metagroup-Blatt ist (nie ein Pfadknoten mit eigenen
+Kindern), ist — anders als bei specctls `move` — keine
+Object-Type-Neuableitungskaskade nötig.
+
+Beim Implementieren zusätzlich behoben: `_dir_resolve_path`/
+`_sf_resolve_path` (genutzt von `add`, `group-<metagroup-type>`,
+`resolve_metagroup_path`) fingen `lib/metagroup.py`s `MetagroupError` bisher
+nicht ab — ein unauflösbarer Metagroup-Pfad (z. B. `add --component
+Nonexistent/thing`) stürzte mit unbehandeltem Traceback ab statt sauber mit
+`StoreError`/Exit 1 zu scheitern. Jetzt gefangen und als `StoreError`
+weitergereicht.
+
+Noch offen aus dem Spec-vs-Implementierung-Abgleich (siehe `design.md`,
+"Metagroup Operations"): Metagroup-**Rename** für taskctl/rulectl/adrctl —
+im Contract dokumentiert, noch nicht implementiert. specctl deckt das
+implizit über sein eigenes `rename` ab.
+
+Ein Korrektheits-Review (2026-08-20, `design-decisions.md`, "Amendments
+(2026-08-20, correctness review: ID uniqueness, atomic writes, ADR
+validation)") deckte fünf Probleme auf, alle behoben:
+- **Object-ID-Eindeutigkeit** wird jetzt bei `add` geprüft — sowohl
+  `lib/store.py` (taskctl/rulectl/adrctl) als auch `lib/spec_store.py`
+  (specctl); vorher wurde nur die Syntax geprüft, eine Kollision mit einer
+  bereits existierenden ID wurde still akzeptiert.
+- **Directory-Mode-Objektschreibvorgänge in `lib/store.py` sind jetzt
+  atomar** (`atomicio.atomic_write_text`, `.tmp` + `os.replace`) an allen
+  fünf bisher direkten `path.write_text(...)`-Stellen (`add`,
+  `set_metagroup`, `_dir_reorder` x2, `_persist`) — `lib/spec_store.py` war
+  bereits durchgehend atomar.
+- **`set_metagroup`s Schreibreihenfolge** ist jetzt konsistent mit
+  `_dir_reorder`: neue Datei zuerst (atomar) schreiben, dann erst die alte
+  löschen — vorher umgekehrt, was bei einem Fehler zwischen beiden Schritten
+  das Objekt an keinem Ort mehr existieren ließ.
+- **`OpenQuestions`** (specctl) ist jetzt über die CLI erreichbar:
+  `add-<Ebene> ... --open-questions` und `set-open-questions` — vorher nur
+  im Modell vorhanden, nie exponiert.
+- **specctls ADR-Validierung prüft jetzt echte Existenz** im adrctl-Store
+  (`lib/adr_lookup.py`, `SpecStore._require_valid_adr`) statt nur
+  Nichtleerheit — dafür wurde `adrctl.py`s `ToolSpec` nach `lib/adrctl_spec.py`
+  extrahiert (einzige Quelle der Wahrheit, keine Duplikation). Geprüft wird
+  nur Existenz, bewusst nicht Status oder Rückverweis über `spec-ref` (siehe
+  Amendment für die Begründung).
+
+Ein Folge-Review (2026-08-20, `design-decisions.md`, "Amendments
+(2026-08-20, adr_lookup follow-up fixes)") deckte zwei weitere Probleme in
+`lib/adr_lookup.py` auf, beide behoben, sowie zwei Dokumentationsfehler:
+- **`check_adr_exists` legt bei einem fehlschlagenden Check kein `adrs/`
+  mehr an**: vorher wurde für jeden Aufruf ein normaler `Store` konstruiert,
+  dessen `__post_init__` im Directory-Mode unbedingt `mkdir(...,
+  exist_ok=True)` ausführt — auch bei einer rein validierenden Anfrage gegen
+  einen noch gar nicht existierenden adrctl-Store. Jetzt wird die Existenz
+  zuerst über `resolve_root` (reine Pfadlogik, kein Dateisystemzugriff)
+  geprüft; ein `Store` wird erst konstruiert, wenn der Zielort tatsächlich
+  existiert.
+- **`check_adr_exists` hält jetzt den adrctl-Store-Lock** während des
+  `store.get(adr_id)`-Aufrufs — vorher lief die Prüfung ganz ohne Lock, ein
+  gleichzeitiges `adrctl`-Schreiben konnte dazwischenlaufen. Das schließt nur
+  die "gar kein Lock"-Lücke; keine cross-store-Atomarität mit dem
+  nachfolgenden specctl-Schreibvorgang — die adrctl↔specctl-Verknüpfung
+  bleibt bewusst nicht-transaktional (siehe bestehendes Amendment).
+- **`add --set-status stable|deprecated` ist bewusst von der
+  ADR-Pflicht ausgenommen** (design-specctl.md, "Status") — die
+  Wahl eines initialen Status bei `add` ist eine "initial-value choice, not
+  a transition", derselbe Freibrief, den `design.md` ("Object Status")
+  bereits für `--force` gewährt; kein Code-Fix, nur die Ausnahme explizit
+  dokumentiert.
+- **Widersprüchlicher History-Text korrigiert** (design-specctl.md,
+  "Metainfo"): der `adr`-Eintrag behauptete, manuelles `set-adr` und
+  automatisches `receive_adr_link` würden "identisch" geloggt — tatsächlich
+  loggt nur der automatische Pfad einen `M`-History-Eintrag, `set-adr` nie.
+
+**specctl hat jetzt eine explizite `init`-Lebenszyklus-Operation**
+(`design-decisions.md`, "Amendments (2026-08-20, specctl `init` lifecycle)"):
+Titel (`# <title>`) und Preamble waren zuvor opake, nie vom Tool berührte
+Textblöcke ohne CLI-Zugriff; jetzt sind beide echte, vom Tool verwaltete
+Felder. `init <title> [--preamble <value>]` legt das Dokument an; jede
+andere schreibende Operation prüft jetzt, ob das Dokument bereits
+initialisiert wurde, und scheitert sonst (`SpecStore._require_initialized`)
+— anders als `taskctl`/`rulectl`/`adrctl`, die weiterhin bei der ersten
+`add` still einen leeren Store anlegen (dort gibt es kein Titel/Preamble-
+Konzept, das eine explizite Init rechtfertigen würde). `set-title`/
+`set-preamble` ändern beide nachträglich. Im Directory-Mode ersetzt eine
+neue Pflichtdatei `_title.md` (immer geschrieben) die bisherige
+Existenzprüfung über das Verzeichnis selbst — `SpecStore.__post_init__`
+legt das Verzeichnis ohnehin unbedingt an (dasselbe Problem, das
+`lib/adr_lookup.py`s `check_adr_exists`-Fix am selben Tag schon für den
+adrctl-Store gelöst hat), das Verzeichnis existiert also auch unabhängig davon, ob `init` schon
+lief. Eine neue Preamble-Validierung (`lib/spec_document.py`s
+`validate_preamble`) lehnt Preamble-Text ab, der selbst wie eine
+Section-Überschrift aussieht (`##` bis `######`) — sonst würde `set-preamble`
+das Dokument beim nächsten Lesen stillschweigend korrumpieren können.
+
+437 Unit-/Integrationstests insgesamt unter `tests/`
+(`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
+davon rund 170 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
+`move`, `init`/`set-title`/`set-preamble` und die Init-Pflicht für jede
+andere schreibende Operation), mehrere Tests für `resolve_root` (Kollision, Default-Modus,
+`.md`-/Name-Override, Multi-Tool-Koexistenz unter einem `--root`), 17 Tests
+für die `spec-ref`-Verknüpfung (`receive_adr_link`, `lib/spec_link.py`, den
+generischen `after_dispatch`-Hook, End-to-End über `adrctl`/`specctl`:
+`add --spec-ref`, `set-status`-Re-Propagation, retroaktives `info-spec-ref`,
+fehlendes Ziel), rund 27 Tests für `delete`, `set-<user-content-block>`,
+`list`-Filter und die `choices`-Validierung, rund 9 Tests für
+`group-<metagroup-type>` (Store- und CLI-Ebene, No-op-Ablehnung, unbekannter
+Pfad) und die `info-`-Umbenennung, rund 15 Tests für das erste
+Korrektheits-Review: ID-Kollision (Store- und SpecStore-Ebene), das
+simulierte Schreib-Fehlschlagszenario für `set_metagroup` (alte Datei
+überlebt), `lib/adr_lookup.py`, und OpenQuestions über die CLI (inkl.
+ADR-Gating), sowie 2 weitere Tests aus dem Folge-Review: kein `adrs/` bei
+fehlschlagendem Check, Lock während des Checks gehalten.
 
 Noch offen:
 - `tasklist` (rulectl/adrctl) ist absichtlich nur als Stub vorhanden
   (Exit 1, "not yet specified") — Verhalten laut Design-Dokumenten separat
   zu spezifizieren.
-- specctl: die bidirektionale adrctl-Verknüpfung (`spec-ref`-Metainfo bei
-  adrctl, `lib/spec_link.py`, Auto-Propagation — `design-specctl.md`, "ADR
-  Linkage") ist spezifiziert, aber bewusst noch nicht implementiert; `adr`
-  wird bis dahin nur manuell über `set-status --adr` / `set-adr` gepflegt.
+- Metagroup-Rename für taskctl/rulectl/adrctl (siehe oben) — im Contract
+  dokumentiert, noch nicht implementiert.
+- specctl: die bidirektionale adrctl-Verknüpfung ist implementiert —
+  `spec-ref=<id>`-Metainfo bei adrctl (einwertig, `design-decisions.md`,
+  "Amendments (2026-08-19, spec-ref single-valued)"), `lib/spec_link.py`,
+  Auto-Propagation nach `adrctl add`/`set-status`/`info-spec-ref` über
+  `lib/cliapp.py`s `after_dispatch`-Hook in `SpecStore.receive_adr_link`
+  (loggt einen `M`-History-Eintrag, anders als das weiterhin manuelle
+  `set-adr`). Keine Transaktionalität über beide Stores hinweg: schlägt die
+  Propagation fehl (z. B. unbekannte `spec-ref`), bleibt die ADR trotzdem
+  persistiert, `adrctl` beendet sich mit Exit 1.
+- `resolve_root`-Lücke, beim Testen entdeckt, noch nicht entschieden: Zeigt
+  `--root` auf ein **existierendes Verzeichnis eines anderen Tools** (z. B.
+  `adrctl --root ./project/tasks`, wobei `tasks/` bereits taskctl gehört),
+  wird dieses Verzeichnis unverändert als *gemeinsames* Verzeichnis behandelt
+  (`design.md`: "path exists and is a directory → path itself") — adrctl
+  legt dann `./project/tasks/adrs/` an, verschachtelt unter dem fremden
+  Tool-Verzeichnis, statt dessen Elternverzeichnis als geteiltes Verzeichnis
+  zu erkennen. Nur der `.md`-Datei-Fall und der exakte Name-Match-Fall (beide
+  bestätigt) lösen das Elternverzeichnis auf; für ein fremdes, bereits
+  existierendes Tool-*Verzeichnis* gibt es noch keine analoge Regel.
 - Locking wurde nur innerhalb eines Prozesses (Threads) getestet, nicht
   über echte Multi-Prozess-Konkurrenz.
 
@@ -109,11 +282,11 @@ Noch offen:
 
 - Exit-Codes: `0` = ok, `1` = Fehler.
 - Fehlermeldungen → stderr, reguläre Ausgabe → stdout.
-- CLI-Struktur (Subcommands, `--json`-Flag, `--root` wiederholbar für
-  Read-Only-Merge, Positionsargumente ans Ende) einheitlich über alle vier
-  Tools halten, auch wenn ein Tool das jeweilige Feature (noch) nicht
-  braucht — das gilt für specctl trotz eigener CLI-Implementierung (kein
-  `lib/cliapp.py`) genauso.
+- CLI-Struktur (Subcommands, `--json`-Flag, `--root` als einzelner,
+  projektweit gemeinsamer Pfad, Positionsargumente ans Ende) einheitlich über
+  alle vier Tools halten, auch wenn ein Tool das jeweilige Feature (noch)
+  nicht braucht — das gilt für specctl trotz eigener CLI-Implementierung
+  (kein `lib/cliapp.py`) genauso.
 - Bei einer Änderung an einem Tool prüfen, ob dieselbe Änderung auch bei
   den anderen Sinn ergibt (z. B. neue CLI-Option, Statuslogik).
 
@@ -131,6 +304,12 @@ architecture/scripts/
     │                      # Numbering, History, Text, Abbrev, Clock, ...)
     ├── model.py, objectfile.py, singlefile.py, store.py, toolspec.py, index.py, render.py
     │                      # generisches Objektformat: taskctl/rulectl/adrctl
+    ├── adrctl_spec.py     # adrctls ToolSpec (aus adrctl.py extrahiert, einzige Quelle der
+    │                      # Wahrheit -- ermöglicht lib/adr_lookup.py, ohne adrctl.py zu importieren)
+    ├── adr_lookup.py      # specctl -> adrctl: prüft Existenz einer ADR-ID im adrctl-Store
+    │                      # (SpecStore._require_valid_adr) -- eigenes Modul statt in
+    │                      # spec_link.py, um einen Zirkelimport mit spec_store.py zu vermeiden
+    ├── spec_link.py       # adrctl -> specctl: automatische spec-ref-Propagation
     └── spec_model.py, spec_comment.py, spec_document.py, spec_store.py, spec_render.py
                            # specctl-eigenes, leichtgewichtiges Format (design-specctl.md)
 ```

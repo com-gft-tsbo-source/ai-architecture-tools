@@ -2,6 +2,10 @@
 
 Objects are tasks.
 
+## Store
+
+Store name `tasks` (design.md, "File and Directory Parameters"): resolves to `<shared-dir>/tasks.md` or `<shared-dir>/tasks`. Default mode when neither exists yet: **directory** — a task list's Phase-level structure reads more naturally as nested directories than as one growing file.
+
 ## Metagroups
 
 `Phase=<nr>-<name>` (single level; the 3-digit, zero-padded `<nr>` prefix is the metagroup's sort key, as for all tools — see design.md). Example: `002-Implementation`.

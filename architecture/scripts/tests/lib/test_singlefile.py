@@ -10,6 +10,8 @@ SPEC = ToolSpec(
     metainfo=(MetainfoSpec(type="review"),),
     status=StatusSpec(codes=(" ", "~", "X"), initial=" "),
     user_content_blocks=("Description",),
+    root_name="tasks",
+    default_mode="directory",
 )
 
 

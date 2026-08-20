@@ -13,10 +13,19 @@ to the other three tools regardless (architecture/scripts/CLAUDE.md: "CLI
 structure ... einheitlich ... halten, auch wenn ein Tool das jeweilige
 Feature (noch) nicht braucht").
 
+`init <title> [--preamble <value>]` must run once before any other write
+(design-specctl.md, "Title and Preamble") -- it creates the document and
+sets its Title, the field every other mutating operation checks for to
+tell an initialized document apart from an empty one.
+
 Both single-file and directory mode are implemented (design-specctl.md,
-"Object Format"). The adrctl `spec-ref` auto-propagation is not wired up
-yet, though (design-specctl.md, "ADR Linkage", Implementation status) --
-`adr` is set manually via set-status --adr / set-adr.
+"Object Format"). `--root` resolves to specctl's `spec.md`/`spec` within a
+directory shared by all four tools (design.md, "File and Directory
+Parameters") -- the same `--root` a user already passes to `adrctl` also
+locates specctl's data, deterministically. `adrctl`'s `spec-ref` metainfo
+field drives automatic propagation into a Section's `adr` field via
+lib/spec_link.py (design-specctl.md, "ADR Linkage") -- `set-adr` here
+remains the manual, unlogged way to set/correct it directly.
 """
 
 from __future__ import annotations
@@ -46,12 +55,24 @@ def _move_flag_name(level_type: str) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="specctl")
     parser.add_argument(
-        "--root", required=True, action="append",
-        help="Specification document: a file (single-file mode) or a directory (directory mode). "
-             "Repeatable: with more than one --root, operates strictly read-only across all of them, merged.",
+        "--root", required=True,
+        help="A directory shared by all four tools, or any single tool's own file/directory within "
+             "it -- resolved to specctl's spec.md / spec (design.md, 'File and Directory Parameters').",
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    init_parser = subparsers.add_parser(
+        "init", help="Create the document and set its Title/Preamble -- required before any other write"
+    )
+    init_parser.add_argument("title")
+    init_parser.add_argument("--preamble", default="")
+
+    title_parser = subparsers.add_parser("set-title", help="Change the document's Title")
+    title_parser.add_argument("value")
+
+    preamble_parser = subparsers.add_parser("set-preamble", help="Change the document's Preamble")
+    preamble_parser.add_argument("value")
 
     for depth, level_type in enumerate(LEVEL_TYPES, start=1):
         level_parser = subparsers.add_parser(
@@ -63,6 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
             help=f"'/'-separated path of {depth} heading name(s), ancestors then the new leaf",
         )
         level_parser.add_argument("--description", default="")
+        level_parser.add_argument("--open-questions", dest="open_questions", default="")
         level_parser.add_argument("--id", dest="object_id", default=None, help="Explicit free-form Object ID")
         level_parser.add_argument("--set-status", dest="set_status", default=None)
         level_parser.add_argument("--abbrev", default=None)
@@ -82,6 +104,16 @@ def build_parser() -> argparse.ArgumentParser:
     description_parser.add_argument("id")
     description_parser.add_argument("value")
     description_parser.add_argument(
+        "--adr", default=None,
+        help="Governing ADR ID; required if the Section is stable/deprecated and none is set yet",
+    )
+
+    open_questions_parser = subparsers.add_parser(
+        "set-open-questions", help="Change a Section's OpenQuestions content"
+    )
+    open_questions_parser.add_argument("id")
+    open_questions_parser.add_argument("value")
+    open_questions_parser.add_argument(
         "--adr", default=None,
         help="Governing ADR ID; required if the Section is stable/deprecated and none is set yet",
     )
@@ -113,8 +145,20 @@ def build_parser() -> argparse.ArgumentParser:
     show_parser.add_argument("id")
     show_parser.add_argument("--history", action="store_true", help="Include History")
 
+    delete_parser = subparsers.add_parser("delete", help="Delete a Section")
+    delete_parser.add_argument("id")
+    delete_parser.add_argument(
+        "--force-delete", dest="force_delete", action="store_true",
+        help="Delete the whole subtree, even if the Section still has descendant Sections",
+    )
+
     list_parser = subparsers.add_parser("list", help="List Sections")
     list_parser.add_argument("--status", default=None, choices=("draft", "stable", "deprecated"))
+    list_parser.add_argument(
+        "--under", default=None,
+        help="List only Sections under this '/'-separated ancestor path, including descendants",
+    )
+    list_parser.add_argument("--adr", default=None, help="List only Sections governed by this ADR ID")
 
     subparsers.add_parser("history", help="Combined History of every Section, newest first")
     subparsers.add_parser("render", help="Emit the document as plain, comment-stripped Markdown")
@@ -124,6 +168,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 def dispatch(store: SpecStore, args: argparse.Namespace) -> object:
     command = args.command
+
+    if command == "init":
+        try:
+            return store.init(args.title, preamble=args.preamble)
+        except SpecStoreError as exc:
+            raise CliError(str(exc)) from exc
+
+    if command == "set-title":
+        return store.set_title(args.value)
+
+    if command == "set-preamble":
+        return store.set_preamble(args.value)
 
     for depth, level_type in enumerate(LEVEL_TYPES, start=1):
         if command == _level_flag_name(level_type):
@@ -135,6 +191,7 @@ def dispatch(store: SpecStore, args: argparse.Namespace) -> object:
             try:
                 return store.add(
                     depth, path_segments, description=args.description,
+                    open_questions=args.open_questions,
                     object_id=args.object_id, initial_status=args.set_status,
                     abbrev_override=args.abbrev,
                 )
@@ -149,6 +206,9 @@ def dispatch(store: SpecStore, args: argparse.Namespace) -> object:
 
     if command == "set-description":
         return store.set_description(args.id, args.value, adr=args.adr)
+
+    if command == "set-open-questions":
+        return store.set_open_questions(args.id, args.value, adr=args.adr)
 
     if command == "rename":
         return store.rename(args.id, args.name)
@@ -167,10 +227,24 @@ def dispatch(store: SpecStore, args: argparse.Namespace) -> object:
     if command == "show":
         return store.resolve_id(args.id)
 
+    if command == "delete":
+        try:
+            return store.delete(args.id, cascade=args.force_delete)
+        except SpecStoreError as exc:
+            raise CliError(str(exc)) from exc
+
     if command == "list":
         sections = store.list_all()
         if args.status is not None:
             sections = [s for s in sections if s.status == args.status]
+        if args.under is not None:
+            try:
+                prefix = store.resolve_path(args.under.split("/"))
+            except SpecStoreError as exc:
+                raise CliError(str(exc)) from exc
+            sections = [s for s in sections if s.path_levels[:len(prefix)] == prefix]
+        if args.adr is not None:
+            sections = [s for s in sections if s.adr == args.adr]
         return sections
 
     if command == "history":
@@ -232,10 +306,9 @@ def _print_result(args: argparse.Namespace, result: object) -> None:
 def main(argv: list[str]) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    roots = [Path(r) for r in args.root]
 
     try:
-        store = SpecStore(root=roots if len(roots) > 1 else roots[0])
+        store = SpecStore(root=Path(args.root))
         result = dispatch(store, args)
     except (SpecStoreError, CliError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

@@ -11,16 +11,34 @@ Tools:
 
 ## File and Directory Parameters
 
-- Tools store their data in files or directories.
-- If the tool receives a **file** as parameter, it reads/writes only that file. The file holds objects in *single-file mode* (see "Object Format" below).
-- If the tool receives a **directory** as parameter, it reads/writes only within that directory and its subdirectories, in *directory mode* — one object per file.
-- If the tool receives **multiple files and/or directories** (any mix), it operates strictly read-only across all of them, merging their information.
+Tools store their data in files or directories, resolved from a single `--root <path>` (see CLI Contract). Each tool has a fixed **store name** (`tasks` for taskctl, `rules` for rulectl, `adrs` for adrctl, `spec` for specctl — see each tool's design document) that names its data within a directory shared by all four tools — this is what lets tools reference each other's objects (e.g. adrctl ↔ specctl, design-specctl.md "ADR Linkage") without an ambiguous, separately-configured path.
+
+`--root <path>` is resolved to the tool's actual file-or-directory target in two steps:
+
+**1. Determine the shared directory** — the directory that holds (or will hold) every tool's data for this project. `path` is treated as naming *this tool's own target directly* — and its parent used as the shared directory — whenever it looks like a file (exists as one, or doesn't exist yet but ends in `.md`) **or** its own name already matches this tool's store name `<name>` (e.g. `path` is exactly `.../adrs` for `adrctl`); otherwise `path` itself is the shared directory:
+- `path` exists and is a file → its parent directory.
+- `path` does not exist, ends in `.md` → its parent directory (created if necessary).
+- `path`'s own name equals `<name>` (this tool's store name) → its parent directory (created if necessary) — without this, a first invocation naming the target directory directly (e.g. `adrctl --root ./project/adrs`, not yet existing) would otherwise double-nest to `./project/adrs/adrs`.
+- Anything else (including an existing directory) → `path` itself.
+
+This means `--root` may point at *any* tool's own **file** — e.g. running `specctl --root ./project/adrs.md` resolves the shared directory to `./project`, exactly as `--root ./project` would. **Open gap:** the equivalent for an existing bare *directory* belonging to a different tool (e.g. `specctl --root ./project/adrs`, an existing directory) is not yet resolved the same way — its name doesn't match specctl's own store name, so rule 4 below applies and `./project/adrs` is (incorrectly, from a cross-tool-pointing perspective) treated as the shared directory itself. Only pointing at the shared directory directly, or at a tool's own `<name>.md` file, is currently reliable.
+
+**2. Resolve this tool's target within the shared directory**, given its store name `<name>`:
+- Two candidates: `<name>.md` (file, *single-file mode*, see "Object Format" below) and `<name>` (directory, *directory mode* — one object per file).
+- Both candidates exist → abort with an error (ambiguous; requires manual cleanup).
+- Exactly one candidate exists → use it, in the corresponding mode.
+- Neither exists (first invocation for this tool):
+  - `path` (from step 1, before resolving to the shared directory) is itself exactly the file candidate → create and use it as a file.
+  - `path` is itself exactly the directory candidate → create and use it as a directory.
+  - Otherwise → the tool's own default mode (see its design document), creating `<name>.md` or `<name>`.
+
+There is no multi-root, read-only merge mode — `--root` takes exactly one path, and every invocation resolves to exactly one file-or-directory target (design-decisions.md, "Amendments": this replaced the original repeatable-`--root` merge design once cross-tool referencing needed an unambiguous, shared location instead).
 
 ## Managed Objects
 
 ### Object ID
 
-- Every object has an ID.
+- Every object has an ID, **unique within its store** — `add` rejects an explicit `--id` (or, astronomically unlikely, a derived one) that already exists there.
 - Generated once, on creation, as a 6-character hexadecimal code derived from the object's initial content. It never changes afterwards, even if the content changes later.
 - May instead be supplied explicitly as a parameter at creation time; in that case it may be any free-form string.
 - Free-form IDs **must not contain `/`** (reserved for the `--id` path-selector syntax, see CLI Contract).
@@ -38,15 +56,16 @@ Tools:
 
 - **Every object belongs to exactly one metagroup** (one leaf-level path) — there is no multi-membership. If an object would logically belong to more than one path (e.g. an ADR affecting two components), the user manually creates a new metagroup that semantically represents the combination. This is a manual convention, not a tool feature.
 - The object's `Meta` section (see Object Format) lists the resolved value for every ancestor level of that one path, for easy filtering/display — this is a derived display of the single assignment, not independent membership.
-- A metagroup path that is referenced (e.g. via `add`/`set-<metagroup-type>`) but does not exist aborts the operation with an error, in both modes. Metagroup paths must be created explicitly first via `add-<metagroup-type> <name>` — tools never auto-create them.
+- A metagroup path that is referenced (e.g. via `add`/`group-<metagroup-type>`) but does not exist aborts the operation with an error, in both modes. Metagroup paths must be created explicitly first via `add-<metagroup-type> <name>` — tools never auto-create them.
   - In **directory mode**, this mirrors the metagroup hierarchy 1:1 as nested subdirectories; `add-<metagroup-type> <name>` creates that directory.
   - In **single-file mode**, there is no filesystem directory to create; `add-<metagroup-type> <name>` instead writes an entry to the file's `## Metagroups` bookkeeping section (see Object Format). This keeps the "must exist first" rule identical across both modes.
 - Every metagroup Name carries a 3-digit, zero-padded sort number as prefix: `<nr>-<name>` (e.g. `002-Implementation`). This number determines display/listing order and is stripped before deriving the Object Type (see below). By default it is assigned the same way as object numbers (see Numbering) — `max + 1` among sibling metagroups at creation — but `add-<metagroup-type>` also accepts the prefix supplied explicitly (`add-<metagroup-type> <nr>-<name>`), which is then used verbatim instead of being auto-assigned. There is no dedicated "reorder metagroup" operation; changing the order of an already-created metagroup is done via Rename (assigning a different `<nr>-<name>`).
-- **Changing an object's metagroup** (`set-<metagroup-type>`) re-derives everything that depends on it: a new Number (via `max + 1` in the new subpath — the old subpath's number becomes a gap), a new Object Type, a new Signature and file name, the file's physical location (directory mode) or its position within the file (single-file mode), and the `## Meta` section content. This is logged as a normal `M` history entry.
+- **Changing an object's metagroup** (`group-<metagroup-type>`) re-derives everything that depends on it: a new Number (via `max + 1` in the new subpath — the old subpath's number becomes a gap), a new Object Type, a new Signature and file name, the file's physical location (directory mode) or its position within the file (single-file mode), and the `## Meta` section content. This is logged as a normal `M` history entry.
 
 ### Metainfo
 
 - Every object may carry Metainfo: Type/Name tuples that provide context for the object's content (e.g. `weight`, `tool`, `assignee-type`). Available types are tool-specific.
+- A Metainfo type may declare a fixed, closed set of valid values (e.g. taskctl's `review`: `none`/`user`/`subagent`) instead of free text. Setting a value outside that set — via `info-<metainfo-type>` or inline on `add` — is rejected with an error; a type without a declared value set accepts any text.
 
 ### Numbering
 
@@ -174,7 +193,7 @@ If the file uses metagroups that need to be created ahead of any object (mirrori
     # <signature of first object>
     ...
 
-This is plain Markdown (same bullet-list style as `## Meta`), holds one line per declared metagroup path with its Object Type abbreviation, and is the single-file-mode equivalent of `.index.md` (see Index Files) — a metagroup referenced by `set-<metagroup-type>` but missing from this section aborts with an error, exactly as an undeclared directory would in directory mode.
+This is plain Markdown (same bullet-list style as `## Meta`), holds one line per declared metagroup path with its Object Type abbreviation, and is the single-file-mode equivalent of `.index.md` (see Index Files) — a metagroup referenced by `group-<metagroup-type>` but missing from this section aborts with an error, exactly as an undeclared directory would in directory mode.
 
 **Directory mode:** exactly one object per file. Since the metagroup is already conveyed by the file's location in the directory tree, no additional metagroup-path heading is inserted and headings are not shifted — the template above is used unchanged.
 
@@ -182,25 +201,25 @@ This is plain Markdown (same bullet-list style as `## Meta`), holds one line per
 
 ### Metagroup Operations
 - Create (`add-<metagroup-type> <name>`) — creates the metagroup's directory (directory mode) or its `## Metagroups` entry (single-file mode).
-- Rename
+- Rename — **not yet implemented** for taskctl/rulectl/adrctl (no store method or CLI command); specctl covers this implicitly, since every metagroup node is itself an object there and its own `rename` operation applies (design-specctl.md, Operations).
 - Show (`show-metagroups`)
 
 ### Object Operations
 - Add
 - Reorder
-- Delete
+- Delete (`delete <id>`) — removes the object outright; leaves its Number as a permanent gap, same as any other deletion (see Numbering above). Not logged anywhere once gone — there is no tombstone.
 - Change status
-- Change content
-- Change metagroup (see "Changing an object's metagroup" above)
+- Change content (`set-<user-content-block> <id> <value>`, e.g. `set-description`) — one subcommand per declared user-content block.
+- Change metagroup (`group-<metagroup-type> <id> <path>`, see "Changing an object's metagroup" above) — reassigns the object to a different, already-existing metagroup path, resolved the same way `--<metagroup-type>` is elsewhere; rejects a no-op (the object's current path) with an error pointing at `reorder` instead. specctl has its own, differently-named equivalent (`move-to-<metagroup-type>`, design-specctl.md, Operations), since `set-*`/`group-*` there would collide with its own command shapes.
 - Display: short (single line)
 - Display: full description
 - Display: short + history
 
 ### Operations Across All Objects
 - List all objects (short display)
-- List objects in specific metagroups
-- List objects with specific metainfo
-- List objects with a specific status
+- List objects in specific metagroups (`list --<metagroup-type> <path>`) — includes every object at or below that path, not only an exact match.
+- List objects with specific metainfo (`list --<metainfo-type> <value>`) — exact match.
+- List objects with a specific status (`list --status <value>`)
 - Historical overview: the combined history of all objects, newest first
 
 ## Index Files
@@ -238,15 +257,18 @@ A pure performance cache, indexed by Object ID, listing only the **direct childr
 
 ## CLI Contract
 
-- `--root <path>`: base directory for all file operations. Repeatable (`--root a --root b …`); with more than one value, the tools operate in the read-only merge mode described under "File and Directory Parameters" above — every mutating operation aborts with an error in that mode.
-- Subcommand style: `add`, `add-<metagroup-type> <name>`, `set-status`, `set-<metainfo-type>`, `set-<metagroup-type>`, `annotate`, `next`, `show`, `show-metagroups`, `reindex`, …
-- `add-<type> <name>` and `set-<type> <name>` share one uniform shape across metagroups and metainfo: a subcommand followed by a single positional value, e.g. `add-domain backend`, `set-domain backend`, `add-component frontend/mocking` (nested types take a path-like name spanning their own ancestors).
-- `set-*` operations are also available as inline flags on `add`, to create an object and populate its fields — including its metagroup — in a single call.
+- `--root <path>`: resolved to this tool's file-or-directory target as described under "File and Directory Parameters" above. Required, single value — not repeatable.
+- Subcommand style: `add`, `add-<metagroup-type> <name>`, `set-status`, `group-<metagroup-type>`, `info-<metainfo-type>`, `set-<user-content-block>`, `delete`, `annotate`, `next`, `show`, `show-metagroups`, `reindex`, `list`, …
+- **Three separate verb-prefix families, one per axis a `<type> <value>`-shaped update can target** — `group-<metagroup-type>` (Change metagroup), `info-<metainfo-type>` (Metainfo), `set-<user-content-block>` (Change content) — each a fixed part of the generic engine (`lib/cliapp.py`), not a per-tool choice, so the same three prefixes apply uniformly across taskctl/rulectl/adrctl. Splitting the update verb by axis, rather than a single shared `set-<type>` for all three, is what keeps the command namespace collision-free: since each tool independently declares its own metagroup-, metainfo-, and content-block type names, nothing stops two axes from picking the same bare name (design-decisions.md, "Amendments"). `add-<type> <name>` and `group-<type> <id> <value>` / `info-<type> <id> <value>` / `set-<type> <id> <value>` all share one uniform *shape* — a subcommand followed by positional value(s) — even though the verb differs per axis, e.g. `add-domain backend`, `group-domain backend`, `info-superseded-by <id> abc123`, `set-description <id> "..."` (nested metagroup types take a path-like name spanning their own ancestors).
+- `group-<metagroup-type> <id> <value>`: reassigns an object to a different, already-existing metagroup path — resolved the same way `--<metagroup-type>` is (see below). Rejects reassigning to the object's current path (no-op — use `reorder` for repositioning among unchanged siblings instead).
+- Inline on `add`, the same three axes are populated via bare `--<type>` flags (`--<metagroup-type>`, `--<metainfo-type>`, `--<user-content-block>`) — no verb prefix there, since `add` itself is the single command they're all inline to.
 - `add-<metagroup-type> <name> [--abbrev <code>]`: creates a metagroup path (and, optionally, its Object Type abbreviation) — as a directory in directory mode, or as a `## Metagroups` entry in single-file mode. Only the path's last segment is newly created; every ancestor segment must already exist and is resolved the same way as `--<metagroup-type>` below. If the last segment lacks a `<nr>-` sort prefix, one is auto-assigned (`max + 1` among its siblings, see Metagroups above); an explicitly supplied prefix is used verbatim.
-- `--<metagroup-type> <value>` — whether inline on `add` or anywhere else a metagroup path is referenced (not created) — resolves an *existing* path one `/`-separated segment at a time against that segment's siblings. Each segment may be given as the exact `<nr>-<name>` form, a bare number (`2`), or a bare name (`Implementation`). A segment matching more than one sibling (e.g. two same-named siblings with different numbers) aborts with an error rather than guessing.
+- `--<metagroup-type> <value>` — whether inline on `add`, on `group-<metagroup-type>`, or anywhere else a metagroup path is referenced (not created) — resolves an *existing* path one `/`-separated segment at a time against that segment's siblings. Each segment may be given as the exact `<nr>-<name>` form, a bare number (`2`), or a bare name (`Implementation`). A segment matching more than one sibling (e.g. two same-named siblings with different numbers) aborts with an error rather than guessing.
+- `delete <id>`: removes the object outright (see "Object Operations" above).
+- `list [--status <value>] [--<metagroup-type> <path>] [--<metainfo-type> <value>]`: lists objects, optionally filtered. At most one `--<metagroup-type>` flag may be given (an object has exactly one metagroup path); it is resolved the same way as `--<metagroup-type>` above and matches that path plus everything below it. Every `--<metainfo-type>` flag given must match that Metainfo's value exactly; multiple such flags combine (AND).
 - `--name "..."`: the object's Name.
 - `--description "..."`: the object's Description (always available under this fixed name).
 - `--<user-section> "..."`: content for any other tool-defined user-content block.
 - `--message "..."`: the History log text for `set-status`, `annotate`, or any other logged operation.
-- `--id <value>`: object selector, resolved in order: (1) matches the Signature pattern, (2) contains `/` → interpreted as `<metagroup-path>/<nr>`, (3) otherwise treated as a raw ID. (This is why free-form IDs must not contain `/`.)
-- Positional parameters: only file or directory names, always last.
+- `--id <value>`: object selector, resolved in order: (1) matches the Signature pattern, (2) contains `/` → interpreted as `<metagroup-path>/<nr>`, (3) otherwise treated as a raw ID. (This is why free-form IDs must not contain `/`.) Note: this full resolver only backs `show`'s `--id`-flavored positional `id`; other commands' `id` positional (`set-status`, `group-<metagroup-type>`, `info-<metainfo-type>`, `set-<user-content-block>`, `delete`, `reorder`, …) match a raw Object ID only, not a Signature or path selector.
+- Positional parameters carry the subcommand's own values (an object's `--id` selector, a Name/path, a Status, a metainfo/content/metagroup value, …) — never a file or directory path; every filesystem location is resolved exclusively through `--root` (see "File and Directory Parameters"). Where a subcommand takes more than one positional parameter, the object selector (if any) always comes first.

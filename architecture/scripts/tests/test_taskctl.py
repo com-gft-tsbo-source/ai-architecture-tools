@@ -98,25 +98,16 @@ class TestCorrections(unittest.TestCase):
             self.assertEqual(json.loads(out1)["metagroup"], ["001-Setup"])
             self.assertEqual(json.loads(out2)["metagroup"], ["001-Setup"])
 
-    def test_multi_root_list_merges_read_only(self):
+    def test_shares_root_with_another_tool(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root_a = str(Path(tmp) / "a")
-            root_b = str(Path(tmp) / "b")
-            run(["--root", root_a, "add-phase", "Setup"])
-            run(["--root", root_a, "add", "--name", "FromA", "--phase", "Setup"])
-            run(["--root", root_b, "add-phase", "Setup"])
-            run(["--root", root_b, "add", "--name", "FromB", "--phase", "Setup"])
+            shared_root = str(Path(tmp) / "project")
+            run(["--root", shared_root, "add-phase", "Setup"])
+            run(["--root", shared_root, "add", "--name", "FromTasks", "--phase", "Setup"])
+            self.assertTrue((Path(tmp) / "project" / "tasks").is_dir())
 
-            code, out, _err = run(["--root", root_a, "--root", root_b, "list"])
+            code, out, _err = run(["--root", shared_root, "list"])
             self.assertEqual(code, 0)
-            self.assertIn("FromA", out)
-            self.assertIn("FromB", out)
-
-            code, _out, err = run(
-                ["--root", root_a, "--root", root_b, "add", "--name", "X", "--phase", "Setup"]
-            )
-            self.assertEqual(code, 1)
-            self.assertIn("read-only", err)
+            self.assertIn("FromTasks", out)
 
 
 class TestStatusTransitions(unittest.TestCase):

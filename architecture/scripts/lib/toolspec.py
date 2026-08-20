@@ -60,6 +60,12 @@ class ToolSpec:
     metainfo: tuple[MetainfoSpec, ...]
     status: StatusSpec
     user_content_blocks: tuple[str, ...]
+    # Fixed store name this tool resolves --root to within the directory
+    # shared by all tools (design.md, "File and Directory Parameters"), and
+    # its default mode ("file" | "directory") when neither <root_name>.md
+    # nor <root_name> exists yet and --root didn't name either explicitly.
+    root_name: str
+    default_mode: str
     # Override for the generic lib.abbrev-based derivation, e.g. taskctl's
     # unpadded-Phase-number Object Type. Receives the object's per-level
     # metagroup names (root-to-leaf) and returns the Object Type string.
@@ -69,6 +75,10 @@ class ToolSpec:
     # these as stubs that fail with "not yet specified" rather than omitting
     # them, per architecture/scripts/CLAUDE.md's "keep CLI structure uniform" rule.
     deferred_operations: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.default_mode not in ("file", "directory"):
+            raise ValueError(f"default_mode must be 'file' or 'directory', got {self.default_mode!r}")
 
     def metainfo_names(self) -> tuple[str, ...]:
         return tuple(m.type for m in self.metainfo)
