@@ -59,13 +59,6 @@ class TestEndToEnd(unittest.TestCase):
             code, out, _err = run(["--root", root, "--json", "show", old_id])
             self.assertEqual(json.loads(out)["metainfo"]["superseded-by"], "abc123")
 
-    def test_tasklist_is_deferred(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = str(Path(tmp) / "adrs")
-            code, _out, err = run(["--root", root, "tasklist"])
-            self.assertEqual(code, 1)
-            self.assertIn("not yet specified", err)
-
     def test_add_with_wrong_path_depth_for_command_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "adrs")

@@ -44,7 +44,6 @@ class TestToolSpec(unittest.TestCase):
     def test_defaults(self):
         spec = self._make()
         self.assertIsNone(spec.object_type_fn)
-        self.assertEqual(spec.deferred_operations, ())
 
     def test_rejects_invalid_default_mode(self):
         with self.assertRaises(ValueError):

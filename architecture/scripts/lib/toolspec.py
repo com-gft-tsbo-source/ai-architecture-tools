@@ -70,11 +70,6 @@ class ToolSpec:
     # unpadded-Phase-number Object Type. Receives the object's per-level
     # metagroup names (root-to-leaf) and returns the Object Type string.
     object_type_fn: Optional[Callable[[list[str]], str]] = None
-    # Operations listed by the tool's design doc but explicitly deferred
-    # (currently: "tasklist" for rulectl/adrctl) -- lib/cliapp.py registers
-    # these as stubs that fail with "not yet specified" rather than omitting
-    # them, per architecture/scripts/CLAUDE.md's "keep CLI structure uniform" rule.
-    deferred_operations: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.default_mode not in ("file", "directory"):
