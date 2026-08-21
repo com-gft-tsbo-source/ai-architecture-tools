@@ -17,11 +17,23 @@ already-authored Rules — out of scope here.
 
 ## Input
 
-Accepts the source document either as:
-- a **file path** (the Subagent reads it itself), or
-- **text pasted directly** into the invocation prompt.
+Accepts the source document as exactly one of:
+- a **file path** (the Subagent reads it itself),
+- **text pasted directly** into the invocation prompt, or
+- a **URL** (the Subagent fetches it itself).
 
-Both forms are supported without the caller needing to pick one in advance.
+All three forms are supported without the caller needing to pick one in
+advance. Fetching multiple URLs/documents in one run is out of scope for
+v1 (see "Out of scope").
+
+**Fetching a URL**: try `WebFetch` first. Fall back to `Bash` (`curl`) when
+`WebFetch` fails (network/access error) or when it would not yield the
+guideline text faithfully — e.g. a raw `.md`/`.txt` file where `WebFetch`'s
+rendering could summarize or reformat content the extraction step (step 2)
+needs verbatim. If both fail, or the fetched content is empty, **abort the
+run immediately** with a clear error and create no Rule at all — unlike a
+single failed `add` (step 5), a failed fetch means there is no document to
+process, not one bad item among many.
 
 ## `--root`
 
@@ -33,8 +45,9 @@ doesn't exist yet, so a fresh project is not a precondition.
 
 ## Workflow
 
-1. **Read the document** (from the file path, or use the pasted text
-   directly).
+1. **Obtain the document** (read the file path, use the pasted text
+   directly, or fetch the URL — see "Input" above for the fetch/fallback/
+   abort rules).
 2. **Segment it into candidate Rules.** Judgment call, not a fixed
    heuristic — group related sentences into one Rule where they express a
    single guideline, split apart where a paragraph bundles unrelated
@@ -84,8 +97,9 @@ Per created Rule:
 
 - **`source`**: always set, pointing back to the originating document and,
   where identifiable, the specific section/passage the Rule was drawn from.
-  Cheap to produce, and the only field that gives later readers
-  traceability back to the source document.
+  For a URL source, this is the full URL, plus an anchor/heading when one is
+  identifiable in the fetched content. Cheap to produce, and the only field
+  that gives later readers traceability back to the source document.
 - **`checkable`**: `llm` unless the document itself explicitly names a
   checking tool for that guideline (e.g. "enforced by eslint's
   `no-unused-vars`") — only then is it set to that tool's name, with `tool`
@@ -112,3 +126,6 @@ the Subagent.
   "Status" above).
 - A dedicated automated test/eval harness — v1 acceptance is a manual smoke
   test against a scratch `rulectl` store.
+- Processing more than one document/URL per run — a single invocation takes
+  exactly one source (file path, pasted text, or URL); crawling a site or
+  batching several URLs is a possible later extension, not v1.
