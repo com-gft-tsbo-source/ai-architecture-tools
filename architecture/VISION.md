@@ -43,3 +43,12 @@ Das Ziel hier ist:
 - Eine Verbindung mit `adrctl` herzustellen. Zumindest Querverweise zwischen beiden Tools soll es geben. `adrctl` als Tool um die Historie des Designdokuments zu managen wäre wünschenswert.
 - Es muss flexibel sein, um unterschiedliche Gliederungstiefen managen zu können.
 
+## Skills und Subagents
+
+Aufbauend auf den Skripten entstehen Skills und Subagents, die diese für die KI direkt nutzbar machen — jeweils als Paar: ein Subagent für eine eigenständige Teilaufgabe, plus ein schlankes, wrappendes Skill, das dem Subagent den CLI-Kontrakt des jeweiligen Skripts vermittelt (der Subagent bedient das Skript nie direkt aus eigenem Wissen heraus). Alle sind generisch gehalten — nutzbar in beliebigen Projekten, die die Skripte einsetzen, nicht nur in diesem Repository.
+
+Rund um `rulectl` sind zwei Subagents vorgesehen:
+
+- **`rulectl-author`** (existiert bereits, mit Skill `rulectl-author-cli`): zerlegt ein Dokument mit Qualitätsrichtlinien in einzelne Rules, ordnet sie passenden Metagruppen zu und legt sie in `rulectl` an. Spezifiziert in `architecture/docs/subagents/design-rulectl-author.md` und `architecture/docs/skills/design-rulectl-author-cli.md`.
+- **`rulectl-checker`** (existiert bereits, mit Skill `rulectl-checker-cli`): prüft eine Codebasis gegen bestehende Rules, indem eine per `rulectl tasklist` erzeugte Taskliste abgearbeitet wird (Ergebnis je Task: konform, Verstoß — eskaliert zur User-Review — oder nicht prüfbar). Reiner Prüfer, ändert nie selbst Code. Spezifiziert in `architecture/docs/subagents/design-rulectl-checker.md` und `architecture/docs/skills/design-rulectl-checker-cli.md`.
+
