@@ -118,6 +118,24 @@ class TestTasklist(unittest.TestCase):
             self.assertEqual(data["metainfo"]["assignee-type"], "tool")
             self.assertEqual(data["metainfo"]["assignee-name"], "ruff")
 
+    def test_tasklist_tool_task_description_includes_rule_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "project")
+            rule_id = self._add_rule(root, checkable="ruff", tool="ruff", tool_rule="E722")
+            run(["--root", root, "set-procedure", rule_id, "Run ruff and inspect findings."])
+            run(["--root", root, "info-source", rule_id, "style-guide.md#exceptions"])
+
+            run(["--root", root, "tasklist"])
+
+            code, out, _err = run_taskctl(["--root", root, "--json", "show", rule_id])
+            self.assertEqual(code, 0)
+            description = json.loads(out)["content"]["Description"]
+            self.assertIn("Run `ruff` to verify rule `E722`.", description)
+            self.assertIn("Explain the rule.", description)
+            self.assertIn("Run ruff and inspect findings.", description)
+            self.assertIn("style-guide.md#exceptions", description)
+            self.assertIn(rule_id, description)
+
     def test_tasklist_skips_draft_and_obsolete(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "project")
@@ -145,6 +163,30 @@ class TestTasklist(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("[ ]", out)
             self.assertIn("re-exported from rulectl rule", out)
+
+    def test_tasklist_rerun_after_escalation_resets_review_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "project")
+            rule_id = self._add_rule(root)
+            run(["--root", root, "tasklist"])
+            run_taskctl(["--root", root, "set-status", rule_id, "~"])
+            run_taskctl(["--root", root, "info-review", rule_id, "user"])
+            run_taskctl(["--root", root, "set-status", rule_id, "R", "--message", "violation"])
+
+            code, _out, _err = run(["--root", root, "tasklist"])
+            self.assertEqual(code, 0)
+
+            code, out, _err = run_taskctl(["--root", root, "--json", "show", rule_id])
+            self.assertEqual(code, 0)
+            data = json.loads(out)
+            self.assertEqual(data["status"], " ")
+            self.assertEqual(data["metainfo"].get("review"), "none")
+
+            # A fresh compliant verdict must now be a normal on-path step,
+            # not one still routed through [R] because review=user lingered.
+            run_taskctl(["--root", root, "set-status", rule_id, "~"])
+            code, _out, err = run_taskctl(["--root", root, "set-status", rule_id, "X"])
+            self.assertEqual(code, 0, err)
 
     def test_tasklist_language_scoping_flag(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -109,7 +109,12 @@ doesn't exist yet, so a fresh project is not a precondition.
      whose Language already exists are unaffected and are not held up by
      this question; only the candidates that actually need an undecided
      Language wait for the answer, everything else (metagroup work,
-     duplicate checks, creation) proceeds for the rest in the meantime.
+     duplicate checks, creation) proceeds for the rest in the meantime. If
+     the run ends before that answer arrives (the exchange gets cut short,
+     the invocation ends without a reply), any candidate still waiting is
+     never silently dropped — it gets the explicit candidate-level outcome
+     **deferred-awaiting-language-decision** in step 6's report, not folded
+     into "failed" or quietly omitted.
    - **Context and Category**: create new ones freely (`add-context`,
      `add-category`) when nothing existing fits — this is the expected,
      natural granularity when carving up a new document. Prefer an existing
@@ -119,19 +124,25 @@ doesn't exist yet, so a fresh project is not a precondition.
    - **Local**: compare each candidate against the other candidates formed
      in this same run (across the whole document, not just within one
      worklist entry) for likely overlap — two sections restating the same
-     guideline must not both become Rules. A local duplicate is handled
-     exactly like a store duplicate below: skipped, and recorded with a
-     reference to the other *candidate* it matches (not a store Rule) for
-     the final report.
-   - **Against the store**: before creating each remaining candidate, `list`
-     the existing Rules under its target Category path — the exact target
-     path only, not related or sibling paths — and compare Name/Description
-     for likely overlap. A likely duplicate is **skipped** — it is not
-     created — and recorded (with a reference to the existing Rule it
-     matches) for the final report. Deliberately scoped to the exact target
-     Category: catching a duplicate that was filed under a different,
-     related path is a curation problem for a human reviewer, not something
-     worth an expensive, fuzzy cross-path search on every run.
+     guideline must not both become Rules. Candidates judged as likely
+     saying the same thing form a **local-duplicate group**; order them
+     (document order is fine) and mark the first as that group's current
+     **representative** — the only one step 5 attempts to create right now.
+     The rest are *provisionally* local-duplicates of the representative,
+     not yet finally decided (see step 5 for why: a representative that
+     later fails to persist must not leave the whole guideline unrepresented
+     in the store).
+   - **Against the store**: before creating each remaining candidate
+     (representatives and any candidate with no local-duplicate group),
+     `list` the existing Rules under its target Category path — the exact
+     target path only, not related or sibling paths — and compare
+     Name/Description for likely overlap. A likely duplicate is **skipped**
+     — it is not created — and recorded (with a reference to the existing
+     Rule it matches) for the final report. Deliberately scoped to the
+     exact target Category: catching a duplicate that was filed under a
+     different, related path is a curation problem for a human reviewer,
+     not something worth an expensive, fuzzy cross-path search on every
+     run.
    - Both checks are judgment, not exact-string matching; when in doubt
      whether two Rules really say the same thing, prefer creating the new
      one over silently dropping a genuinely distinct guideline.
@@ -140,36 +151,58 @@ doesn't exist yet, so a fresh project is not a precondition.
    confirmation step with the user precedes this — the Subagent writes
    directly, sequentially, continuing past any single failed item (see
    `design-rulectl-author-cli.md`, "Error handling").
-6. **Verify, then report — reconciled against the step 2 worklist, not just
-   a log of executed `add` calls.** Before compiling the report, re-read the
-   store: for every candidate this run believes it created, `show <id>` to
-   confirm it is actually persisted. If it isn't, downgrade that candidate
-   from created to failed, with its own reason ("create reported success,
-   but a follow-up re-read did not find the Rule") rather than losing the
-   discrepancy silently — a run's own belief about what it did is not
-   itself evidence; the store is.
 
-   Every worklist entry from step 2 must then appear in the report in
-   exactly one of four categories, with no exceptions:
-   - **created**: Signature/ID and metagroup path — confirmed present by the
-     re-read above.
-   - **skipped-likely-duplicate**: the Rule it matched — an existing store
-     Rule, or (for a local match from step 4) the other candidate from this
-     same run, labeled as such.
-   - **failed**: the error from the failed `add`/corrective call, or, for a
-     re-read mismatch, the reason above.
-   - **no-rule-needed**: the reason — either the disposition already given
-     in step 2 (a stated reason, or "merged into `<sibling unit>`") for a
-     unit that was never a candidate, or, for a unit that *was* a candidate,
-     any reason it ends up here instead of "created" other than being a
-     duplicate or a failure.
+   **Local-duplicate groups are attempted representative-first, with
+   fallback.** Only a group's current representative is created. If it
+   succeeds (confirmed by the step 6 re-read), the rest of the group is
+   *now* finally skipped-likely-duplicate, referencing the representative.
+   If the representative's creation fails (or fails the step 6 re-read),
+   the guideline it stood for still needs a Rule: promote the next
+   candidate in the group to representative and attempt creating *that*
+   one instead, continuing down the group until one succeeds or the group
+   is exhausted. Only if every candidate in the group fails does the
+   guideline end up with no Rule at all — and in that case every attempted
+   candidate is reported individually as **failed**, with its own error;
+   nothing about the group is glossed over into a single opaque failure.
+6. **Verify, then report — reconciled against the step 2 worklist and,
+   under each entry, every one of its candidates individually.** Before
+   compiling the report, re-read the store: for every candidate this run
+   believes it created (including a promoted local-duplicate
+   representative, see step 5), `show <id>` to confirm it is actually
+   persisted. If it isn't, treat that exactly like a failed `add` — the
+   candidate becomes **failed** with its own reason ("create reported
+   success, but a follow-up re-read did not find the Rule"), and, if it was
+   a local-duplicate representative, the group's fallback in step 5 applies
+   — a run's own belief about what it did is not itself evidence; the store
+   is.
 
-   A worklist entry with no corresponding report entry is a defect in this
-   step, not an acceptable omission — reconciling against the full worklist
-   (rather than just listing what was actually created) is what makes a
-   silently dropped structural unit impossible. Also report newly created
-   metagroup paths. The whole report remains retrospective — it documents
-   what was done, not a plan awaiting approval.
+   Since one worklist entry can now yield several candidates with
+   *different* outcomes (step 2, "Atomizing"), the report has two levels,
+   not one flat category per entry:
+   - **Every worklist entry** gets exactly one of three entry-level
+     dispositions, matching step 2: **own Rule(s)** (with its candidates
+     listed underneath, see below), **merged into `<sibling unit>`**, or
+     **no-rule-needed (`<reason>`)**.
+   - **Every candidate under an "own Rule(s)" entry** gets exactly one of
+     four candidate-level outcomes, with no exceptions:
+     - **created**: Signature/ID and metagroup path — confirmed present by
+       the re-read above.
+     - **skipped-likely-duplicate**: the Rule it matched — an existing
+       store Rule, or (for a local match from step 4) the representative
+       candidate from this same run it was finally skipped in favor of.
+     - **failed**: the error from the failed `add`/corrective call, or, for
+       a re-read mismatch, the reason above.
+     - **deferred-awaiting-language-decision**: the run ended before a
+       needed Language decision (step 3) was answered.
+
+   A worklist entry with no corresponding report entry, or a candidate
+   under an "own Rule(s)" entry missing its own outcome, is a defect in
+   this step, not an acceptable omission — reconciling against the full
+   worklist, one level down to every individual candidate, is what makes a
+   silently dropped structural unit *or* a silently dropped candidate
+   within one impossible. Also report newly created metagroup paths. The
+   whole report remains retrospective — it documents what was done, not a
+   plan awaiting approval.
 
 ## Status
 
@@ -180,15 +213,46 @@ this Subagent creates it. This is a deliberate choice: correctness rests on
 the duplicate check (step 4) and the retrospective report (step 6), not on a
 pre-activation buffer.
 
+## Description vs. Procedure
+
+A candidate's two User Content blocks (design-rulectl.md, "User Content")
+have distinct jobs, and content must land in the right one consistently
+across runs:
+- **`Description`**: the normative requirement — the guideline itself, the
+  state of the code/data the Rule wants to see. Always populated; this is
+  the "short Name and Description" step 2's atomization already requires
+  per candidate.
+- **`Procedure`**: verification/check steps the source document *explicitly
+  names* for that guideline (e.g. "run `X`", "check that `Y`, then `Z`").
+  Left empty when the document doesn't spell out how to verify the
+  guideline — never populated by inventing or inferring a plausible
+  procedure. This mirrors the standing rule for `checkable`/`tool`/
+  `tool-rule` below: content the Subagent didn't find explicitly stated is
+  content it doesn't add, here as much as there. A Rule with an
+  under-specified `Procedure` is left that way; a later `rulectl-checker`
+  run judging `checkable=llm` against a bare `Description` is expected and
+  fine (`design-rulectl-checker.md`, step 3d already allows `can't check`
+  when a Rule itself doesn't give enough to go on).
+
 ## Metainfo population
 
 Per created Rule:
 
 - **`source`**: always set, pointing back to the originating document and,
   where identifiable, the specific section/passage the Rule was drawn from.
-  For a URL source, this is the full URL, plus an anchor/heading when one is
-  identifiable in the fetched content. Cheap to produce, and the only field
-  that gives later readers traceability back to the source document.
+  - **URL source**: the full URL, plus an anchor/heading when one is
+    identifiable in the fetched content.
+  - **File-path source**: the file's canonical path (resolved, not as
+    typed), plus a heading and/or line range when identifiable in the file.
+  - **Pasted-text source**: no URL or path exists to point at, so use a
+    fixed, recognizable convention instead — `pasted invocation text`,
+    followed by the structural unit's own heading (or a short paraphrase if
+    it has none) and a short content hash of the pasted text (e.g. the
+    first 8 hex characters of a SHA-256 of the raw pasted document). The
+    hash lets a later run recognize the *same* pasted document again even
+    though it has no stable path or URL to compare against.
+  Cheap to produce, and the only field that gives later readers
+  traceability back to the source document.
 - **`checkable`**: `llm` unless the document itself explicitly names a
   checking tool for that guideline (e.g. "enforced by eslint's
   `no-unused-vars`") — only then is it set to that tool's name, with `tool`

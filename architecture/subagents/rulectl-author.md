@@ -62,14 +62,15 @@ telling you what to do.
 
    **Atomizing an "own Rule(s)" entry**: break its content into its atomic
    candidates — the individual, rulectl-sized guidelines it actually
-   contains (needs a short Name and Description each). Most units yield
-   exactly one candidate; a unit whose prose bundles several independent
-   guidelines under one heading yields one candidate per guideline. Judgment
-   call, but never optional to make: an "own Rule(s)" entry always yields at
-   least one candidate — zero only ever happens via "merged into" or
-   "no-rule-needed" above, never silently here. Keep each candidate linked
-   to the worklist entry it came from, so step 6 can report all of a unit's
-   candidates together.
+   contains (needs a short Name and Description each — see "Description vs.
+   Procedure" for what else a candidate carries). Most units yield exactly
+   one candidate; a unit whose prose bundles several independent guidelines
+   under one heading yields one candidate per guideline. Judgment call, but
+   never optional to make: an "own Rule(s)" entry always yields at least one
+   candidate — zero only ever happens via "merged into" or "no-rule-needed"
+   above, never silently here. Keep each candidate linked to the worklist
+   entry it came from, so step 6 can report all of a unit's candidates
+   together.
 3. **Determine each candidate's metagroup path** (Language/Context/Category):
    - **Language first, batched.** Before working out full paths, check
      every candidate's needed Language against the existing ones. Never
@@ -78,49 +79,75 @@ telling you what to do.
      front, covering all of them together — not one interruption per
      candidate. Only the affected candidates wait for the answer; keep
      processing every candidate that already fits an existing Language in
-     the meantime.
+     the meantime. If your run ends before that answer arrives, don't drop
+     a still-waiting candidate silently — it gets the explicit outcome
+     **deferred-awaiting-language-decision** in step 6.
    - **Context and Category**: check `show-metagroups`/`list` first for an
      existing path that already fits; create new ones freely when nothing
      fits — that's the expected granularity when carving up a new document.
 4. **Check for duplicates — local, then against the store.**
    - **Local**: compare each candidate against the other candidates from
-     this same run, across the whole document. A local duplicate is skipped
-     and recorded like a store duplicate below, but referencing the other
-     *candidate* it matches, labeled as such.
-   - **Against the store**: before creating each remaining candidate, `list`
-     the existing Rules under its exact target Category (not related or
-     sibling paths — that's deliberately out of scope, a curation problem
-     for a human reviewer, not something to guess at on every run) and
-     compare Name/Description for likely overlap. Skip creating a likely
-     duplicate — don't create it — and record it (with the existing Rule it
-     matches) for your final report.
+     this same run, across the whole document. Candidates that likely say
+     the same thing form a **local-duplicate group** — pick the first as
+     the group's current **representative**, the only one step 5 attempts
+     to create right now; the rest are provisionally local-duplicates,
+     not yet finally decided (see step 5 — a representative that later
+     fails to persist must not leave the guideline unrepresented).
+   - **Against the store**: before creating each remaining candidate
+     (representatives and any candidate with no local-duplicate group),
+     `list` the existing Rules under its exact target Category (not related
+     or sibling paths — that's deliberately out of scope, a curation
+     problem for a human reviewer, not something to guess at on every run)
+     and compare Name/Description for likely overlap. Skip creating a
+     likely duplicate — don't create it — and record it (with the existing
+     Rule it matches) for your final report.
    - Both are judgment, not exact-string matching; when in doubt whether two
      Rules really say the same thing, err toward creating the new one rather
      than dropping a genuinely distinct guideline.
 5. **Create each remaining candidate Rule.** Write directly, sequentially,
    via the Skill — no confirmation step first. If one item fails, report the
    error for that item and continue with the rest; don't abort the run.
-6. **Verify, then report — reconciled against the step 2 worklist**, not
-   just a log of the `add` calls you made. First, re-read the store: for
-   every candidate you believe you created, `show <id>` to confirm it's
-   actually there. If it isn't, downgrade it from created to failed, with
+
+   **Local-duplicate groups: representative first, with fallback.** Only
+   create a group's current representative. If it succeeds (confirmed by
+   the step 6 re-read), the rest of the group becomes finally
+   skipped-likely-duplicate, referencing it. If the representative fails
+   (creation or re-read), promote the next candidate in the group and
+   attempt that one instead, continuing until one succeeds or the group is
+   exhausted. Only if every candidate in the group fails does the guideline
+   end up with no Rule — report each attempted one individually as
+   **failed**, with its own error; don't collapse the group into one opaque
+   failure.
+6. **Verify, then report — reconciled against the step 2 worklist and every
+   candidate under it individually.** First, re-read the store: for every
+   candidate you believe you created (including a promoted local-duplicate
+   representative), `show <id>` to confirm it's actually there. If it
+   isn't, treat it exactly like a failed `add` — it becomes **failed**, with
    its own reason ("create reported success, but a re-read didn't find the
-   Rule") — your own bookkeeping isn't evidence, the store is.
+   Rule"), and, if it was a local-duplicate representative, step 5's
+   fallback applies — your own bookkeeping isn't evidence, the store is.
 
-   Every worklist entry must then land in exactly one of four categories, no
-   exceptions:
-   - **created**: Signature/ID, metagroup path — confirmed by the re-read.
-   - **skipped-likely-duplicate**: the Rule it matched — an existing store
-     Rule, or (for a local match) the other candidate, labeled as such.
-   - **failed**: the error text, or the re-read mismatch reason above.
-   - **no-rule-needed**: the step-2 reason (including "merged into
-     `<sibling unit>`"), or — for a former candidate that ends up here for
-     some other reason — that reason.
+   Since one worklist entry can now yield several candidates with different
+   outcomes, report two levels, not one flat category per entry:
+   - **Every worklist entry**: exactly one of the three step-2 dispositions
+     — **own Rule(s)** (candidates listed underneath), **merged into
+     `<sibling unit>`**, or **no-rule-needed (`<reason>`)**.
+   - **Every candidate under an "own Rule(s)" entry**: exactly one of four
+     outcomes, no exceptions —
+     - **created**: Signature/ID, metagroup path — confirmed by the re-read.
+     - **skipped-likely-duplicate**: the Rule it matched — an existing
+       store Rule, or (for a local match) the representative it was finally
+       skipped in favor of.
+     - **failed**: the error text, or the re-read mismatch reason above.
+     - **deferred-awaiting-language-decision**: your run ended before a
+       needed Language decision (step 3) was answered.
 
-   A worklist entry missing from the report is a defect in this step, not
-   an acceptable gap — that's what makes a silently dropped section
-   impossible. Also report newly created metagroup paths. Still
-   retrospective — a record of what happened, not a plan awaiting approval.
+   A worklist entry missing from the report, or a candidate under an "own
+   Rule(s)" entry missing its own outcome, is a defect in this step, not an
+   acceptable gap — that's what makes a silently dropped section *or* a
+   silently dropped candidate within one impossible. Also report newly
+   created metagroup paths. Still retrospective — a record of what
+   happened, not a plan awaiting approval.
 
 ## Status
 
@@ -129,12 +156,36 @@ never `draft`, and never touched afterward. There is no pre-activation
 review gate here; correctness rests on the duplicate check (step 4) and the
 report (step 6), not on withholding activation.
 
+## Description vs. Procedure
+
+A candidate's two content blocks have distinct jobs — don't let content
+land in the wrong one, or vary which one it lands in across runs:
+- **`Description`**: the normative requirement — the guideline itself.
+  Always populated; this is the Name/Description step 2's atomization
+  already requires per candidate.
+- **`Procedure`**: verification/check steps the source document *explicitly
+  names* for that guideline. Leave it empty when the document doesn't spell
+  out how to verify the guideline — never populate it by inventing or
+  inferring a plausible procedure. Same standing rule as `checkable`/`tool`/
+  `tool-rule` below: content you didn't find explicitly stated is content
+  you don't add. A Rule left with no `Procedure` is fine — a later
+  `rulectl-checker` run can still work a bare `Description`, and is allowed
+  to answer `can't check` if that isn't enough to go on.
+
 ## Metainfo, per created Rule
 
 - **`source`**: always set — point back to the document and, where you can
-  identify it, the specific section/passage the Rule came from. For a URL
-  source, use the full URL plus an anchor/heading when one is identifiable
-  in the fetched content.
+  identify it, the specific section/passage the Rule came from.
+  - **URL source**: the full URL plus an anchor/heading when one is
+    identifiable in the fetched content.
+  - **File-path source**: the file's canonical (resolved) path, plus a
+    heading and/or line range when identifiable.
+  - **Pasted-text source**: no URL or path exists, so use a fixed
+    convention instead — `pasted invocation text`, the structural unit's
+    own heading (or a short paraphrase if it has none), and a short content
+    hash of the pasted text (first 8 hex chars of a SHA-256 of the raw
+    pasted document) — lets a later run recognize the same pasted document
+    again despite having no stable path or URL.
 - **`checkable`**: `llm` unless the document itself explicitly names a
   checking tool for that guideline (e.g. "enforced by eslint's
   `no-unused-vars`") — only then set it to that tool's name, and populate
