@@ -29,5 +29,4 @@ def build_spec() -> ToolSpec:
         user_content_blocks=("Motivation", "Description", "Rationale"),
         root_name="adrs",
         default_mode="directory",
-        deferred_operations=("tasklist",),
     )

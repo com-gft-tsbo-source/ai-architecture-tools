@@ -217,11 +217,38 @@ lief. Eine neue Preamble-Validierung (`lib/spec_document.py`s
 Section-Überschrift aussieht (`##` bis `######`) — sonst würde `set-preamble`
 das Dokument beim nächsten Lesen stillschweigend korrumpieren können.
 
-437 Unit-/Integrationstests insgesamt unter `tests/`
+**`rulectl tasklist` ist jetzt implementiert** (`design-decisions.md`,
+"Amendments (2026-08-21, rulectl `tasklist`)"): exportiert alle
+`active`-Regeln in den taskctl-Store, gruppiert nach eindeutigem
+Language/Context/Category-Pfad zu je einer Phase (`lib/tasklist.py`, analog
+zu `lib/adr_lookup.py`/`lib/spec_link.py` — rulectl.py importiert taskctl.py
+nie als Ganzes). Der Phasen-Name ist der flach zusammengesetzte Pfad
+(`::`-getrennt, Sortpräfixe entfernt) — `/` ist als Trenner reserviert.
+Task-IDs sind dieselben wie die Quelle-Regel (Object-IDs sind nur pro Store
+eindeutig, daher gefahrlos wiederverwendbar); ein erneuter `tasklist`-Lauf
+aktualisiert eine bestehende Task statt sie zu duplizieren (nur tatsächlich
+geänderte Felder werden neu geschrieben), setzt ihren Status zwangsweise
+auf offen zurück (`--force`-Pfad von `set_status`) und protokolliert das
+per `T`-Eintrag über `Store.annotate`. Die Feldableitung folgt der Regel
+`checkable`: `llm` → `assignee-type=agent`, Description bettet den vollen
+Regeltext ein; sonst → `assignee-type=tool`, `assignee-name` aus der
+`tool`-Metainfo, Description ist eine kurze Tool-Anweisung. `taskctl.py`s
+`ToolSpec`-Konstruktion (inkl. `validate_transition`/`object_type_from_phase`)
+wurde dafür nach `lib/taskctl_spec.py` extrahiert (dieselbe Begründung wie
+`lib/adrctl_spec.py`). **adrctls `tasklist`-Stub wurde ersatzlos entfernt**,
+nicht implementiert — ADRs werden ausschließlich vom Agenten geprüft (siehe
+design-adrctl.md), sodass `tasklist`s Tool-vs-Agent-Feldableitung dort keine
+Grundlage hat. Der generische `deferred_operations`/`register_deferred`-
+Mechanismus (`lib/cliapp.py`, `lib/toolspec.py`) wurde komplett entfernt, da
+er nach dieser Änderung von keinem Tool mehr genutzt wird.
+
+452 Unit-/Integrationstests insgesamt unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 170 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`, `init`/`set-title`/`set-preamble` und die Init-Pflicht für jede
-andere schreibende Operation), mehrere Tests für `resolve_root` (Kollision, Default-Modus,
+andere schreibende Operation), rund 18 Tests für `rulectl tasklist`
+(Store- und CLI-Ebene: Feldableitung, Phasen-Gruppierung, Re-Export-
+Idempotenz inkl. Status-Reset und `annotate`, Scoping-Flags), mehrere Tests für `resolve_root` (Kollision, Default-Modus,
 `.md`-/Name-Override, Multi-Tool-Koexistenz unter einem `--root`), 17 Tests
 für die `spec-ref`-Verknüpfung (`receive_adr_link`, `lib/spec_link.py`, den
 generischen `after_dispatch`-Hook, End-to-End über `adrctl`/`specctl`:
@@ -237,9 +264,6 @@ ADR-Gating), sowie 2 weitere Tests aus dem Folge-Review: kein `adrs/` bei
 fehlschlagendem Check, Lock während des Checks gehalten.
 
 Noch offen:
-- `tasklist` (rulectl/adrctl) ist absichtlich nur als Stub vorhanden
-  (Exit 1, "not yet specified") — Verhalten laut Design-Dokumenten separat
-  zu spezifizieren.
 - Metagroup-Rename für taskctl/rulectl/adrctl (siehe oben) — im Contract
   dokumentiert, noch nicht implementiert.
 - specctl: die bidirektionale adrctl-Verknüpfung ist implementiert —

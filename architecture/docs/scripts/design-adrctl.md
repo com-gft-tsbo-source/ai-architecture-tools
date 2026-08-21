@@ -32,9 +32,7 @@ Note: unlike rulectl, adrctl has no `tool`/`tool-rule`/`checkable` metainfo — 
 
 ## Operations
 
-In addition to the general operations from design.md, adrctl supports:
-
-- `tasklist`: convert existing objects into a task list suitable for taskctl. **Deferred — not yet specified**; will be designed separately.
+adrctl adds no operations beyond the general model in design.md — unlike rulectl (`tasklist`, design-rulectl.md) or taskctl (`annotate`/`next`, design-taskctl.md). `tasklist` was originally listed here too, deferred; it was later implemented for rulectl only and dropped from adrctl entirely (design-decisions.md, "Amendments (2026-08-21, rulectl `tasklist`)") — ADRs are verified exclusively by an LLM/agent (see "Metainfo" above), so there is no tool-checked/agent-checked distinction for `tasklist`'s field mapping to key off, and no concrete need for exporting ADRs into taskctl surfaced.
 
 ## User Content
 

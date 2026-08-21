@@ -27,10 +27,6 @@ class CliError(Exception):
     pass
 
 
-class DeferredOperationError(Exception):
-    pass
-
-
 def _flag_name(type_name: str) -> str:
     return type_name.lower().replace(" ", "-")
 
@@ -128,19 +124,6 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
         )
 
     return parser, subparsers
-
-
-def register_deferred(subparsers: "argparse._SubParsersAction", name: str, extra_handlers: dict[str, Handler]) -> None:
-    """Register a subcommand that is documented but not yet specified
-    (currently: rulectl/adrctl's `tasklist`) -- discoverable via --help,
-    but fails deterministically with exit code 1 rather than a no-op or
-    'unrecognized arguments'."""
-    subparsers.add_parser(name, help=f"{name}: not yet specified (deferred)")
-
-    def handler(store: Store, args: argparse.Namespace) -> object:
-        raise DeferredOperationError(f"{name}: not yet specified")
-
-    extra_handlers[name] = handler
 
 
 def _metagroup_path_for_add(spec: ToolSpec, args: argparse.Namespace) -> list[str]:
@@ -326,7 +309,7 @@ def main(
         result = dispatch(spec, store, args, extra_handlers)
         if after_dispatch is not None:
             after_dispatch(spec, store, args, result)
-    except (StoreError, CliError, DeferredOperationError, ValueError) as exc:
+    except (StoreError, CliError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

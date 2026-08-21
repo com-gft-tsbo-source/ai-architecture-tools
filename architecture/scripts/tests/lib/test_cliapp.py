@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib.cliapp import CliError, main, register_deferred
+from lib.cliapp import CliError, main
 from lib.toolspec import MetagroupLevelSpec, MetainfoSpec, StatusSpec, ToolSpec
 
 SPEC = ToolSpec(
@@ -127,23 +127,6 @@ class TestBasicFlow(unittest.TestCase):
             code, _out, err = run(["--root", root, "set-status", object_id, "NOPE"])
             self.assertEqual(code, 1)
             self.assertIn("NOPE", err)
-
-
-class TestDeferredStub(unittest.TestCase):
-    def test_deferred_command_fails_with_message(self):
-        extra_handlers = {}
-
-        def configure(parser, subparsers):
-            register_deferred(subparsers, "tasklist", extra_handlers)
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = str(Path(tmp) / "rules")
-            out, err = io.StringIO(), io.StringIO()
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                code = main(SPEC, ["--root", root, "tasklist"], extra_handlers=extra_handlers,
-                            configure_parser=configure)
-            self.assertEqual(code, 1)
-            self.assertIn("not yet specified", err.getvalue())
 
 
 class TestSetContentBlock(unittest.TestCase):

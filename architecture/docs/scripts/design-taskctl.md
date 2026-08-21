@@ -51,6 +51,8 @@ In addition to the general operations from design.md, taskctl supports:
 - `annotate`: append a History entry (`T`) documenting task execution progress.
 - `next`: find and display the next open task, including its History.
 
+Phases and Tasks may also originate from `rulectl tasklist` (design-rulectl.md, "Operations") rather than being created directly through taskctl's own `add-phase`/`add` — such a Task's Object ID is shared with its source Rule, and `annotate`-style `T` History entries record every re-export. No taskctl-side behavior differs for these Tasks; this is purely informational.
+
 ## Prioritization
 
 Tasks are ordered by sorted Phase, then by task number within that Phase — this order drives `next` and default listings.

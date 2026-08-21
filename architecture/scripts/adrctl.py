@@ -47,17 +47,7 @@ def _handle_spec_link(
 
 def main(argv: list[str]) -> int:
     spec = build_spec()
-    extra_handlers: dict = {}
-
-    def configure_parser(_parser, subparsers) -> None:
-        for name in spec.deferred_operations:
-            cliapp.register_deferred(subparsers, name, extra_handlers)
-
-    return cliapp.main(
-        spec, argv,
-        extra_handlers=extra_handlers, configure_parser=configure_parser,
-        after_dispatch=_handle_spec_link,
-    )
+    return cliapp.main(spec, argv, after_dispatch=_handle_spec_link)
 
 
 if __name__ == "__main__":
