@@ -232,7 +232,18 @@ auf offen zurück (`--force`-Pfad von `set_status`) und protokolliert das
 per `T`-Eintrag über `Store.annotate`. Die Feldableitung folgt der Regel
 `checkable`: `llm` → `assignee-type=agent`, Description bettet den vollen
 Regeltext ein; sonst → `assignee-type=tool`, `assignee-name` aus der
-`tool`-Metainfo, Description ist eine kurze Tool-Anweisung. `taskctl.py`s
+`tool`-Metainfo, Description führt weiterhin mit einer kurzen
+Tool-Anweisung, bettet seit `design-decisions.md`, "Amendments
+(2026-08-21, rulectl `tasklist` review-reset + tool-task context)" aber
+zusätzlich Description/Procedure/`source` der Regel ein — sonst hätte ein
+Subagent bei einem Tool-Task nur Toolname und Rule-ID, keinen Text, gegen
+den er ein Toolergebnis fachlich beurteilen könnte. Dasselbe Amendment
+lässt `tasklist` beim Re-Export jetzt auch die `review`-Metainfo zwangsweise
+auf `none` zurücksetzen, sofern sie davon abweicht — sonst bliebe ein
+zuvor auf `R` eskalierter Task nach dem Status-Reset weiterhin auf dem
+`review=user`-Pfad und ein frischer Compliant-Befund (`[~]→[X]`) würde
+trotz frischem Re-Export weiterhin über `[R]` geführt oder ohne `--force`
+abgelehnt. `taskctl.py`s
 `ToolSpec`-Konstruktion (inkl. `validate_transition`/`object_type_from_phase`)
 wurde dafür nach `lib/taskctl_spec.py` extrahiert (dieselbe Begründung wie
 `lib/adrctl_spec.py`). **adrctls `tasklist`-Stub wurde ersatzlos entfernt**,
@@ -242,13 +253,14 @@ Grundlage hat. Der generische `deferred_operations`/`register_deferred`-
 Mechanismus (`lib/cliapp.py`, `lib/toolspec.py`) wurde komplett entfernt, da
 er nach dieser Änderung von keinem Tool mehr genutzt wird.
 
-452 Unit-/Integrationstests insgesamt unter `tests/`
+454 Unit-/Integrationstests insgesamt unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 170 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`, `init`/`set-title`/`set-preamble` und die Init-Pflicht für jede
-andere schreibende Operation), rund 18 Tests für `rulectl tasklist`
-(Store- und CLI-Ebene: Feldableitung, Phasen-Gruppierung, Re-Export-
-Idempotenz inkl. Status-Reset und `annotate`, Scoping-Flags), mehrere Tests für `resolve_root` (Kollision, Default-Modus,
+andere schreibende Operation), rund 20 Tests für `rulectl tasklist`
+(Store- und CLI-Ebene: Feldableitung inkl. eingebettetem Rule-Kontext bei
+Tool-Tasks, Phasen-Gruppierung, Re-Export-Idempotenz inkl. Status- und
+`review`-Reset und `annotate`, Scoping-Flags), mehrere Tests für `resolve_root` (Kollision, Default-Modus,
 `.md`-/Name-Override, Multi-Tool-Koexistenz unter einem `--root`), 17 Tests
 für die `spec-ref`-Verknüpfung (`receive_adr_link`, `lib/spec_link.py`, den
 generischen `after_dispatch`-Hook, End-to-End über `adrctl`/`specctl`:

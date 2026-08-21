@@ -19,6 +19,7 @@ from lib.taskctl_spec import OPEN, build_spec as build_taskctl_spec
 PHASE_SEPARATOR = "::"
 ASSIGNEE_TYPE_AGENT = "agent"
 ASSIGNEE_TYPE_TOOL = "tool"
+REVIEW_NONE = "none"
 
 _ACTIVE_STATUS = "active"
 
@@ -114,7 +115,23 @@ def _agent_description(rule: ObjectRecord) -> str:
 
 
 def _tool_description(rule: ObjectRecord, tool: str, tool_rule: str) -> str:
-    return f"Run `{tool}` to verify rule `{tool_rule}` (source: rulectl rule {rule.signature})."
+    """Carries the Rule's own Description/Procedure/source alongside the
+    tool instruction (design-decisions.md, "Amendments (2026-08-21, rulectl
+    tasklist review-reset + tool-task context)") -- without them, a checker
+    working this Task only has the tool name and rule id, not the guideline
+    a tool violation should be judged against."""
+    parts = [f"Run `{tool}` to verify rule `{tool_rule}`."]
+    description = rule.content.get("Description", "").strip()
+    if description:
+        parts.append(f"### Rule\n\n{description}")
+    procedure = rule.content.get("Procedure", "").strip()
+    if procedure:
+        parts.append(f"### Procedure\n\n{procedure}")
+    source = rule.metainfo_value("source") or ""
+    if source:
+        parts.append(f"### Source\n\n{source}")
+    parts.append(f"_(source: rulectl rule {rule.signature})_")
+    return "\n\n".join(part for part in parts if part)
 
 
 def _export_rule(taskctl_store: Store, rule: ObjectRecord, phase_path: list[str]) -> ObjectRecord:
@@ -148,6 +165,13 @@ def _export_rule(taskctl_store: Store, rule: ObjectRecord, phase_path: list[str]
             rule.object_id, OPEN, force=True,
             message=f"reset to open by rulectl tasklist re-export ({rule.object_id})",
         )
+    # A Task escalated to R on a previous check keeps review=user even after
+    # the status reset above puts it back at open -- validate_transition
+    # (lib/taskctl_spec.py) reads that value to pick the forward path, so
+    # without this reset a fresh compliant verdict ([~]->[X]) would still be
+    # forced through [R] first, or rejected outright without --force.
+    if (existing.metainfo_value("review") or REVIEW_NONE) != REVIEW_NONE:
+        taskctl_store.set_metainfo(rule.object_id, "review", REVIEW_NONE)
     return taskctl_store.annotate(
         rule.object_id, f"re-exported from rulectl rule {rule.signature}",
     )
