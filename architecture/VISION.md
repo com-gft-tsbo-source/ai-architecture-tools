@@ -50,5 +50,5 @@ Aufbauend auf den Skripten entstehen Skills und Subagents, die diese für die KI
 Rund um `rulectl` sind zwei Subagents vorgesehen:
 
 - **`rulectl-author`** (existiert bereits, mit Skill `rulectl-author-cli`): zerlegt ein Dokument mit Qualitätsrichtlinien in einzelne Rules, ordnet sie passenden Metagruppen zu und legt sie in `rulectl` an. Spezifiziert in `architecture/docs/subagents/design-rulectl-author.md` und `architecture/docs/skills/design-rulectl-author-cli.md`.
-- Ein zweiter Subagent zur Prüfung einer Codebasis gegen bestehende Rules (Abarbeitung einer per `rulectl tasklist` erzeugten Taskliste) ist geplant, aber noch nicht umgesetzt.
+- **`rulectl-checker`** (existiert bereits, mit Skill `rulectl-checker-cli`): prüft eine Codebasis gegen bestehende Rules, indem eine per `rulectl tasklist` erzeugte Taskliste abgearbeitet wird (Ergebnis je Task: konform, Verstoß — eskaliert zur User-Review — oder nicht prüfbar). Reiner Prüfer, ändert nie selbst Code. Spezifiziert in `architecture/docs/subagents/design-rulectl-checker.md` und `architecture/docs/skills/design-rulectl-checker-cli.md`.
 

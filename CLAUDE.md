@@ -43,6 +43,6 @@ Das Verzeichnis `architecture/docs/scripts` enthält die Architekturdokumente:
 
 Das Verzeichnis `architecture/scripts` enthält die bisher entwickelten Skripte, die auch in `architecture/VISION.md` beschrieben werden. `architecture/scripts/CLAUDE.md` beschreibt den aktuellen Implementierungsstand, den Tech-Stack und die Konventionen dieser Skripte (z. B. Wiederverwendung über `architecture/scripts/lib`, Konsistenzregeln zwischen den Tools).
 Das Verzeichnis `architecture/docs/skills` bzw. `architecture/docs/subagents` enthält analog die Design-Dokumente der Skills bzw. Subagents (z. B. `design-rulectl-author-cli.md`, `design-rulectl-author.md`) — Design-Dokumente sind auch hier maßgeblich, nicht die Implementierung.
-Das Verzeichnis `architecture/skills` enthält die bisher entwickelten AI-Skills (`rulectl-author-cli`).
-Das Verzeichnis `architecture/subagents` enthält die bisher entwickelten AI-Subagents (`rulectl-author`).
+Das Verzeichnis `architecture/skills` enthält die bisher entwickelten AI-Skills (`rulectl-author-cli`, `rulectl-checker-cli`).
+Das Verzeichnis `architecture/subagents` enthält die bisher entwickelten AI-Subagents (`rulectl-author`, `rulectl-checker`).
 
