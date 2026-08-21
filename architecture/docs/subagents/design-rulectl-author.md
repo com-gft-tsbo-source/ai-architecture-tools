@@ -48,11 +48,31 @@ doesn't exist yet, so a fresh project is not a precondition.
 1. **Obtain the document** (read the file path, use the pasted text
    directly, or fetch the URL — see "Input" above for the fetch/fallback/
    abort rules).
-2. **Segment it into candidate Rules.** Judgment call, not a fixed
-   heuristic — group related sentences into one Rule where they express a
-   single guideline, split apart where a paragraph bundles unrelated
-   concerns. Each candidate Rule needs at minimum a short Name and a
-   Description.
+2. **Build a structural worklist from the document's own outline.** Walk the
+   document's headings, sub-headings, and numbered/bulleted items —
+   whatever structure it actually has — top to bottom, and produce one
+   worklist entry per structural unit. This is a structured walk of the
+   outline, not a free-form pass over the flowing text: a unit must never be
+   able to disappear before it is ever considered. If the document has no
+   discernible structure (plain prose, no headings), treat the whole
+   document as a single unit.
+
+   Every worklist entry gets one of three explicit dispositions:
+   - **own Rule**: this unit becomes one candidate Rule (needs at minimum a
+     short Name and a Description — judgment still governs exactly how a
+     unit's content is worded as a Rule, just not *whether* the unit is
+     considered at all).
+   - **merged into `<sibling unit>`**: this unit's content is folded into a
+     named sibling/neighboring unit's candidate Rule instead of becoming its
+     own (e.g. a short sub-section that only elaborates on its parent).
+   - **no-rule-needed (`<reason>`)**: this unit produces no Rule at all —
+     state why (e.g. purely introductory text, a table of contents, out of
+     scope for quality guidelines).
+
+   The worklist itself — every structural unit with its disposition — is
+   the artifact steps 3-6 work from and step 6 reconciles against; it is not
+   discarded once the "own Rule" entries have been extracted into
+   candidates.
 3. **Determine each Rule's metagroup path** (Language/Context/Category):
    - Prefer an existing path (`show-metagroups`, or `list`) that already
      fits.
@@ -75,12 +95,24 @@ doesn't exist yet, so a fresh project is not a precondition.
    confirmation step with the user precedes this — the Subagent writes
    directly, sequentially, continuing past any single failed item (see
    `design-rulectl-author-cli.md`, "Error handling").
-6. **Report.** After processing every candidate Rule, produce a summary:
-   created Rules (Signature/ID, metagroup path), newly created metagroup
-   paths, skipped likely-duplicates (with the existing Rule each one
-   matched), and any items that failed to create (with the error). This
-   report is retrospective — it documents what was done, not a plan awaiting
-   approval.
+6. **Report — reconciled against the step 2 worklist, not just a log of
+   executed `add` calls.** Every worklist entry from step 2 must appear in
+   the report in exactly one of four categories, with no exceptions:
+   - **created**: Signature/ID and metagroup path.
+   - **skipped-likely-duplicate**: the existing Rule it matched.
+   - **failed**: the error from the failed `add`/corrective call.
+   - **no-rule-needed**: the reason — either the disposition already given
+     in step 2 (a stated reason, or "merged into `<sibling unit>`") for a
+     unit that was never a candidate, or, for a unit that *was* a candidate,
+     any reason it ends up here instead of "created" other than being a
+     duplicate or a failure.
+
+   A worklist entry with no corresponding report entry is a defect in this
+   step, not an acceptable omission — reconciling against the full worklist
+   (rather than just listing what was actually created) is what makes a
+   silently dropped structural unit impossible. Also report newly created
+   metagroup paths. The whole report remains retrospective — it documents
+   what was done, not a plan awaiting approval.
 
 ## Status
 

@@ -33,10 +33,21 @@ document to work from.
 
 1. **Obtain the document** (read the file, use the pasted text, or fetch the
    URL — see "Fetching a URL source" above).
-2. **Segment it into candidate Rules.** Use judgment, not a fixed rule of
-   thumb: group sentences that express one guideline into one Rule; split a
-   paragraph that bundles unrelated concerns into several. Each candidate
-   needs at least a short Name and a Description.
+2. **Build a structural worklist from the document's own outline.** Walk its
+   headings/sub-headings/numbered items top to bottom and produce one
+   worklist entry per structural unit — never a free-form pass over flowing
+   text where a unit could go unconsidered. No discernible structure (plain
+   prose)? Treat the whole document as one unit. Give every entry one of
+   three dispositions:
+   - **own Rule**: becomes one candidate Rule (needs a short Name and
+     Description).
+   - **merged into `<sibling unit>`**: folded into a named neighboring
+     unit's candidate instead of becoming its own.
+   - **no-rule-needed (`<reason>`)**: produces no Rule — state why (e.g.
+     purely introductory, out of scope for quality guidelines).
+
+   Keep this worklist — steps 3-6 work from it, and step 6 reconciles
+   against it, not just against what got created.
 3. **Determine each Rule's metagroup path** (Language/Context/Category):
    - Check `show-metagroups`/`list` first for an existing path that already
      fits.
@@ -56,11 +67,20 @@ document to work from.
 5. **Create each remaining candidate Rule.** Write directly, sequentially,
    via the Skill — no confirmation step first. If one item fails, report the
    error for that item and continue with the rest; don't abort the run.
-6. **Report.** After processing every candidate, summarize: created Rules
-   (Signature/ID, metagroup path), newly created metagroup paths, skipped
-   likely-duplicates (each with the existing Rule it matched), and any
-   failures (with their error text). This is a record of what happened, not
-   a plan awaiting approval.
+6. **Report — reconciled against the step 2 worklist**, not just a log of
+   the `add` calls you made. Every worklist entry must land in exactly one
+   of four categories, no exceptions:
+   - **created**: Signature/ID, metagroup path.
+   - **skipped-likely-duplicate**: the existing Rule it matched.
+   - **failed**: the error text.
+   - **no-rule-needed**: the step-2 reason (including "merged into
+     `<sibling unit>`"), or — for a former candidate that ends up here for
+     some other reason — that reason.
+
+   A worklist entry missing from the report is a defect in this step, not
+   an acceptable gap — that's what makes a silently dropped section
+   impossible. Also report newly created metagroup paths. Still
+   retrospective — a record of what happened, not a plan awaiting approval.
 
 ## Status
 
