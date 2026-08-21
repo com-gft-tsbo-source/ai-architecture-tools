@@ -1,7 +1,7 @@
 # ai-architecture-tools
 
 Dieses Repository dient zum Erstellen einer Reihe von Skripten, Skills und Subagents, die mich bei meiner Arbeit als Architekt und Softwareentwickler unterstützen sollen. Momentan wird im Unterverzeichnis `architecture` gearbeitet.
-Die Entwicklung der Skills und Subagents ruht im Augenblick.
+Die Entwicklung der Skills und Subagents ist seit 2026-08-21 wieder aktiv (begonnen mit `rulectl-author`).
 Die vorhandenen Tools `taskctl`, `adrctl` und `rulectl` dürfen aktuell nicht für die eigene Arbeit an diesem Repository genutzt werden — sie werden ggf. noch angepasst und sind daher unter Umständen nicht mehr kompatibel zu ihrem eigenen Dateiformat.
 
 ## Deine Aufgabe
@@ -42,6 +42,7 @@ Das Verzeichnis `architecture/docs/scripts` enthält die Architekturdokumente:
 - `architecture/docs/scripts/design-decisions.md` enthält die Dokumentation der Architekturentscheidungen.
 
 Das Verzeichnis `architecture/scripts` enthält die bisher entwickelten Skripte, die auch in `architecture/VISION.md` beschrieben werden. `architecture/scripts/CLAUDE.md` beschreibt den aktuellen Implementierungsstand, den Tech-Stack und die Konventionen dieser Skripte (z. B. Wiederverwendung über `architecture/scripts/lib`, Konsistenzregeln zwischen den Tools).
-Das Verzeichnis `architecture/skills` enthält die bisher entwickelten AI-Skills (bislang keine)
-Das Verzeichnis `architecture/subagents` enthält die bisher entwickelten AI-Subagents (bislang keine)
+Das Verzeichnis `architecture/docs/skills` bzw. `architecture/docs/subagents` enthält analog die Design-Dokumente der Skills bzw. Subagents (z. B. `design-rulectl-author-cli.md`, `design-rulectl-author.md`) — Design-Dokumente sind auch hier maßgeblich, nicht die Implementierung.
+Das Verzeichnis `architecture/skills` enthält die bisher entwickelten AI-Skills (`rulectl-author-cli`).
+Das Verzeichnis `architecture/subagents` enthält die bisher entwickelten AI-Subagents (`rulectl-author`).
 
