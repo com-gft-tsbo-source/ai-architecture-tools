@@ -41,15 +41,21 @@ Description.
 
 ## Workflow
 
-1. **Refresh the tasklist**: run `rulectl tasklist` (scoped by the
+1. **Refresh the tasklist**: run `rulectl tasklist --json` (scoped by the
    rule-scope filter, if given) via the Skill — brings the Rule-derived
    Tasks up to date with the currently active Rules before you check
-   anything.
-2. **Capture the work set once**: `taskctl list --status " "` (open) — the
-   fixed list you process this run. **Never use `taskctl next` for this**:
-   `next` selects the first task whose status is anything other than `X`,
-   so a task you've already moved to `R` or `B` still qualifies — looping
-   `next` would keep returning that same task instead of advancing.
+   anything. It returns the full list of Tasks it just created or updated,
+   IDs included.
+2. **Capture the work set once, directly from that refresh output**: the
+   exact Task IDs step 1 just reported — nothing broader. **Never derive the
+   work set from a separate `taskctl list --status " "` call**: that
+   returns every open Task in the store, including ones this run's scope
+   never touched (unrelated `taskctl` activity, or a task outside your
+   rule-scope filter) — silently widening your run past what you were asked
+   to check. **Never use `taskctl next` for this either**: `next` selects
+   the first task whose status is anything other than `X`, so a task you've
+   already moved to `R` or `B` still qualifies — looping `next` would keep
+   returning that same task instead of advancing.
 3. **Work every task in that captured list to completion — never abort
    early.** For each task:
    a. Mark it in progress (`[ ]→[~]`, "checking") — every task starts
@@ -64,10 +70,12 @@ Description.
       don't run it. On the allow-list → invoke it against the codebase and
       interpret its result for the specific `tool-rule` named in the
       Description.
-   e. **Record what you examined**, regardless of outcome, via `annotate`
-      — files/pattern/scope, never just the bare verdict. A verdict with
+   e. **Record what you examined and why the Rule applies there**,
+      regardless of outcome, via `annotate` — files/pattern/scope plus the
+      applicability rationale, never just the bare verdict. A verdict with
       no stated scope is indistinguishable from one reached by skipping
-      most of the codebase.
+      most of the codebase, and a scope with no stated rationale is
+      indistinguishable from one picked arbitrarily.
    f. **Set the outcome** via the Skill's recipes:
       - compliant → `X`, message "compliant".
       - violation → `info-review user` then `R`, message = the violation
@@ -75,11 +83,19 @@ Description.
       - can't check → `B`, message = the reason.
    One task's outcome — including failing to check it — never stops the
    run; move to the next task in the captured list.
-4. **Report.** After the captured list is exhausted, summarize this run's
-   own tasks (filter by the IDs from the step-2 snapshot, not the store's
-   full history) in three categories: compliant, escalated-for-review
-   (with each violation's detail), blocked (with each reason).
-   Retrospective — a record of what happened, not a plan awaiting
+4. **Verify, then report.** After the captured list is exhausted, re-read
+   the store's actual, persisted status for every ID in your step-2
+   snapshot — don't rely on your own bookkeeping of what you believe you
+   set; a `set-status` call that silently failed, or a task that never made
+   it past "in progress", must not be reported as if it landed cleanly.
+   Summarize this run's own tasks (filter by the snapshot IDs, not the
+   store's full history) in four categories: compliant, escalated-for-review
+   (with each violation's detail), blocked (with each reason), and **not
+   successfully finalized** — any snapshot ID whose re-read status isn't one
+   of those three, with whatever is known about why. That last category
+   doesn't change step 3's "never abort early" — a task landing here was
+   still visited and moved on from, it just didn't reach a clean terminal
+   status. Retrospective — a record of what happened, not a plan awaiting
    approval.
 
 ## Status mapping
@@ -96,17 +112,28 @@ Description.
 
 ## Re-checking
 
-Out of scope: you only ever work the tasks captured as *open* at the start
-of a single run; you never re-evaluate a task already at `[X]`, `[R]`, or
-`[B]`. Someone
-resetting such a task's status so you pick it up again is outside your
-job.
+Every run re-checks every in-scope active Rule's Task, by construction —
+not an opt-in extension, just what step 1 already causes. Re-running
+`rulectl tasklist` force-resets a Task's status back to `open` whenever it
+had drifted away from `open` — including a Task you yourself previously
+closed at `[X]`, `[R]`, or `[B]` on an earlier run, as long as its source
+Rule is still `active` and in scope. Since your step 1 always runs before
+your step 2, a previously-closed Task for a still-active, in-scope Rule is
+*already back at `open`* by the time you take the snapshot — you have no way
+to tell "never checked" apart from "checked before, reset by this refresh",
+and you don't try to. This is deliberate `tasklist` behavior, not a gap: a
+Rule could have changed since the last check, so re-verifying it every run
+is correct, not something to work around. There's also no way for you to
+check a Rule *less* often than every run without changing `tasklist` itself
+— that would be a `rulectl` change, not something you do.
 
 ## Out of scope
 
 - Fixing violations — you never edit the codebase.
 - A per-invocation allow-list — it lives in this file (see above).
-- Re-checking closed/escalated/blocked tasks.
+- Changing `rulectl tasklist`'s re-export/reset behavior, or working around
+  it, to check a Rule less often than every run (see "Re-checking") — a
+  `rulectl` change, not something you do.
 - Authoring Rules — that's `rulectl-author`.
 - Anything the `rulectl-checker-cli` Skill doesn't cover — if you need a
   `rulectl`/`taskctl` operation it doesn't document, that's a gap in the
