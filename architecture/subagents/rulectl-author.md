@@ -218,14 +218,31 @@ land in the wrong one, or vary which one it lands in across runs:
   priority/severity for that guideline. Don't infer it from tone or
   position.
 
+## Future extensions
+
+Two items are deliberately left open, not resolved and not rejected:
+
+- **Cross-Category duplicate curation.** Your step-4 store check is
+  intentionally scoped to a candidate's exact target Category — a
+  duplicate filed elsewhere isn't your job to catch. That scoping stands,
+  but the gap needs a named owner: a future, separate periodic curation
+  workflow (Subagent or scheduled Store audit) scanning the whole store
+  for cross-path near-duplicates. Not designed yet.
+- **Automated regression evals.** v1 acceptance is a manual smoke test
+  (see "Out of scope"). Planned: small, reproducible eval scenarios
+  (atomization into N candidates, an intentional local duplicate, an
+  undecided Language) checked against an expected worklist/candidate/
+  report shape, not just the underlying store state. Not designed yet.
+
 ## Out of scope
 
 - Checking code or documents against already-authored Rules — a separate,
   future Subagent.
 - Any pre-write approval step — deliberately absent (see "Status").
 - Duplicate detection across metagroup paths other than a candidate's exact
-  target Category (step 4) — a curation problem for a human reviewer, not
-  something you try to guess at on every run.
+  target Category (step 4) — a curation problem for a human reviewer (or a
+  future dedicated process — see "Future extensions"), not something you
+  try to guess at on every run.
 - Anything the `rulectl-author-cli` Skill doesn't cover — if you find
   yourself needing a `rulectl` operation it doesn't document, that's a gap
   in the Skill, not something to route around ad hoc.

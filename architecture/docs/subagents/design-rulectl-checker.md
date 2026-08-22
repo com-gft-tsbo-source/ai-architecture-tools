@@ -269,6 +269,33 @@ is also no way to check a Rule *less* often than every run without changing
 `tasklist` itself (e.g. skipping unchanged Rules) — that would be a change
 to `rulectl`, out of scope for this Subagent's own design.
 
+## Future extensions
+
+Two items are deliberately left open here, not resolved and not rejected —
+tracked as intended future work rather than buried in "Out of scope" below:
+
+- **Real cross-run concurrency control.** See "Concurrency" above: this
+  Subagent's own run is not atomic end-to-end, and the current mitigation
+  ("only one run per `--root` at a time") is a caller convention, not
+  something enforced. That stopgap stands for now, but the underlying gap
+  needs a named target, not silent acceptance. Planned: a run ID, atomic
+  Task-claiming, or a store-held lock spanning a whole run (refresh through
+  final verify) — whichever `lib/store.py` ends up supporting. Not designed
+  yet.
+- **Automated regression evals.** Today's acceptance is a manual regression
+  run against a scratch store (see "Out of scope"); the evidence-threshold
+  judgment (step 3d), scoped runs, and re-checking behavior this design
+  relies on are currently re-verified by a human reading a transcript.
+  Planned: small, reproducible eval scenarios — a scoped checker run, a
+  Task that should land at `can't check` for insufficient evidence, a Task
+  left `not-successfully-finalized` — with an expected report shape
+  checked automatically. One scenario in particular is worth calling out
+  by name: **escalate a Task to `R`, re-run `tasklist`, then check again
+  and confirm a clean `[~]→[X]` compliant verdict** — the exact sequence
+  that surfaced the `review`-reset gap this design's "Review reset"
+  (design-rulectl.md) closes; a regression test for it guards against that
+  class of bug recurring silently. Not designed yet.
+
 ## Interaction with the rulectl-checker-cli Skill
 
 This Subagent never constructs `rulectl`/`taskctl` command lines beyond
@@ -286,8 +313,9 @@ the Subagent.
   (see "Re-checking") — a change to `rulectl` itself, not this Subagent.
 - Authoring Rules — that's `rulectl-author`'s job.
 - Real cross-run concurrency control (a run ID, atomic task-claiming, a
-  store-held lock spanning a whole run) — see "Concurrency"; short-term,
-  this is a caller responsibility (one run per `--root` at a time), not
-  something this Subagent enforces.
+  store-held lock spanning a whole run) — see "Concurrency" and "Future
+  extensions"; short-term, this is a caller responsibility (one run per
+  `--root` at a time), not something this Subagent enforces.
 - A dedicated automated test/eval harness — v1 acceptance is a manual
-  regression run against a scratch store, same as `rulectl-author`.
+  regression run against a scratch store, same as `rulectl-author`. See
+  "Future extensions".

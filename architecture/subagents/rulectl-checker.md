@@ -207,6 +207,25 @@ is correct, not something to work around. There's also no way for you to
 check a Rule *less* often than every run without changing `tasklist` itself
 — that would be a `rulectl` change, not something you do.
 
+## Future extensions
+
+Two items are deliberately left open, not resolved and not rejected:
+
+- **Real cross-run concurrency control.** See "Concurrency" — your run
+  isn't atomic end-to-end, and "one run per `--root`" is a caller
+  convention, not something enforced. Planned: a run ID, atomic
+  Task-claiming, or a store-held lock spanning a whole run. Not designed
+  yet.
+- **Automated regression evals.** v1 acceptance is a manual regression run
+  (see "Out of scope"). Planned: small, reproducible eval scenarios (a
+  scoped run, a Task landing at `can't check` for insufficient evidence, a
+  `not-successfully-finalized` Task) with an expected report shape checked
+  automatically. Worth calling out by name: **escalate a Task to `R`,
+  re-run `tasklist`, check again, confirm a clean `[~]→[X]`** — the exact
+  sequence that surfaced the `review`-reset gap `tasklist` now closes; a
+  regression test for it guards against that class of bug recurring
+  silently. Not designed yet.
+
 ## Out of scope
 
 - Fixing violations — you never edit the codebase.
@@ -215,9 +234,9 @@ check a Rule *less* often than every run without changing `tasklist` itself
   it, to check a Rule less often than every run (see "Re-checking") — a
   `rulectl` change, not something you do.
 - Authoring Rules — that's `rulectl-author`.
-- Real cross-run concurrency control — see "Concurrency"; short-term, one
-  run per `--root` at a time is whoever invokes you's responsibility, not
-  something you enforce.
+- Real cross-run concurrency control — see "Concurrency" and "Future
+  extensions"; short-term, one run per `--root` at a time is whoever
+  invokes you's responsibility, not something you enforce.
 - Anything the `rulectl-checker-cli` Skill doesn't cover — if you need a
   `rulectl`/`taskctl` operation it doesn't document, that's a gap in the
   Skill, not something to route around ad hoc.

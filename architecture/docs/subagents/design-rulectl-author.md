@@ -292,6 +292,31 @@ Per created Rule:
   or severity for that guideline. Not inferred from tone or position in the
   document.
 
+## Future extensions
+
+Two items are deliberately left open here, not resolved and not rejected —
+tracked as intended future work rather than buried in "Out of scope" below:
+
+- **Cross-Category duplicate curation.** Step 4's store-duplicate check is
+  intentionally scoped to a candidate's exact target Category (see "Out of
+  scope"), so a semantically identical Rule filed under a different,
+  related Category is not caught by any run of this Subagent. That scoping
+  decision stands — a per-run, cross-path fuzzy search doesn't belong in
+  this Subagent — but the gap it leaves needs a *named* owner, not silent
+  acceptance. Planned: a separate, periodic curation workflow (a dedicated
+  Subagent, or a scheduled Store audit) that scans the whole `rulectl`
+  store for near-duplicate Rules across Category/Context/Language
+  boundaries and surfaces them for human review. Not designed yet.
+- **Automated regression evals.** Today's acceptance is a manual smoke test
+  (see "Out of scope"); the atomization, local-duplicate-group,
+  deferred-language, and verify/report-reconciliation logic this design
+  adds are all judgment calls a human tester currently re-verifies by
+  reading a transcript. Planned: small, reproducible eval scenarios (a
+  document that should atomize into N candidates, a document with an
+  intentional local duplicate, one that hits an undecided Language) with
+  an expected worklist/candidate/report shape checked automatically, not
+  just the underlying `rulectl` store state. Not designed yet.
+
 ## Interaction with the rulectl-author-cli Skill
 
 This Subagent never constructs `rulectl` command lines itself beyond what
@@ -308,11 +333,12 @@ the Subagent.
 - A pre-write approval step — deliberately not part of this workflow (see
   "Status" above).
 - A dedicated automated test/eval harness — v1 acceptance is a manual smoke
-  test against a scratch `rulectl` store.
+  test against a scratch `rulectl` store. See "Future extensions".
 - Processing more than one document/URL per run — a single invocation takes
   exactly one source (file path, pasted text, or URL); crawling a site or
   batching several URLs is a possible later extension, not v1.
 - Duplicate detection across metagroup paths other than a candidate's exact
-  target Category (step 4) — deliberately excluded; a duplicate filed under
-  a different, related path is a curation problem for a human reviewer, not
-  something this Subagent tries to guess at on every run.
+  target Category (step 4) — deliberately excluded from this Subagent's own
+  runs; a duplicate filed under a different, related path is a curation
+  problem for a human reviewer (or a future dedicated process — see "Future
+  extensions"), not something this Subagent tries to guess at on every run.
