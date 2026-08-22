@@ -32,6 +32,10 @@ Tool um ADRs zu managen. Dies soll von der KI genutzt werden, um getroffene Ents
 
 Auch diese Tool unterstüzt einen export nach `taskctl` um die Umsetzung von Änderungen zu tracken.
 
+### `questctl` (existiert bereits)
+
+Tool um offene Fragen zu managen, z. B. Rückfragen an einen Kunden während der Anforderungsklärung. Spezifiziert in `architecture/docs/scripts/design-questctl.md`, implementiert in `architecture/scripts/questctl.py`. Fast identisch zu `taskctl`, aber: die verwalteten Objekte sind Fragen statt Aufgaben; statt einer Phase gibt es eine optionale, store-weit einheitliche Group/Subgroup-Gliederung; Blocker/Reviews blockieren nicht die Bearbeitung anderer Fragen (mehrere Fragen können parallel bearbeitet werden); ein `answer`-Befehl trägt die Antwort in eine eigene, nur so beschreibbare Sektion ein.
+
 ### `specctl` (existiert bereits)
 
 Diese Tool dient zum Managen der Spezifikation. Spezifiziert in `architecture/docs/scripts/design-specctl.md`, implementiert in `architecture/scripts/specctl.py`.
@@ -51,4 +55,10 @@ Rund um `rulectl` sind zwei Subagents vorgesehen:
 
 - **`rulectl-author`** (existiert bereits, mit Skill `rulectl-author-cli`): zerlegt ein Dokument mit Qualitätsrichtlinien in einzelne Rules, ordnet sie passenden Metagruppen zu und legt sie in `rulectl` an. Spezifiziert in `architecture/docs/subagents/design-rulectl-author.md` und `architecture/docs/skills/design-rulectl-author-cli.md`.
 - **`rulectl-checker`** (existiert bereits, mit Skill `rulectl-checker-cli`): prüft eine Codebasis gegen bestehende Rules, indem eine per `rulectl tasklist` erzeugte Taskliste abgearbeitet wird (Ergebnis je Task: konform, Verstoß — eskaliert zur User-Review — oder nicht prüfbar). Reiner Prüfer, ändert nie selbst Code. Spezifiziert in `architecture/docs/subagents/design-rulectl-checker.md` und `architecture/docs/skills/design-rulectl-checker-cli.md`.
+
+Rund um `questctl` sind drei Subagents vorgesehen — Beispiel-Workflow: Sales erhält Kundenanforderungen; `questctl-author` zerlegt sie in eine Fragenliste, die an den Kunden geht; `questctl-checker` ordnet die zurückkommenden Kundenantworten den Fragen zu; nach mehreren Iterationen entsteht eine Spezifikation, gegen die `questctl-researcher` prüft, ob und wie alle ursprünglichen Anforderungen erfüllt wurden:
+
+- **`questctl-author`** (spezifiziert, noch nicht implementiert, mit Skill `questctl-author-cli`): zerlegt ein Dokument — oder ein ganzes Verzeichnis von Dokumenten — in einzelne Fragen und bildet dafür zunächst eine rein inhaltlich (nicht struktur-)basierte Group/Subgroup-Taxonomie, die einmalig mit dem User bestätigt wird, bevor irgendetwas angelegt wird. Geht ansonsten vor wie `rulectl-author`. Spezifiziert in `architecture/docs/subagents/design-questctl-author.md` und `architecture/docs/skills/design-questctl-author-cli.md`.
+- **`questctl-checker`** (spezifiziert, noch nicht implementiert, mit Skill `questctl-checker-cli`): ordnet eine Quelle von Antworten (z. B. eine Kunden-E-Mail) den passenden Fragen im Fragenkatalog zu und trägt sie wortwörtlich als Antwort ein — beantwortet dabei selbst nie eine Frage. Arbeitet den offenen Fragenkatalog sequentiell ab, außer der User verlangt explizit ein paralleles Vorgehen für eine benannte Gruppe. Spezifiziert in `architecture/docs/subagents/design-questctl-checker.md` und `architecture/docs/skills/design-questctl-checker-cli.md`.
+- **`questctl-researcher`** (spezifiziert, noch nicht implementiert, mit Skill `questctl-researcher-cli`): erstellt eigenständig Antworten auf offene Fragen anhand einer gegebenen Datenbasis, mit derselben Sequentiell/Parallel-Vorgabe wie `questctl-checker` und einer Beweis-Schwelle, die eine erfundene Antwort verbietet (dann bleibt die Frage offen bzw. wird blockiert). Spezifiziert in `architecture/docs/subagents/design-questctl-researcher.md` und `architecture/docs/skills/design-questctl-researcher-cli.md`.
 

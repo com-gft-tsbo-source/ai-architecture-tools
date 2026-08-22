@@ -32,7 +32,9 @@ Since depth is fixed per store (see Metagroups), a depth-0 store has every Quest
 
 ## Metainfo
 
-Same as taskctl (design-taskctl.md, "Metainfo"): `review` (`none` | `user` | `subagent`), `assignee-type`, `assignee-name`.
+Same as taskctl (design-taskctl.md, "Metainfo") plus one addition: `review` (`none` | `user` | `subagent`), `assignee-type`, `assignee-name`, and:
+
+- `source`: free text, pointing back to the document/passage a Question was drawn from — same convention as `rulectl`'s `source` Metainfo (design-rulectl.md, "Metainfo"): a file's resolved path plus a heading/line range, a URL plus an anchor, or (for pasted text) the `pasted invocation text` convention plus a content hash. Not part of taskctl's own Metainfo set — taskctl's Tasks are usually authored directly by whoever is using them, so there is nothing upstream to trace back to; questctl's Questions, by contrast, are routinely authored in bulk from a source document by `questctl-author` (`design-questctl-author.md`), where losing that trace would leave a Question with no way back to the requirement it came from. Left unset for a Question created any other way (e.g. a user typing `add` by hand).
 
 ## Status
 
@@ -84,8 +86,8 @@ In addition to the general operations from design.md, questctl supports:
 
 - `annotate`: append a `T` History entry documenting progress. Does not touch the Answer section.
 - `answer`: replace the Answer section's content and append a `T` History entry recording that it changed (see User Content, History). This is the *only* way to write the Answer section — there is deliberately no generic `set-answer`, so there is exactly one write path with exactly one logging behavior. (design.md's generic `set-<user-content-block>` always logs a fixed `M` entry — "`<block> changed`" — which would give the same field two different, inconsistent logging behaviors if both `answer` and `set-answer` existed side by side.)
-- `next`: find and display the next `[ ]` Question in priority order (see Prioritization and Parallel Processing above), including its History — or report one of the three "nothing available" reasons.
-- `next-all`: list every `[ ]` Question across the whole store, grouped by metagroup path (Group, then Subgroup) for readability — mirroring the sort order used everywhere else (Prioritization) — or report one of the three "nothing available" reasons.
+- `next [--group <path> | --subgroup <path>]`: find and display the next `[ ]` Question in priority order (see Prioritization and Parallel Processing above), including its History — or report one of the three "nothing available" reasons. The optional scope filter (mirroring `list`'s existing shape, design.md CLI Contract) restricts consideration to that metagroup path and its descendants; the `[~]`-in-progress gate (see Parallel Processing) is checked **unscoped, store-wide** either way — a `[~]` Question outside the given scope still blocks, since it is still true that "an agent is already working" regardless of where.
+- `next-all [--group <path> | --subgroup <path>]`: list every `[ ]` Question at or below the given metagroup path (the whole store if omitted), grouped by metagroup path (Group, then Subgroup) for readability — mirroring the sort order used everywhere else (Prioritization) — or report one of the three "nothing available" reasons, under the same unscoped `[~]`-gate rule as `next` above.
 
 ## Prioritization
 
@@ -101,5 +103,6 @@ Questions are ordered by sorted Group, then sorted Subgroup, then Question numbe
 Beyond the shared `--<metagroup-type>` / `group-<metagroup-type>` / `add-<metagroup-type>` machinery (design.md, CLI Contract):
 
 - `answer <id> <text> --message "..."`: `<text>` (Markdown, like `--description`) replaces the Answer section; `--message` is **required** (mirrors `annotate`'s existing `--message`, `required=True`) and becomes the `T` entry's log text — the only remaining trace of *why* the answer changed, since the previous text is gone once overwritten.
+- `next [--group <path> | --subgroup <path>]` / `next-all [--group <path> | --subgroup <path>]`: the optional scope filter restricts which `[ ]` Questions are considered, same flag shape and at-most-one-of rule as `list`'s own metagroup filter — added specifically so `questctl-checker`/`questctl-researcher` (design-questctl-checker.md/design-questctl-researcher.md) can be pointed at one Group/Subgroup subtree of an accumulating store without touching unrelated, currently-open work elsewhere. Both commands' `[~]`-in-progress gate (Parallel Processing) stays unscoped regardless — a Question `[~]` outside the given filter still blocks, since the gate's whole point ("an agent is already working somewhere") doesn't depend on where.
 - `next`/`next-all` failure reporting: exit 1 in all three "nothing available" cases (see Parallel Processing), distinguished by the stderr message text and, with `--json`, a machine-readable `"reason"` field (`in_progress` | `all_answered` | `awaiting_interaction`) — consistent with `next-all`'s and taskctl's existing `next`'s precedent of treating "nothing to hand out" as an error condition (exit 1), not an empty success.
 - `list [--group <path>] [--subgroup <path>] ...`: since depth is a whole-store property (see Metagroups), there is no per-object "ungrouped" state to filter for within a mixed store — a `list --ungrouped` filter is meaningless once depth can no longer vary within one store, so none is offered.

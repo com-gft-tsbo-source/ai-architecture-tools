@@ -332,6 +332,21 @@ wiederverwendete Status-Maschine).
 Noch offen:
 - Metagroup-Rename für taskctl/rulectl/adrctl (siehe oben) — im Contract
   dokumentiert, noch nicht implementiert.
+- Aus dem `questctl-author`/`-checker`/`-researcher`-Designpass
+  (`design-decisions.md`, "Amendments (2026-08-22, questctl-author/-checker/
+  -researcher design)"): zwei kleine Erweiterungen an `questctl` selbst sind
+  spezifiziert, aber noch nicht implementiert — `source`-Metainfo
+  (`lib/questctl_spec.py`s `MetainfoSpec`-Tupel) und ein optionaler
+  `--group`/`--subgroup`-Scope-Filter auf `next`/`next-all`
+  (`questctl.py`s `_configure_parser`/`_handle_next`/`_handle_next_all`,
+  analog zu `list`s bereits vorhandenem Filter in `lib/cliapp.py`s
+  `dispatch()`). Die drei Subagents/Skills selbst (`design-questctl-author.md`,
+  `design-questctl-checker.md`, `design-questctl-researcher.md` und ihre
+  `-cli`-Skill-Dokumente unter `architecture/docs/skills/`) sind ebenfalls
+  spezifiziert, aber noch nicht als `architecture/subagents/`/
+  `architecture/skills/`-Dateien angelegt — anders als `rulectl-author`/
+  `rulectl-checker`, die beide Ebenen (Design + tatsächliche Subagent-/
+  Skill-Datei) bereits haben.
 - specctl: die bidirektionale adrctl-Verknüpfung ist implementiert —
   `spec-ref=<id>`-Metainfo bei adrctl (einwertig, `design-decisions.md`,
   "Amendments (2026-08-19, spec-ref single-valued)"), `lib/spec_link.py`,
