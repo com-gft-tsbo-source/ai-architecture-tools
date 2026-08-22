@@ -17,7 +17,11 @@ Covers only the `rulectl` operations the authoring workflow needs:
 - `list --category <path>` — read existing Rules under a candidate path, for
   duplicate detection before `add`.
 - `show`, `show-metagroups` — inspect a specific Rule or the declared
-  metagroup tree when the extracted breakdown needs disambiguating.
+  metagroup tree when the extracted breakdown needs disambiguating, **and**
+  re-read a just-created Rule to confirm it actually persisted (`show <id>`
+  — the local-duplicate representative/fallback loop and the final
+  worklist audit both depend on this, `design-rulectl-author.md`, steps
+  5-6; not just a disambiguation aid).
 - `info-source`, `info-weight`, `info-tool`, `info-tool-rule`,
   `info-checkable`, `set-description`, `set-procedure` — correct a
   just-created Rule's fields within the same run (e.g. a duplicate check that

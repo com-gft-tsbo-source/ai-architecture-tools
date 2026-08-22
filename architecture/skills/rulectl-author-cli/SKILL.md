@@ -19,7 +19,10 @@ Only these operations, because only these are needed to author Rules:
 - `list --category <path>` — read existing Rules under a path, for duplicate
   checking.
 - `show`, `show-metagroups` — inspect one Rule, or the declared metagroup
-  tree, when the breakdown needs disambiguating.
+  tree, when the breakdown needs disambiguating, **and** re-read a
+  just-created Rule to confirm it actually persisted — the
+  local-duplicate representative/fallback loop and the final worklist
+  audit both depend on `show <id>` for this, not just disambiguation.
 - `info-source`, `info-weight`, `info-tool`, `info-tool-rule`,
   `info-checkable`, `set-description`, `set-procedure` — correct a
   just-created Rule's fields within the same run.

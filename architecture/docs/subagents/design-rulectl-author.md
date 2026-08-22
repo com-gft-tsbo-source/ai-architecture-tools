@@ -115,6 +115,20 @@ doesn't exist yet, so a fresh project is not a precondition.
      never silently dropped — it gets the explicit candidate-level outcome
      **deferred-awaiting-language-decision** in step 6's report, not folded
      into "failed" or quietly omitted.
+
+     **Resuming after a deferred candidate**: there is no separate resume
+     mechanism, and none is needed. A run is synchronous — "the answer
+     doesn't arrive" means the whole invocation ended, not that a
+     background job is waiting to be reattached to. Getting the deferred
+     guideline turned into a Rule is simply invoking this Subagent again
+     with the *same* document. That re-run rebuilds the worklist from
+     scratch and is not required to track which candidates were already
+     attempted: its own step 4 store-duplicate check already recognizes and
+     skips whatever the earlier run *did* manage to create before it
+     ended, the same way it would recognize any other pre-existing Rule.
+     No stable candidate IDs or run IDs are needed to make this safe — the
+     store itself is the record of what's already done, and step 4 already
+     reads it before creating anything.
    - **Context and Category**: create new ones freely (`add-context`,
      `add-category`) when nothing existing fits — this is the expected,
      natural granularity when carving up a new document. Prefer an existing
@@ -124,14 +138,20 @@ doesn't exist yet, so a fresh project is not a precondition.
    - **Local**: compare each candidate against the other candidates formed
      in this same run (across the whole document, not just within one
      worklist entry) for likely overlap — two sections restating the same
-     guideline must not both become Rules. Candidates judged as likely
-     saying the same thing form a **local-duplicate group**; order them
-     (document order is fine) and mark the first as that group's current
-     **representative** — the only one step 5 attempts to create right now.
-     The rest are *provisionally* local-duplicates of the representative,
-     not yet finally decided (see step 5 for why: a representative that
-     later fails to persist must not leave the whole guideline unrepresented
-     in the store).
+     guideline must not both become Rules. **Only candidates that also
+     target the same metagroup path** (step 3 already resolved each
+     candidate's Language/Context/Category before this check runs) are
+     eligible to group together — two candidates with identical wording but
+     different target Languages are not a local duplicate, they are two
+     Rules a document can legitimately need (e.g. the same naming rule
+     stated once per language covered). Among candidates that both match on
+     content *and* target path, form a **local-duplicate group**; order
+     them (document order is fine) and mark the first as that group's
+     current **representative** — the only one step 5 attempts to create
+     right now. The rest are *provisionally* local-duplicates of the
+     representative, not yet finally decided (see step 5 for why: a
+     representative that later fails to persist must not leave the whole
+     guideline unrepresented in the store).
    - **Against the store**: before creating each remaining candidate
      (representatives and any candidate with no local-duplicate group),
      `list` the existing Rules under its target Category path — the exact
@@ -152,29 +172,39 @@ doesn't exist yet, so a fresh project is not a precondition.
    directly, sequentially, continuing past any single failed item (see
    `design-rulectl-author-cli.md`, "Error handling").
 
-   **Local-duplicate groups are attempted representative-first, with
-   fallback.** Only a group's current representative is created. If it
-   succeeds (confirmed by the step 6 re-read), the rest of the group is
-   *now* finally skipped-likely-duplicate, referencing the representative.
-   If the representative's creation fails (or fails the step 6 re-read),
-   the guideline it stood for still needs a Rule: promote the next
-   candidate in the group to representative and attempt creating *that*
-   one instead, continuing down the group until one succeeds or the group
-   is exhausted. Only if every candidate in the group fails does the
-   guideline end up with no Rule at all — and in that case every attempted
-   candidate is reported individually as **failed**, with its own error;
-   nothing about the group is glossed over into a single opaque failure.
+   **Local-duplicate groups run their own closed create-verify-fallback
+   loop, entirely within this step** — this never spills into step 6:
+   1. Attempt to create the group's current representative.
+   2. Immediately `show <id>` it — the same store-truth check step 6 later
+      repeats for every other candidate, just done here right away because
+      this group's own next action depends on the answer now, not at the
+      end of the run.
+   3. Found and matching → done: the rest of the group is *now* finally
+      **skipped-likely-duplicate**, referencing this representative. Not
+      found, or the `add` itself failed → the guideline still needs a
+      Rule: promote the next candidate in the group to representative and
+      go back to 1.
+   4. Only once every candidate in the group has been tried and failed
+      does the guideline end up with no Rule — every attempted candidate
+      is then reported individually as **failed**, with its own error;
+      nothing about the group is glossed over into one opaque failure.
+
+   A non-grouped candidate (no local duplicate) is simply created once,
+   with no loop — its own outcome is settled by step 6 like any other.
 6. **Verify, then report — reconciled against the step 2 worklist and,
    under each entry, every one of its candidates individually.** Before
-   compiling the report, re-read the store: for every candidate this run
-   believes it created (including a promoted local-duplicate
-   representative, see step 5), `show <id>` to confirm it is actually
-   persisted. If it isn't, treat that exactly like a failed `add` — the
-   candidate becomes **failed** with its own reason ("create reported
-   success, but a follow-up re-read did not find the Rule"), and, if it was
-   a local-duplicate representative, the group's fallback in step 5 applies
-   — a run's own belief about what it did is not itself evidence; the store
-   is.
+   compiling the report, re-read the store once more: for every candidate
+   this run believes it created — including a local-duplicate group's
+   winning representative, whose own step-5 loop already checked this once
+   — `show <id>` to reconfirm it is actually persisted. This is a
+   final audit pass, not where a fallback decision gets made (that already
+   happened inside step 5's loop, immediately, for every group); it exists
+   to catch anything that changed *after* step 5 looked — a store write
+   that raced with this run, for instance. If a candidate step 5 believed
+   created no longer shows up here, treat that exactly like a failed `add`
+   — it becomes **failed**, with its own reason ("create reported success
+   in step 5, but this final re-read no longer finds the Rule") — a run's
+   own belief about what it did is not itself evidence; the store is.
 
    Since one worklist entry can now yield several candidates with
    *different* outcomes (step 2, "Atomizing"), the report has two levels,
@@ -262,6 +292,31 @@ Per created Rule:
   or severity for that guideline. Not inferred from tone or position in the
   document.
 
+## Future extensions
+
+Two items are deliberately left open here, not resolved and not rejected —
+tracked as intended future work rather than buried in "Out of scope" below:
+
+- **Cross-Category duplicate curation.** Step 4's store-duplicate check is
+  intentionally scoped to a candidate's exact target Category (see "Out of
+  scope"), so a semantically identical Rule filed under a different,
+  related Category is not caught by any run of this Subagent. That scoping
+  decision stands — a per-run, cross-path fuzzy search doesn't belong in
+  this Subagent — but the gap it leaves needs a *named* owner, not silent
+  acceptance. Planned: a separate, periodic curation workflow (a dedicated
+  Subagent, or a scheduled Store audit) that scans the whole `rulectl`
+  store for near-duplicate Rules across Category/Context/Language
+  boundaries and surfaces them for human review. Not designed yet.
+- **Automated regression evals.** Today's acceptance is a manual smoke test
+  (see "Out of scope"); the atomization, local-duplicate-group,
+  deferred-language, and verify/report-reconciliation logic this design
+  adds are all judgment calls a human tester currently re-verifies by
+  reading a transcript. Planned: small, reproducible eval scenarios (a
+  document that should atomize into N candidates, a document with an
+  intentional local duplicate, one that hits an undecided Language) with
+  an expected worklist/candidate/report shape checked automatically, not
+  just the underlying `rulectl` store state. Not designed yet.
+
 ## Interaction with the rulectl-author-cli Skill
 
 This Subagent never constructs `rulectl` command lines itself beyond what
@@ -278,11 +333,12 @@ the Subagent.
 - A pre-write approval step — deliberately not part of this workflow (see
   "Status" above).
 - A dedicated automated test/eval harness — v1 acceptance is a manual smoke
-  test against a scratch `rulectl` store.
+  test against a scratch `rulectl` store. See "Future extensions".
 - Processing more than one document/URL per run — a single invocation takes
   exactly one source (file path, pasted text, or URL); crawling a site or
   batching several URLs is a possible later extension, not v1.
 - Duplicate detection across metagroup paths other than a candidate's exact
-  target Category (step 4) — deliberately excluded; a duplicate filed under
-  a different, related path is a curation problem for a human reviewer, not
-  something this Subagent tries to guess at on every run.
+  target Category (step 4) — deliberately excluded from this Subagent's own
+  runs; a duplicate filed under a different, related path is a curation
+  problem for a human reviewer (or a future dedicated process — see "Future
+  extensions"), not something this Subagent tries to guess at on every run.
