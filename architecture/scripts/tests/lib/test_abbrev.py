@@ -32,6 +32,16 @@ class TestWidthsAndPrefix(unittest.TestCase):
         self.assertEqual(widths_target_length(4), 8)
         self.assertEqual(widths_target_length(5), 10)
 
+    def test_widths_for_level_count_zero(self):
+        # design-taskctl.md/design-questctl.md, both "Object Type": a
+        # depth-0 store (no metagroup in use at all) has no letters to take
+        # from anywhere, but the table entry still exists so the generic
+        # derivation machinery doesn't need a special case for it.
+        self.assertEqual(widths_for_level_count(0), ())
+
+    def test_widths_target_length_zero_still_pads_to_six(self):
+        self.assertEqual(widths_target_length(0), 6)
+
     def test_strip_sort_prefix(self):
         self.assertEqual(strip_sort_prefix("002-Implementation"), "Implementation")
         self.assertEqual(strip_sort_prefix("NoPrefix"), "NoPrefix")
@@ -171,6 +181,30 @@ class TestFourAndFiveLevels(unittest.TestCase):
         )
         self.assertEqual(result, "pt" + "_" * 8)
         self.assertEqual(len(result), 10)
+
+
+class TestZeroLevels(unittest.TestCase):
+    """design-taskctl.md/design-questctl.md, both "Object Type": a
+    variable-depth store fixed at depth 0 has every object derive to the
+    same, all-underscore code -- the existing padding rule applied to the
+    empty case, not a new sentinel constant."""
+
+    def test_natural_object_type_empty(self):
+        self.assertEqual(natural_object_type([]), "______")
+
+    def test_derive_object_type_empty(self):
+        self.assertEqual(derive_object_type([], known={}), "______")
+
+    def test_cannot_collide_with_a_real_group_name(self):
+        # A real Group/Subgroup Name is never empty, so no derived code can
+        # ever equal the depth-0 sentinel -- no collision handling needed.
+        known = {"______": ("SomeName",)}  # contrived: pretend it did collide
+        with self.assertRaises(AbbrevCollisionError):
+            # abbrev override colliding with a *pre-existing* "______" still
+            # goes through the normal collision path, confirming the code
+            # participates in collision detection like any other -- it just
+            # never naturally arises from a real (non-empty) level name.
+            derive_object_type([], known=known, abbrev="______")
 
 
 if __name__ == "__main__":

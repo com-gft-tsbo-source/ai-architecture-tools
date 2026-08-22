@@ -2,12 +2,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from lib import index
 from lib.metagroup import (
     MetagroupDeclaration,
     MetagroupError,
     assign_leaf_name,
     dir_collect_known_types,
     dir_create_path,
+    dir_ensure_root_registered,
     dir_object_type_for,
     dir_path_exists,
     dir_sibling_names,
@@ -47,6 +49,31 @@ class TestDirectoryMode(unittest.TestCase):
             root = Path(tmp)
             with self.assertRaises(MetagroupError):
                 dir_object_type_for(root, ["Nonexistent"])
+
+
+class TestEnsureRootRegistered(unittest.TestCase):
+    """design.md, "Metagroups" (variable_depth): a depth-0 store registers
+    its root the same way any other metagroup directory is registered."""
+
+    def test_registers_root_with_depth_zero_sentinel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            object_type = dir_ensure_root_registered(root)
+            self.assertEqual(object_type, "______")
+            self.assertEqual(index.read_abbrev(root), "______")
+
+    def test_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = dir_ensure_root_registered(root)
+            second = dir_ensure_root_registered(root)
+            self.assertEqual(first, second)
+
+    def test_honors_object_type_fn(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            object_type = dir_ensure_root_registered(root, object_type_fn=lambda segs: "custom")
+            self.assertEqual(object_type, "custom")
 
     def test_two_level_path_collision_resolution_matches_design_doc_example(self):
         with tempfile.TemporaryDirectory() as tmp:

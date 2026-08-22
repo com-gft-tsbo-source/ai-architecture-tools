@@ -10,10 +10,17 @@ Carries more than just build_spec(): taskctl's ToolSpec references
 validate_transition and object_type_from_phase directly, so those (and the
 status-code constants they use) had to move here too -- leaving them in
 taskctl.py would make this module import taskctl.py back, circularly.
+
+lib/questctl_spec.py also imports the status constants and
+validate_transition from here directly (design-questctl.md, "Status":
+"unchanged from taskctl") rather than duplicating them -- the two tools are
+the only ones sharing this exact review-gated state machine, so there was
+no need for a third, more general module just to hold it.
 """
 
 from __future__ import annotations
 
+from lib import abbrev
 from lib.model import ObjectRecord
 from lib.toolspec import MetagroupLevelSpec, MetainfoSpec, StatusSpec, ToolSpec
 
@@ -63,7 +70,12 @@ def validate_transition(record: ObjectRecord, target: str, *, message: str, forc
 
 def object_type_from_phase(level_names: list[str]) -> str:
     """taskctl's exception to the generic Object Type scheme (design-taskctl.md,
-    "Object Type"): the unpadded Phase number, not a letter abbreviation."""
+    "Object Type"): the unpadded Phase number, not a letter abbreviation.
+    A phase-less (depth-0) store has no Phase number to derive from, so it
+    falls back to the general 0-level derivation instead (design.md,
+    "Object Type"): every Task there derives to "______"."""
+    if not level_names:
+        return abbrev.derive_object_type([], {})
     phase_name = level_names[-1]
     prefix = phase_name.split("-", 1)[0]
     return str(int(prefix))
@@ -87,4 +99,5 @@ def build_spec() -> ToolSpec:
         root_name="tasks",
         default_mode="directory",
         object_type_fn=object_type_from_phase,
+        variable_depth=True,
     )

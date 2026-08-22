@@ -17,7 +17,7 @@ from typing import Callable, Optional
 
 from lib import render
 from lib.model import ObjectRecord
-from lib.store import ReindexReport, Store, StoreError
+from lib.store import NoWorkAvailable, ReindexReport, Store, StoreError
 from lib.toolspec import ToolSpec
 
 Handler = Callable[[Store, argparse.Namespace], object]
@@ -55,7 +55,7 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
     for metainfo in spec.metainfo:
         add_parser.add_argument(f"--{_flag_name(metainfo.type)}", dest=f"metainfo__{metainfo.type}", default=None)
     for block in spec.user_content_blocks:
-        if block == "Description":
+        if block == "Description" or block in spec.no_generic_setter:
             continue
         add_parser.add_argument(f"--{_flag_name(block)}", dest=f"content__{block}", default="")
 
@@ -88,6 +88,8 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
         group_parser.add_argument("value", help="Existing metagroup path, e.g. 'Python/backend'")
 
     for block in spec.user_content_blocks:
+        if block in spec.no_generic_setter:
+            continue
         content_parser = subparsers.add_parser(
             f"set-{_flag_name(block)}", help=f"Change {block} content on an object"
         )
@@ -132,8 +134,12 @@ def _metagroup_path_for_add(spec: ToolSpec, args: argparse.Namespace) -> list[st
         for level in spec.metagroup_levels
         if getattr(args, f"metagroup__{level.type}") is not None
     ]
-    if len(supplied) != 1:
-        flags = ", ".join(f"--{_flag_name(l.type)}" for l in spec.metagroup_levels)
+    flags = ", ".join(f"--{_flag_name(l.type)}" for l in spec.metagroup_levels)
+    if len(supplied) > 1:
+        raise CliError(f"add accepts at most one of [{flags}] specifying the object's metagroup path")
+    if not supplied:
+        if spec.variable_depth:
+            return []
         raise CliError(f"add requires exactly one of [{flags}] specifying the object's metagroup path")
     return supplied[0][1].split("/")
 
@@ -154,7 +160,8 @@ def dispatch(spec: ToolSpec, store: Store, args: argparse.Namespace, extra_handl
         content = {
             block: getattr(args, f"content__{block}")
             for block in spec.user_content_blocks
-            if block != "Description" and getattr(args, f"content__{block}")
+            if block != "Description" and block not in spec.no_generic_setter
+            and getattr(args, f"content__{block}")
         }
         return store.add(
             metagroup_path=metagroup_path, name=args.name, description=args.description,
@@ -269,7 +276,11 @@ def _print_result(spec: ToolSpec, args: argparse.Namespace, result: object) -> N
         return
 
     if isinstance(result, ObjectRecord):
-        if args.command == "show" and getattr(args, "history", False):
+        if args.command == "next" or (args.command == "show" and getattr(args, "history", False)):
+            # design-taskctl.md/design-questctl.md, both "Operations": next
+            # displays "including its History" -- same rendering `show
+            # --history` already uses, keyed on the command name (any tool
+            # with a `next` command gets this, not just taskctl/questctl).
             print(render.short_with_history(result))
         elif args.command == "show":
             print(render.full_display(result, spec))
@@ -309,6 +320,15 @@ def main(
         result = dispatch(spec, store, args, extra_handlers)
         if after_dispatch is not None:
             after_dispatch(spec, store, args, result)
+    except NoWorkAvailable as exc:
+        # design-questctl.md, "CLI Contract additions": exit 1 like any
+        # other "nothing to hand out" case, but --json also carries the
+        # machine-readable `reason` a plain stderr message can't.
+        if args.json:
+            print(json.dumps({"reason": exc.reason, "message": str(exc)}))
+        else:
+            print(str(exc), file=sys.stderr)
+        return 1
     except (StoreError, CliError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
