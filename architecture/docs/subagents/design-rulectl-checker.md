@@ -129,21 +129,38 @@ spanning the run) is future work, not v1.
    early.** For each task:
    a. Mark it in progress (`[ ]→[~]`, "checking") — every task starts
       `open`, and `open`'s only forward step is `in-progress`; the outcome
-      statuses below are only reachable from there.
-   b. Read its Description — the embedded Rule text (`checkable=llm`) or,
-      for `checkable=<tool>`, the tool instruction (`` Run `<tool>` to
-      verify rule `<tool-rule>`. ``) followed by that same Rule's own
-      Description/Procedure/source, embedded the same way the `llm` branch
-      gets its Rule text (design-rulectl.md, "Operations": "Field mapping")
-      — a tool's raw result isn't self-explanatory; judging it against the
-      actual guideline needs the guideline's text, not just a rule id.
+      statuses below are only reachable from there. **If this `set-status`
+      call itself fails, this task was never actually claimed** — do not
+      proceed to b-g for it: no examination, no `annotate`, no further
+      status call. Move directly to the next task in the captured list.
+      The task's true state surfaces on its own in step 4's re-read (still
+      `open`, matching none of `X`/`R`/`B`) and lands it in "not
+      successfully finalized" — that bucket, not a fabricated verdict
+      about a task you never actually started checking, is the correct
+      outcome for a claim that didn't take.
+   b. **Decide which branch (d or e) applies from the Task's structured
+      `assignee-type` metainfo — `agent` or `tool` — never by inspecting or
+      parsing the Description text to guess.** `assignee-type` is set by
+      `rulectl tasklist`'s own field mapping (design-rulectl.md,
+      "Operations") straight from the Rule's `checkable` value, so it's as
+      trustworthy as any other Task metainfo; the Description, by contrast,
+      is Rule-authored content — read it as evidence for the verdict once
+      the branch is already decided, never as the signal that selects the
+      branch. Then read the Description: the embedded Rule text
+      (`assignee-type=agent`) or, for `assignee-type=tool`, the tool
+      instruction (`` Run `<tool>` to verify rule `<tool-rule>`. ``)
+      followed by that same Rule's own Description/Procedure/source,
+      embedded the same way the agent branch gets its Rule text
+      (design-rulectl.md, "Operations": "Field mapping") — a tool's raw
+      result isn't self-explanatory; judging it against the actual
+      guideline needs the guideline's text, not just a rule id.
    c. **First, set a check plan**: before forming a verdict, note the
       Rule's scope of applicability (which files/paths it's even meant to
       cover), the candidate files/patterns you intend to examine, and any
       deliberate exclusions. This is the plan step f's annotation reports
       afterward — decide it before looking, not reconstructed after the
       fact to justify whatever was already read.
-   d. **`checkable=llm`**: examine the codebase (at the given codebase
+   d. **`assignee-type=agent`** (i.e. `checkable=llm`): examine the codebase (at the given codebase
       path) against the Rule text using judgment — read/search the files
       the plan named. Determine **compliant**, **violated**, or, when the
       available evidence genuinely doesn't support either — missing
@@ -155,9 +172,10 @@ spanning the run) is future work, not v1.
       is sufficient for this Rule, not just that nothing bad was found in
       what was looked at — if that can't be said, the outcome is `B`, not
       `X`.
-   e. **`checkable=<tool>`**: if the named tool isn't on the allow-list,
-      this task is "can't check" — do not run it. Otherwise invoke the
-      tool per its execution profile (see "Tool allow-list") against the
+   e. **`assignee-type=tool`** (i.e. `checkable=<tool>`, `assignee-name` =
+      the tool's name): if the named tool isn't on the allow-list, this
+      task is "can't check" — do not run it. Otherwise invoke the tool
+      per its execution profile (see "Tool allow-list") against the
       codebase and interpret its result for the specific `tool-rule`
       referenced in the Description, using that Task's now-embedded Rule
       text (step b) to judge what the tool's result actually means for the

@@ -82,17 +82,29 @@ telling you what to do.
      the meantime. If your run ends before that answer arrives, don't drop
      a still-waiting candidate silently — it gets the explicit outcome
      **deferred-awaiting-language-decision** in step 6.
+
+     **Resuming a deferred candidate** just means: someone invokes you
+     again with the same document. There's no separate resume mechanism
+     and none is needed — you're synchronous, so "the answer didn't
+     arrive" means the whole run ended. Your re-run rebuilds the worklist
+     from scratch; you don't need to track what the earlier run already
+     created — your own step 4 store-duplicate check already recognizes
+     and skips it, the same as any other pre-existing Rule.
    - **Context and Category**: check `show-metagroups`/`list` first for an
      existing path that already fits; create new ones freely when nothing
      fits — that's the expected granularity when carving up a new document.
 4. **Check for duplicates — local, then against the store.**
    - **Local**: compare each candidate against the other candidates from
-     this same run, across the whole document. Candidates that likely say
-     the same thing form a **local-duplicate group** — pick the first as
-     the group's current **representative**, the only one step 5 attempts
-     to create right now; the rest are provisionally local-duplicates,
-     not yet finally decided (see step 5 — a representative that later
-     fails to persist must not leave the guideline unrepresented).
+     this same run, across the whole document. **Only group candidates that
+     also target the same metagroup path** (step 3 already resolved each
+     one's Language/Context/Category) — identical wording aimed at
+     different Languages is two Rules a document can legitimately need, not
+     a duplicate. Among candidates matching on both content and target
+     path, form a **local-duplicate group** — pick the first as the
+     group's current **representative**, the only one step 5 attempts to
+     create right now; the rest are provisionally local-duplicates, not
+     yet finally decided (see step 5 — a representative that later fails
+     to persist must not leave the guideline unrepresented).
    - **Against the store**: before creating each remaining candidate
      (representatives and any candidate with no local-duplicate group),
      `list` the existing Rules under its exact target Category (not related
@@ -108,24 +120,35 @@ telling you what to do.
    via the Skill — no confirmation step first. If one item fails, report the
    error for that item and continue with the rest; don't abort the run.
 
-   **Local-duplicate groups: representative first, with fallback.** Only
-   create a group's current representative. If it succeeds (confirmed by
-   the step 6 re-read), the rest of the group becomes finally
-   skipped-likely-duplicate, referencing it. If the representative fails
-   (creation or re-read), promote the next candidate in the group and
-   attempt that one instead, continuing until one succeeds or the group is
-   exhausted. Only if every candidate in the group fails does the guideline
-   end up with no Rule — report each attempted one individually as
-   **failed**, with its own error; don't collapse the group into one opaque
-   failure.
+   **Local-duplicate groups run their own closed loop, entirely within this
+   step** — never spilling into step 6:
+   1. Create the group's current representative.
+   2. Immediately `show <id>` it — the same store-truth check step 6 later
+      repeats for everyone else, just done now because this group's next
+      move depends on the answer right away.
+   3. Found → done: the rest of the group is now finally
+      **skipped-likely-duplicate**, referencing this representative. Not
+      found, or the `add` itself failed → promote the next candidate in the
+      group and go back to 1.
+   4. Every candidate in the group tried and failed → the guideline ends up
+      with no Rule; report each attempted candidate individually as
+      **failed**, with its own error — never collapsed into one opaque
+      failure.
+
+   A non-grouped candidate is just created once, no loop — step 6 settles
+   its outcome like any other.
 6. **Verify, then report — reconciled against the step 2 worklist and every
-   candidate under it individually.** First, re-read the store: for every
-   candidate you believe you created (including a promoted local-duplicate
-   representative), `show <id>` to confirm it's actually there. If it
-   isn't, treat it exactly like a failed `add` — it becomes **failed**, with
-   its own reason ("create reported success, but a re-read didn't find the
-   Rule"), and, if it was a local-duplicate representative, step 5's
-   fallback applies — your own bookkeeping isn't evidence, the store is.
+   candidate under it individually.** Re-read the store once more: for
+   every candidate you believe you created — including a local-duplicate
+   group's winning representative, already checked once by its own step-5
+   loop — `show <id>` to reconfirm it's actually there. This is a final
+   audit, not where a fallback decision gets made (that already happened
+   inside step 5, immediately, per group) — it exists to catch anything
+   that changed since, e.g. a race with another write. If a candidate step
+   5 believed created no longer shows up here, treat it exactly like a
+   failed `add` — it becomes **failed**, with its own reason ("create
+   reported success in step 5, but this final re-read no longer finds the
+   Rule") — your own bookkeeping isn't evidence, the store is.
 
    Since one worklist entry can now yield several candidates with different
    outcomes, report two levels, not one flat category per entry:

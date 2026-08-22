@@ -43,12 +43,16 @@ Read/Glob/Grep/Bash directly for that.
   every `taskctl` call — use exactly what you were given, never a
   different path for each tool. `rulectl tasklist` writes into the
   `taskctl` store sharing that same `--root`.
-- **`--json`**: always pass it, for both tools — **and always before the
-  subcommand**: `rulectl --root <root> --json tasklist`, `taskctl --root
-  <root> --json show <id>`. It's declared on each CLI's top-level parser,
-  not on the subcommand's own parser, so `rulectl tasklist --json` is a
-  different (and invalid) command line — the `tasklist` subparser doesn't
-  know `--json` and rejects it.
+- **`--json`**: pass it only on calls whose output you actually parse —
+  the `tasklist` refresh and the final `show`. Omit it on `set-status`/
+  `annotate`/`info-review`: pure write calls, their outcome is the exit
+  code, nothing in their output ever gets read (the recipes below already
+  reflect this — don't add `--json` where they don't show it). **Where
+  used, always before the subcommand**: `rulectl --root <root> --json
+  tasklist`, `taskctl --root <root> --json show <id>`. It's declared on
+  each CLI's top-level parser, not on the subcommand's own parser, so
+  `rulectl tasklist --json` is a different (and invalid) command line —
+  the `tasklist` subparser doesn't know `--json` and rejects it.
 - **Exit codes**: `0` ok, `1` error.
 
 ## Recipes

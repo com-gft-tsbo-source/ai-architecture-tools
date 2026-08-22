@@ -65,14 +65,20 @@ output instead (see "Recipes"); never issue a separate `list` call to
   `rulectl tasklist` writes into "the taskctl store sharing this
   invocation's `--root`" (design-rulectl.md), so a single `--root` value
   drives everything; never pass different roots to the two tools.
-- **`--json`**: always pass it, for both tools. **It is a global option,
-  not a subcommand option** — both CLIs declare it on their top-level
-  parser, before the subcommand is dispatched (`lib/cliapp.py`), so it must
-  appear *before* the subcommand name: `rulectl --root <root> --json
-  tasklist [scope]`, `taskctl --root <root> --json show <id>`. Placing it
-  after the subcommand (`rulectl tasklist --json`) is a different, invalid
-  command line — the subcommand's own parser doesn't declare `--json` and
-  rejects it as an unrecognized argument.
+- **`--json`**: pass it on calls whose output you actually parse — the
+  `tasklist` refresh (its returned IDs are the snapshot) and `show` (the
+  final re-read). Omit it on `set-status`/`annotate`/`info-review`: those
+  are pure write calls whose outcome is the exit code, nothing in their
+  output is ever read, so `--json` would just be noise there — the
+  Recipes below reflect this split; don't add `--json` to a recipe that
+  doesn't already show it. **Where it is used, it is a global option, not
+  a subcommand option** — both CLIs declare it on their top-level parser,
+  before the subcommand is dispatched (`lib/cliapp.py`), so it must appear
+  *before* the subcommand name: `rulectl --root <root> --json tasklist
+  [scope]`, `taskctl --root <root> --json show <id>`. Placing it after the
+  subcommand (`rulectl tasklist --json`) is a different, invalid command
+  line — the subcommand's own parser doesn't declare `--json` and rejects
+  it as an unrecognized argument.
 - **Exit codes**: `0` = ok, `1` = error.
 
 ## Recipes

@@ -101,18 +101,33 @@ doesn't prevent it. Until real cross-run locking exists: only one run per
    early.** For each task:
    a. Mark it in progress (`[ ]→[~]`, "checking") — every task starts
       `open`, whose only forward step is `in-progress`; the outcome
-      statuses below are only reachable from there.
-   b. Read its Description — the embedded Rule text (`checkable=llm`) or,
-      for `checkable=<tool>`, the tool instruction followed by that same
-      Rule's own Description/Procedure/source, embedded the same way the
-      `llm` branch gets its Rule text — a tool's raw result isn't
-      self-explanatory without the guideline it's meant to verify.
+      statuses below are only reachable from there. **If this `set-status`
+      call itself fails, you never actually claimed this task** — skip b-g
+      entirely: no examination, no `annotate`, no further status call.
+      Move straight to the next task. Its true state surfaces on its own
+      at step 4's re-read (still `open`, matching none of `X`/`R`/`B`) and
+      lands it in "not successfully finalized" — that's the honest outcome
+      for a claim that didn't take, not a verdict you never actually
+      earned the right to make.
+   b. **Decide the branch (d or e) from the Task's structured
+      `assignee-type` metainfo — `agent` or `tool` — never by parsing the
+      Description to guess.** `assignee-type` comes straight from
+      `rulectl tasklist`'s own field mapping, off the Rule's `checkable`
+      value — trust it the way you'd trust any other Task metainfo. The
+      Description is Rule-authored content: read it as evidence once the
+      branch is already decided, never as what decides the branch. Then
+      read the Description itself — the embedded Rule text
+      (`assignee-type=agent`) or, for `assignee-type=tool`, the tool
+      instruction followed by that same Rule's own
+      Description/Procedure/source, embedded the same way the agent branch
+      gets its Rule text — a tool's raw result isn't self-explanatory
+      without the guideline it's meant to verify.
    c. **First, set a check plan**: before forming a verdict, note the
       Rule's scope of applicability, the candidate files/patterns you
       intend to examine, and any deliberate exclusions. This is what your
       step-f annotation reports afterward — decide it before looking, not
       reconstructed after the fact to justify whatever you already read.
-   d. **`checkable=llm`**: examine the codebase (at the given codebase
+   d. **`assignee-type=agent`** (i.e. `checkable=llm`): examine the codebase (at the given codebase
       path) against the Rule text using judgment — read/search the files
       your plan named. Decide **compliant**, **violated**, or, when the
       evidence genuinely doesn't support either — missing runtime context,
@@ -122,8 +137,9 @@ doesn't prevent it. Until real cross-run locking exists: only one run per
       avoid `B`. `compliant` specifically requires being able to state
       *why* your coverage is sufficient for this Rule — if you can't say
       that, the outcome is `B`, not `X`.
-   e. **`checkable=<tool>`**: not on the allow-list above → "can't check",
-      don't run it. On the allow-list → invoke it per its execution profile
+   e. **`assignee-type=tool`** (i.e. `checkable=<tool>`): not on the
+      allow-list above → "can't check", don't run it. On the allow-list →
+      invoke it per its execution profile
       (see "Tool allow-list") against the codebase and interpret its result
       for the specific `tool-rule` named in the Description, using the
       Rule text now embedded there (step b) to judge what the tool's
