@@ -10,6 +10,8 @@ Store name `tasks` (design.md, "File and Directory Parameters"): resolves to `<s
 
 `Phase=<nr>-<name>` (single level; the 3-digit, zero-padded `<nr>` prefix is the metagroup's sort key, as for all tools — see design.md). Example: `002-Implementation`.
 
+Like questctl (design-questctl.md, "Metagroups"), taskctl declares an **allowed depth range** rather than one fixed number — here, 0 or 1: a store either uses Phases for every Task, or uses no Phases at all (a flat task list). The depth is a whole-store property, not a per-Task one: it is not persisted as an explicit marker but inferred from what already exists, and fixed by the first successful `add` (with or without `--phase`), exactly as design.md, "Metagroups", describes generally. `add-phase` is rejected once a store is locked at depth 0 (there is nothing for a Phase to attach to); every `add` after the first must match the established depth. A depth-0 store's Task files sit directly in the store root (directory mode), which is then the only metagroup-path directory that ever exists, with its own `.index.md`/`.index.json` pair.
+
 ## Metainfo
 
 - `review`: `none` | `user` | `subagent`
@@ -46,7 +48,7 @@ This is what `next` (see Operations) actually returns: not "the next `[ ]` Task,
 
 ## Object Type
 
-Exception to the general rule in design.md: the Object Type equals the Phase number, **not** padded to 6 characters. This exists purely to make tasks more easily identifiable, not as a true classification.
+Exception to the general rule in design.md: **when Phases are in use** (depth 1, see Metagroups), the Object Type equals the Phase number, **not** padded to 6 characters — this exists purely to make tasks more easily identifiable, not as a true classification. **In a phase-less (depth 0) store**, there is no Phase number to derive from, so the general 0-level derivation applies instead (design.md, "Object Type"; design-questctl.md, "Object Type", for the same fallback in questctl): every Task derives to `______`.
 
 ## History
 

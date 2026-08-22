@@ -11,13 +11,12 @@ Store name `questions` (design.md, "File and Directory Parameters"): resolves to
 - `Group=<nr>-<name>` (level 1)
 - `Subgroup=<Group>/<nr>-<name>` (level 2, requires an existing Group)
 
-As a *tree shape*, this is identical to adrctl's Domain/Component (design-adrctl.md, "Metagroups"): a regular, ≤2-level hierarchy. **The deviation from design.md's general model is not the tree shape but where an object may attach to it.** Every other tool's objects always sit at that tool's one fixed, deepest declared level (design.md, "Every object belongs to exactly one metagroup"). A Question, instead, may attach at **any** level of its ≤2-level tree: no Group at all (depth 0, "ungrouped"), a Group only (depth 1), or a Group/Subgroup (depth 2) — a per-object choice, not a tool-wide constant.
+As a *tree shape*, this is identical to adrctl's Domain/Component (design-adrctl.md, "Metagroups"): a regular, ≤2-level hierarchy. What's different is that questctl declares an **allowed depth range, 0–2**, rather than one fixed number — and, per design.md ("Metagroups"), the depth actually used is chosen once, **for the whole store**, not per object: every Question in a given store sits at the same depth — none at all (0, "ungrouped"), a Group only (1), or a Group/Subgroup (2). A store with any Question under a Subgroup has *every* Question under some (potentially different) Subgroup; there is no mixing of depths within one store, and consequently no per-object "move to a different depth" operation (`ungroup` or similar) — depth is a whole-store property, not a per-object one, so there is nothing for an object-level operation to act on.
 
-- `add-group <name> [--abbrev <code>]` and `add-subgroup <Group>/<name> [--abbrev <code>]` create metagroup-path nodes exactly as design.md describes: only the last segment is newly created, every ancestor segment must already exist.
-- A Question is assigned via **either** `--group <path>` (depth 1) **or** `--subgroup <path>` (depth 2) — inline on `add`, or via `group-group <id> <path>` / `group-subgroup <id> <path>` afterwards — never both at once. Omitting both on `add` leaves the Question ungrouped (depth 0).
-- `ungroup <id>` (new operation — no other tool needs an equivalent, since their objects can never be "un-metagrouped") moves an already-grouped Question back to depth 0. Logged as a plain `M` entry, the same way `group-<metagroup-type>` is.
-- **Directory mode:** a Group is a subdirectory of the store root; a Subgroup is a subdirectory of its Group's directory — identical to adrctl. An **ungrouped** Question's file lives directly in the store root, which therefore doubles as the depth-0 metagroup-path directory: it gets its own `.index.md`/`.index.json` pair (see Index Files), alongside the Group subdirectories the same root also contains. The two kinds of entries never collide: Group directories are always named `<nr>-<name>`, Question files are always named `<nr>-<type>-<id>-<name>.md`.
-- **Single-file mode:** an ungrouped Question simply carries no metagroup-type entry in its `## Meta` section — the empty case of the general rule that `## Meta` lists every ancestor level of the object's path.
+- The depth is not persisted as an explicit marker; it is inferred from whatever already exists, the same way `resolve_root` already infers directory-vs-single-file mode from what's on disk (design.md, "File and Directory Parameters"). It is fixed by the first event that reveals it: the first successful `add` (whichever of `--group`/`--subgroup` it did or didn't use), or a preceding `add-subgroup` call, which unambiguously implies depth 2 before any Question need exist. A bare `add-group` call decides nothing by itself — it's valid scaffolding for either a depth-1 or a depth-2 store.
+- Once the depth is established, every subsequent `add` must use exactly that depth. `add-group`/`add-subgroup` remain available only where they could still matter: both stay available in a depth-2 store (more Groups need Subgroups before anything can attach); only `add-group` stays available in a depth-1 store (`add-subgroup` is rejected — nothing could ever attach at depth 2 anymore); neither is available in a depth-0 store (there is no grouping axis to build at all). A call that would violate the established depth is rejected with an error.
+- **Directory mode:** a depth-1 or depth-2 store mirrors Group/Subgroup as nested subdirectories exactly like adrctl. A depth-0 store has no subdirectories at all — every Question file sits directly in the store root, which is then the *only* metagroup-path directory that ever exists, with its own single `.index.md`/`.index.json` pair (see design.md, "Index Files").
+- **Single-file mode:** a depth-0 store's `## Metagroups` bookkeeping section is simply absent/empty, and no object ever carries a metagroup-type entry in its `## Meta` section.
 
 ## Object Type
 
@@ -29,7 +28,7 @@ The general derivation table (design.md, "Object Type") is extended with a 0-lev
 | 1 | 6 |
 | 2 | 3 + 3 |
 
-An ungrouped Question therefore always derives to `______` — 0 letters taken, then right-padded to 6 by the existing rule; no new mechanism, just that rule applied to the empty case. Since a real Group/Subgroup Name can never be empty, `______` can never collide with a derived code and needs no collision handling of its own.
+Since depth is fixed per store (see Metagroups), a depth-0 store has every Question derive to the same code, `______` — 0 letters taken, then right-padded to 6 by the existing rule; not a per-object special case, just the table's 0-row applied uniformly because that is the only depth this store ever uses. It can never collide with anything, since a depth-0 store has no Group/Subgroup names to collide with in the first place.
 
 ## Metainfo
 
@@ -53,40 +52,54 @@ The *per-object* state machine is unchanged from taskctl (design-taskctl.md, "St
 
 `[B]` is reachable from, and back into, any non-terminal status (a reason via `--message` is required going in). From `[R]`/`[C]`, a step back to `[~]` is allowed (rework). All other transitions require `--force`.
 
-**Deviation from taskctl:** `[B]`, `[R]`, and `[C]` on one Question never block work on any *other* Question — this is the point of contrast against taskctl's now-explicit sequential-blocking rule (design-taskctl.md, "Sequential Processing"). Several Questions may be `[~]` at once — a whole Subgroup, a whole Group, or any combination of Groups/Subgroups — the tool imposes no restriction on which Questions may be concurrently active. Only `next-all`'s own precondition (see Operations) cares about `[~]` at all, and only tool-wide, not per-branch.
+**Deviation from taskctl:** `[B]`, `[R]`, and `[C]` on one Question never block *other* Questions from being *finished*. This is not the same thing as when *new* work may start — see Parallel Processing, below, for that.
+
+## Parallel Processing
+
+questctl is not sequential the way taskctl is (design-taskctl.md, "Sequential Processing") — several Questions may be worked at once, spanning a Subgroup, a whole Group, or any combination. But "several at once" is a deliberate act, not something `next`/`next-all` build up incrementally on their own:
+
+- **While any Question anywhere in the store is `[~]`, neither `next` nor `next-all` will hand out a new `[ ]` Question.** The gate is global — it does not matter which Group/Subgroup the in-progress Question belongs to. This is what makes "several in parallel" a real, bounded batch rather than an ever-growing one: once *anything* is in flight, no one (agent or user) is offered more until that batch clears.
+- To start several Questions together, an agent marks each of them `[~]` itself — repeated `set-status <id> ~` calls, no separate batch-start operation — *before* beginning to answer any of them. The first such call closes the gate for everyone else's `next`/`next-all` from that point on; the agent already knows which Questions it committed to and proceeds independently of the gate for its own batch.
+- Once the gate is closed by one Question, it stays closed until **no** Question is `[~]` anywhere — not until the whole original batch reaches `[X]`. `[R]`/`[C]`/`[B]` don't hold the gate closed (per Status, above): moving a Question out of `[~]` into `[R]`/`[C]`/`[B]` releases the gate exactly as reaching `[X]` would, even while that Question itself sits unresolved.
+
+When `next`/`next-all` cannot hand out anything, they report *why*, distinguishing three cases (see CLI Contract additions for their exact signal):
+
+1. **`in_progress`** — the gate above is closed: at least one Question is `[~]`. Meaning: work is already underway, don't start more.
+2. **`all_answered`** — no Question is `[~]`, and every Question is `[X]` (an empty store, with no Questions at all, is reported the same way — vacuously nothing left). Meaning: nothing left to do.
+3. **`awaiting_interaction`** — no Question is `[~]`, not every Question is `[X]`, but none is `[ ]` either (the remainder is `[X]`/`[R]`/`[C]`/`[B]`, with at least one `[R]`/`[C]`/`[B]`). Meaning: nothing an agent can pick up on its own right now — a review or a blocker needs to be resolved by a user or another agent first, after which `next`/`next-all` may have something again.
+
+Only when none of the three applies does `next` return a Question (the earliest `[ ]`, per Prioritization) or `next-all` return a list (every `[ ]`, grouped).
 
 ## History
 
-In addition to `M`, questctl uses two prefixes (taskctl has only one, `T`):
-- `T`: a plain progress-log entry, written by `annotate` — free-form notes on work in progress, exactly as taskctl's `T`.
-- `A`: an answer entry, written by `answer`. Multiple `A` entries may exist (an answer may be revised); only the **last** `A` entry in a Question's History counts as *the* answer. There is no separate "answer" field kept in sync elsewhere — it is always derived by reading History backward for the most recent `A` entry.
+In addition to `M`, questctl uses `T` for two purposes (taskctl has only one, plain progress notes):
+- Written by `annotate`: a free-form progress-log entry, exactly as taskctl's `T`.
+- Written by `answer`: records that the Answer section changed. The entry carries only a short log message (see CLI Contract additions) — the answer text itself lives solely in the Answer section (see User Content), never duplicated into History. Each `answer` call **replaces** the Answer section outright; the `T` entry is the only remaining trace that a change happened, and why.
 
-Both `T` and `A` always show the `[<old>] -> [<new>]` transition, even when unchanged (e.g. `[~] -> [~]`) — same as taskctl's `T`.
+`T` entries always show the `[<old>] -> [<new>]` transition, even when unchanged (e.g. `[~] -> [~]`) — same as taskctl. Neither `annotate` nor `answer` can themselves change status (`Store.annotate`'s implementation always sets `new_status = old_status`) — moving a Question to `[~]`/`[X]`/etc. is always a separate `set-status` call.
 
 ## Operations
 
 In addition to the general operations from design.md, questctl supports:
 
-- `annotate`: append a `T` History entry documenting progress. Does not affect what counts as "the answer".
-- `answer`: append an `A` History entry — this *is* how a Question's answer is recorded or revised. Identical in shape to `annotate` (same arguments, same `[<old>]->[<new>]` display), differing only in the History prefix it writes.
-- `ungroup <id>`: clears a Question's Group/Subgroup assignment, moving it to depth 0 (see Metagroups). Logged as `M`.
-- `next`: find and display the next `[ ]` Question in priority order (see Prioritization), including its History. Unlike taskctl's `next` (design-taskctl.md, "Sequential Processing"), it is never blocked by an earlier `[B]`/`[R]`/`[C]` Question — those are simply skipped, since (see Status above) they don't block other Questions' progress.
-- `next-all`: lists **every** `[ ]` Question across the whole store, grouped by metagroup path (Group, then Subgroup, ungrouped Questions listed first) for readability — the same sort order used everywhere else (see Prioritization). Aborts with an error, listing nothing, if **any** Question anywhere in the store currently has status `[~]` — `next-all` is meant to kick off a fresh batch of parallel work from a clean slate, not to be mixed with work already underway.
+- `annotate`: append a `T` History entry documenting progress. Does not touch the Answer section.
+- `answer`: replace the Answer section's content and append a `T` History entry recording that it changed (see User Content, History). This is the *only* way to write the Answer section — there is deliberately no generic `set-answer`, so there is exactly one write path with exactly one logging behavior. (design.md's generic `set-<user-content-block>` always logs a fixed `M` entry — "`<block> changed`" — which would give the same field two different, inconsistent logging behaviors if both `answer` and `set-answer` existed side by side.)
+- `next`: find and display the next `[ ]` Question in priority order (see Prioritization and Parallel Processing above), including its History — or report one of the three "nothing available" reasons.
+- `next-all`: list every `[ ]` Question across the whole store, grouped by metagroup path (Group, then Subgroup) for readability — mirroring the sort order used everywhere else (Prioritization) — or report one of the three "nothing available" reasons.
 
 ## Prioritization
 
-Questions are ordered by sorted Group, then sorted Subgroup (ungrouped Questions sort before any Group, as the "empty" depth-0 path), then Question number within that subpath — this order drives `next`, `next-all`'s grouping, and default listings.
+Questions are ordered by sorted Group, then sorted Subgroup, then Question number within that subpath — this order drives `next`, `next-all`'s grouping, and default listings. (In a depth-0 store there is only the one, empty subpath.)
 
 ## User Content
 
-- `Description` — holds the question text itself (what is being asked).
-
-Each block may contain Markdown and is stored with a `> ` prefix per line.
+- `Description` — the question text itself (what is being asked).
+- `Answer` — the current answer, written only via `answer` (see Operations); there is no `set-answer`. Handled exactly like `Description`: full Markdown, stored with a `> ` prefix per line, rendered as a `### Answer` tool-specific section (design.md, "Object Format"). Starts absent and is created by the first `answer` call.
 
 ## CLI Contract additions
 
-Beyond the shared `--<metagroup-type>` / `group-<metagroup-type>` / `add-<metagroup-type>` machinery (design.md, CLI Contract), questctl adds:
+Beyond the shared `--<metagroup-type>` / `group-<metagroup-type>` / `add-<metagroup-type>` machinery (design.md, CLI Contract):
 
-- `list [--group <path>] [--subgroup <path>] [--ungrouped] ...`: `--ungrouped` is new — a boolean filter for depth-0 Questions, needed because `--group`/`--subgroup` can only ever express "at or below a given path," never "at no path." At most one of `--group` / `--subgroup` / `--ungrouped` may be given per call (an object has exactly one placement).
-- `--message "..."` on `answer`: same meaning and shape as on `annotate`/`set-status` — the History log text for the new `A` entry.
-- `ungroup <id>`: object selector only, no positional value — mirrors `delete <id>`'s shape (design.md, CLI Contract), not `group-<metagroup-type> <id> <path>`'s, since there is no target path to give.
+- `answer <id> <text> --message "..."`: `<text>` (Markdown, like `--description`) replaces the Answer section; `--message` is **required** (mirrors `annotate`'s existing `--message`, `required=True`) and becomes the `T` entry's log text — the only remaining trace of *why* the answer changed, since the previous text is gone once overwritten.
+- `next`/`next-all` failure reporting: exit 1 in all three "nothing available" cases (see Parallel Processing), distinguished by the stderr message text and, with `--json`, a machine-readable `"reason"` field (`in_progress` | `all_answered` | `awaiting_interaction`) — consistent with `next-all`'s and taskctl's existing `next`'s precedent of treating "nothing to hand out" as an error condition (exit 1), not an empty success.
+- `list [--group <path>] [--subgroup <path>] ...`: since depth is a whole-store property (see Metagroups), there is no per-object "ungrouped" state to filter for within a mixed store — a `list --ungrouped` filter is meaningless once depth can no longer vary within one store, so none is offered.
