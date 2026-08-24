@@ -342,14 +342,16 @@ Noch offen:
   `[~]`-Gate weiterhin ungescoped geprüft — `_no_work_reason` nimmt jetzt
   sowohl die volle als auch die gescopte Record-Liste entgegen) — sind
   implementiert, inkl. 9 neuer Tests (`TestSourceMetainfo`,
-  `TestNextScopeFilter`) unter `tests/test_questctl.py`. Das Skill
-  `questctl-author-cli` ist jetzt als `architecture/skills/questctl-author-cli/
-  SKILL.md` angelegt (alle Recipes gegen die echte CLI verifiziert). Noch
-  offen: die drei Subagents selbst (`architecture/subagents/questctl-author.md`
-  usw.) sowie die Skills `questctl-checker-cli`/`questctl-researcher-cli` —
-  Design-Dokumente dafür existieren bereits (`design-questctl-author.md`,
-  `design-questctl-checker.md`, `design-questctl-researcher.md`,
-  `design-questctl-checker-cli.md`, `design-questctl-researcher-cli.md`
+  `TestNextScopeFilter`) unter `tests/test_questctl.py`. Die Skills
+  `questctl-author-cli` und `questctl-checker-cli` sind jetzt als
+  `architecture/skills/questctl-{author,checker}-cli/SKILL.md` angelegt
+  (alle Recipes beider Skills gegen die echte CLI verifiziert, inkl. der
+  `info-review`-vor-`R`-Mechanik und des Parallel-Modus' `[~]→B`-Sonderfalls
+  bei fehlendem Match). Noch offen: die drei Subagents selbst
+  (`architecture/subagents/questctl-author.md` usw.) sowie das Skill
+  `questctl-researcher-cli` — Design-Dokumente existieren bereits
+  (`design-questctl-author.md`, `design-questctl-checker.md`,
+  `design-questctl-researcher.md`, `design-questctl-researcher-cli.md`
   unter `architecture/docs/`), aber noch keine tatsächlichen Dateien —
   anders als `rulectl-author`/`rulectl-checker`, die beide Ebenen bereits
   haben.
