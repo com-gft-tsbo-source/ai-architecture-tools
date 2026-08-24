@@ -342,14 +342,17 @@ Noch offen:
   `[~]`-Gate weiterhin ungescoped geprüft — `_no_work_reason` nimmt jetzt
   sowohl die volle als auch die gescopte Record-Liste entgegen) — sind
   implementiert, inkl. 9 neuer Tests (`TestSourceMetainfo`,
-  `TestNextScopeFilter`) unter `tests/test_questctl.py`. Die drei
-  Subagents/Skills selbst (`design-questctl-author.md`,
-  `design-questctl-checker.md`, `design-questctl-researcher.md` und ihre
-  `-cli`-Skill-Dokumente unter `architecture/docs/skills/`) sind ebenfalls
-  spezifiziert, aber noch nicht als `architecture/subagents/`/
-  `architecture/skills/`-Dateien angelegt — anders als `rulectl-author`/
-  `rulectl-checker`, die beide Ebenen (Design + tatsächliche Subagent-/
-  Skill-Datei) bereits haben.
+  `TestNextScopeFilter`) unter `tests/test_questctl.py`. Das Skill
+  `questctl-author-cli` ist jetzt als `architecture/skills/questctl-author-cli/
+  SKILL.md` angelegt (alle Recipes gegen die echte CLI verifiziert). Noch
+  offen: die drei Subagents selbst (`architecture/subagents/questctl-author.md`
+  usw.) sowie die Skills `questctl-checker-cli`/`questctl-researcher-cli` —
+  Design-Dokumente dafür existieren bereits (`design-questctl-author.md`,
+  `design-questctl-checker.md`, `design-questctl-researcher.md`,
+  `design-questctl-checker-cli.md`, `design-questctl-researcher-cli.md`
+  unter `architecture/docs/`), aber noch keine tatsächlichen Dateien —
+  anders als `rulectl-author`/`rulectl-checker`, die beide Ebenen bereits
+  haben.
 - specctl: die bidirektionale adrctl-Verknüpfung ist implementiert —
   `spec-ref=<id>`-Metainfo bei adrctl (einwertig, `design-decisions.md`,
   "Amendments (2026-08-19, spec-ref single-valued)"), `lib/spec_link.py`,
