@@ -342,19 +342,18 @@ Noch offen:
   `[~]`-Gate weiterhin ungescoped geprüft — `_no_work_reason` nimmt jetzt
   sowohl die volle als auch die gescopte Record-Liste entgegen) — sind
   implementiert, inkl. 9 neuer Tests (`TestSourceMetainfo`,
-  `TestNextScopeFilter`) unter `tests/test_questctl.py`. Die Skills
-  `questctl-author-cli` und `questctl-checker-cli` sind jetzt als
-  `architecture/skills/questctl-{author,checker}-cli/SKILL.md` angelegt
-  (alle Recipes beider Skills gegen die echte CLI verifiziert, inkl. der
-  `info-review`-vor-`R`-Mechanik und des Parallel-Modus' `[~]→B`-Sonderfalls
-  bei fehlendem Match). Noch offen: die drei Subagents selbst
-  (`architecture/subagents/questctl-author.md` usw.) sowie das Skill
-  `questctl-researcher-cli` — Design-Dokumente existieren bereits
-  (`design-questctl-author.md`, `design-questctl-checker.md`,
-  `design-questctl-researcher.md`, `design-questctl-researcher-cli.md`
-  unter `architecture/docs/`), aber noch keine tatsächlichen Dateien —
-  anders als `rulectl-author`/`rulectl-checker`, die beide Ebenen bereits
-  haben.
+  `TestNextScopeFilter`) unter `tests/test_questctl.py`. Alle drei Skills
+  (`questctl-author-cli`, `questctl-checker-cli`, `questctl-researcher-cli`)
+  sind jetzt als `architecture/skills/questctl-{author,checker,researcher}-cli/
+  SKILL.md` angelegt (jedes Recipe aller drei Skills gegen die echte CLI
+  verifiziert, inkl. der `info-review`-vor-`R`-Mechanik und des
+  Parallel-Modus' `[~]→B`-Sonderfalls bei fehlendem Match bzw. fehlender
+  Evidenz). Noch offen: nur noch die drei Subagents selbst
+  (`architecture/subagents/questctl-author.md` usw.) — Design-Dokumente
+  existieren bereits (`design-questctl-author.md`, `design-questctl-checker.md`,
+  `design-questctl-researcher.md` unter `architecture/docs/subagents/`),
+  aber noch keine tatsächlichen Dateien — anders als `rulectl-author`/
+  `rulectl-checker`, die beide Ebenen bereits haben.
 - specctl: die bidirektionale adrctl-Verknüpfung ist implementiert —
   `spec-ref=<id>`-Metainfo bei adrctl (einwertig, `design-decisions.md`,
   "Amendments (2026-08-19, spec-ref single-valued)"), `lib/spec_link.py`,
