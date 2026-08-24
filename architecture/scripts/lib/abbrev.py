@@ -17,7 +17,7 @@ _TARGET_LENGTH = 6
 # derive_object_type below), so this table is the only thing that changes
 # per tool -- the derivation/collision algorithm itself stays generic.
 _WIDTHS_BY_LEVEL_COUNT = {
-    1: (6,), 2: (3, 3), 3: (2, 2, 2),
+    0: (), 1: (6,), 2: (3, 3), 3: (2, 2, 2),
     4: (2, 2, 2, 2), 5: (2, 2, 2, 2, 2),
 }
 _MAX_EXTRA_WIDTH = 3
@@ -37,7 +37,14 @@ def widths_for_level_count(level_count: int) -> tuple[int, ...]:
 
 def widths_target_length(level_count: int) -> int:
     """Total Object Type width for a given level count (sum of its per-level
-    widths) -- the target length every pad() call for that level count uses."""
+    widths) -- the target length every pad() call for that level count uses.
+    0 levels has no per-level widths to sum (there are no letters to take
+    from anywhere), but still pads out to the standard 6-character width
+    (design-taskctl.md/design-questctl.md, both "Object Type") -- the same
+    padding rule every other level count already gets, just with nothing to
+    pad in the first place."""
+    if level_count == 0:
+        return _TARGET_LENGTH
     return sum(widths_for_level_count(level_count))
 
 
@@ -66,7 +73,7 @@ def natural_object_type(level_names: list[str]) -> str:
     already-assigned one; use derive_object_type() to get a guaranteed-unique result."""
     stripped = tuple(strip_sort_prefix(n) for n in level_names)
     widths = widths_for_level_count(len(stripped))
-    return pad(_join(stripped, widths), sum(widths))
+    return pad(_join(stripped, widths), widths_target_length(len(stripped)))
 
 
 def _first_divergent_index(a: str, b: str) -> int | None:
@@ -100,7 +107,7 @@ def derive_object_type(
 
     stripped = tuple(strip_sort_prefix(n) for n in level_names)
     widths = widths_for_level_count(len(stripped))
-    target_length = sum(widths)
+    target_length = widths_target_length(len(stripped))
     candidate = pad(_join(stripped, widths), target_length)
     if candidate not in known:
         return candidate

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from lib import atomicio, index, locking, metagroup, numbering, objectfile, singlefile
+from lib import abbrev, atomicio, index, locking, metagroup, numbering, objectfile, singlefile
 from lib.clock import now_iso
 from lib.history import HistoryEntry
 from lib.metagroup import MetagroupDeclaration
@@ -25,6 +25,19 @@ from lib.toolspec import ToolSpec
 
 class StoreError(Exception):
     pass
+
+
+class NoWorkAvailable(StoreError):
+    """Raised when a variable-depth tool's own "find work" operation
+    (questctl's next/next-all, design-questctl.md "Parallel Processing")
+    has nothing to hand out right now. Carries a short, machine-readable
+    `reason` alongside the human-readable message, exposed via --json
+    (lib/cliapp.py's main()) -- `in_progress` (a Question is already
+    `[~]`), `all_answered`, or `awaiting_interaction`."""
+
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 def _validate_metainfo_choice(spec: ToolSpec, metainfo_type: str, value: str) -> None:
@@ -125,6 +138,64 @@ class Store:
     def lock(self) -> locking.FileLock:
         return locking.FileLock(self.root)
 
+    # -- variable depth (design.md, "Metagroups") ------------------------
+
+    def _established_depth(self) -> Optional[int]:
+        """The whole-store metagroup depth already committed to (only
+        meaningful when self.spec.variable_depth), inferred from whatever
+        already exists -- never a persisted marker of its own, the same way
+        resolve_root() infers directory-vs-single-file mode from what's on
+        disk. None means not yet established (empty store, or only
+        add-<type> scaffolding that doesn't by itself decide anything).
+
+        An existing object's own depth is the strongest signal (every
+        object in a store uses the same depth, so the first one found is
+        representative). Failing that, a metagroup path already created at
+        the tool's own maximum declared depth is unambiguous even before
+        any object exists (e.g. questctl's add-subgroup, or taskctl's
+        add-phase -- taskctl's only level *is* its maximum, so it locks
+        immediately, unlike questctl's add-group alone, design-taskctl.md/
+        design-questctl.md, both "Metagroups"). Failing that, a depth-0
+        store is recognized by its root having been registered (directory
+        mode only -- see dir_ensure_root_registered) even if the object
+        that first triggered that registration was since deleted (the lock
+        stays sticky, like every other structural fact in this model)."""
+        records = self.list_all()
+        if records:
+            return len(records[0].metagroup_levels)
+        max_depth = len(self.spec.metagroup_levels)
+        if max_depth > 0 and any(len(p) == max_depth for p in self.metagroup_paths()):
+            return max_depth
+        if self.mode == "directory" and index.read_abbrev(self.root) is not None:
+            return 0
+        return None
+
+    def _check_metagroup_creation_depth(self, depth: int) -> None:
+        """add-<type>'s own depth check: a new metagroup path may be
+        *shallower than or equal to* the established depth -- e.g. more
+        Groups remain buildable even once a depth-2 store is established
+        (design-questctl.md, "Metagroups": "both remain available in a
+        depth-2 store"), only a path *deeper* than what's established is
+        rejected."""
+        established = self._established_depth()
+        if established is not None and depth > established:
+            raise StoreError(
+                f"this store is fixed at metagroup depth {established}; "
+                f"cannot create a path {depth} level(s) deep"
+            )
+
+    def _check_object_depth(self, depth: int) -> None:
+        """add's own depth check: an object's depth must match the
+        established depth *exactly* once one is established -- unlike
+        add-<type> above, there is no "shallower is fine" case here, since
+        every object in a store sits at the same, single depth."""
+        established = self._established_depth()
+        if established is not None and depth != established:
+            raise StoreError(
+                f"this store is fixed at metagroup depth {established}; "
+                f"cannot add an object at depth {depth}"
+            )
+
     # -- metagroup ------------------------------------------------------
 
     def add_metagroup_path(
@@ -138,6 +209,8 @@ class Store:
         corrections.md: 'add-phase: Parameter ohne Nummer, Nummer
         automatisch wählen')."""
         with self.lock():
+            if self.spec.variable_depth:
+                self._check_metagroup_creation_depth(len(path_segments))
             given_parents, given_leaf = path_segments[:-1], path_segments[-1]
             if self.mode == "directory":
                 parent_resolved = self._dir_resolve_path(given_parents)
@@ -221,17 +294,33 @@ class Store:
             _validate_metainfo_choice(self.spec, metainfo_type, value)
 
         with self.lock():
+            if self.spec.variable_depth:
+                self._check_object_depth(len(metagroup_path))
+
             declarations: list[MetagroupDeclaration] = []
             sf_records: list[ObjectRecord] = []
+            depth_zero_ok = self.spec.variable_depth and not metagroup_path
             if self.mode == "directory":
                 metagroup_path = self._dir_resolve_path(metagroup_path)
-                object_type = metagroup.dir_object_type_for(self.root, metagroup_path)
-                directory = metagroup.level_directory(self.root, metagroup_path)
+                if depth_zero_ok:
+                    object_type = metagroup.dir_ensure_root_registered(
+                        self.root, object_type_fn=self.spec.object_type_fn
+                    )
+                    directory = self.root
+                else:
+                    object_type = metagroup.dir_object_type_for(self.root, metagroup_path)
+                    directory = metagroup.level_directory(self.root, metagroup_path)
                 sibling_numbers = [record.number for record, _path in self._load_directory(directory)]
             else:
                 declarations, sf_records = self._sf_read()
                 metagroup_path = self._sf_resolve_path(declarations, metagroup_path)
-                object_type = metagroup.sf_object_type_for(declarations, metagroup_path)
+                if depth_zero_ok:
+                    object_type = (
+                        self.spec.object_type_fn([]) if self.spec.object_type_fn is not None
+                        else abbrev.derive_object_type([], {})
+                    )
+                else:
+                    object_type = metagroup.sf_object_type_for(declarations, metagroup_path)
                 sibling_numbers = [
                     record.number for record in sf_records
                     if list(record.metagroup_levels) == metagroup_path
@@ -460,6 +549,28 @@ class Store:
     def annotate(self, object_id: str, message: str) -> ObjectRecord:
         with self.lock():
             record, ctx = self._locate(object_id)
+            record.history.append(
+                HistoryEntry(
+                    timestamp=now_iso(), prefix="T",
+                    old_status=record.status, new_status=record.status, message=message,
+                )
+            )
+            self._persist(record, ctx)
+            return record
+
+    def annotate_content(self, object_id: str, block: str, value: str, message: str) -> ObjectRecord:
+        """Like `annotate` (a T-logged entry, no status change), but also
+        replaces one content block's value in the same step -- questctl's
+        `answer` needs exactly this (design-questctl.md, "Operations"): the
+        generic `set-<user-content-block>` (`set_content`, above) always
+        logs a fixed `M` entry ("<block> changed"), which can't be reused
+        for a field that wants a `T` entry with a caller-supplied message
+        instead. `block` must be one of `self.spec.no_generic_setter`
+        (enforced at the CLI layer, lib/cliapp.py, by not generating a
+        generic `set-<block>` command for it in the first place)."""
+        with self.lock():
+            record, ctx = self._locate(object_id)
+            record.content[block] = value
             record.history.append(
                 HistoryEntry(
                     timestamp=now_iso(), prefix="T",

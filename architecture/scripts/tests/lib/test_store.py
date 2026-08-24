@@ -8,7 +8,7 @@ from lib.store import Store, StoreError, object_file_name, resolve_root
 from lib.toolspec import MetagroupLevelSpec, MetainfoSpec, StatusSpec, ToolSpec
 
 
-def taskctl_spec(transition_validator=None) -> ToolSpec:
+def taskctl_spec(transition_validator=None, variable_depth=False) -> ToolSpec:
     return ToolSpec(
         name="taskctl",
         metagroup_levels=(MetagroupLevelSpec(type="Phase"),),
@@ -17,6 +17,24 @@ def taskctl_spec(transition_validator=None) -> ToolSpec:
         user_content_blocks=("Description",),
         root_name="tasks",
         default_mode="directory",
+        variable_depth=variable_depth,
+    )
+
+
+def questctl_like_spec(default_mode="directory", object_type_fn=None) -> ToolSpec:
+    """A 2-level, variable-depth (0/1/2) spec double standing in for
+    questctl -- design-questctl.md, "Metagroups"."""
+    return ToolSpec(
+        name="questctl",
+        metagroup_levels=(MetagroupLevelSpec(type="Group"), MetagroupLevelSpec(type="Subgroup")),
+        metainfo=(),
+        status=StatusSpec(codes=(" ", "~", "X"), initial=" "),
+        user_content_blocks=("Description", "Answer"),
+        root_name="questions",
+        default_mode=default_mode,
+        variable_depth=True,
+        no_generic_setter=("Answer",),
+        object_type_fn=object_type_fn,
     )
 
 
@@ -740,6 +758,184 @@ class TestReindex(unittest.TestCase):
             store.add_metagroup_path(["001-Setup"])
             store.add(metagroup_path=["001-Setup"], name="First")
             self.assertEqual(store.reindex(), [])
+
+
+class TestVariableDepthDirectoryMode(unittest.TestCase):
+    """design.md, "Metagroups" (variable_depth); design-questctl.md/
+    design-taskctl.md, both "Metagroups": whole-store, uniform metagroup
+    depth, inferred from what already exists."""
+
+    def test_add_with_no_metagroup_path_succeeds_at_depth_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            record = store.add(metagroup_path=[], name="Q1")
+            self.assertEqual(record.metagroup_levels, ())
+            self.assertEqual(record.object_type, "______")
+            self.assertEqual(record.number, 1)
+
+    def test_depth_zero_numbering_increments_in_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            first = store.add(metagroup_path=[], name="Q1")
+            second = store.add(metagroup_path=[], name="Q2")
+            self.assertEqual((first.number, second.number), (1, 2))
+
+    def test_depth_zero_object_is_found_by_list_all(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            store.add(metagroup_path=[], name="Q1")
+            self.assertEqual(len(store.list_all()), 1)
+
+    def test_established_depth_zero_rejects_add_group(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            store.add(metagroup_path=[], name="Q1")
+            with self.assertRaises(StoreError):
+                store.add_metagroup_path(["001-Backend"])
+
+    def test_established_depth_zero_rejects_object_at_depth_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            store.add(metagroup_path=[], name="Q1")
+            store2 = Store(spec=questctl_like_spec(), root=store.root)
+            # sneak a Group in directly via the metagroup layer to prove
+            # add() itself is what rejects it, not add_metagroup_path
+            with self.assertRaises(StoreError):
+                store2.add(metagroup_path=["Backend"], name="Q2")
+
+    def test_add_subgroup_before_any_object_locks_depth_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            store.add_metagroup_path(["001-Backend"])
+            store.add_metagroup_path(["001-Backend", "001-Auth"])
+            with self.assertRaises(StoreError):
+                store.add(metagroup_path=[], name="Q-ungrouped")
+            record = store.add(metagroup_path=["001-Backend", "001-Auth"], name="Q1")
+            self.assertEqual(record.metagroup_levels, ("001-Backend", "001-Auth"))
+
+    def test_bare_add_group_does_not_lock_depth(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            store.add_metagroup_path(["001-Backend"])
+            # still open: either a depth-1 object under Backend, or a
+            # depth-2 Subgroup under it, remain possible
+            record = store.add(metagroup_path=["001-Backend"], name="Q1")
+            self.assertEqual(record.metagroup_levels, ("001-Backend",))
+
+    def test_depth_one_store_still_allows_more_groups_but_not_subgroups(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            store.add_metagroup_path(["001-Backend"])
+            store.add(metagroup_path=["001-Backend"], name="Q1")
+            store.add_metagroup_path(["002-Frontend"])  # still fine
+            with self.assertRaises(StoreError):
+                store.add_metagroup_path(["001-Backend", "001-Auth"])
+
+    def test_depth_two_store_still_allows_new_groups_and_subgroups(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            store.add_metagroup_path(["001-Backend"])
+            store.add_metagroup_path(["001-Backend", "001-Auth"])
+            store.add(metagroup_path=["001-Backend", "001-Auth"], name="Q1")
+            store.add_metagroup_path(["002-Frontend"])
+            store.add_metagroup_path(["002-Frontend", "001-UI"])
+            record = store.add(metagroup_path=["002-Frontend", "001-UI"], name="Q2")
+            self.assertEqual(record.metagroup_levels, ("002-Frontend", "001-UI"))
+
+    def test_lock_is_sticky_after_deleting_the_only_object(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            record = store.add(metagroup_path=[], name="Q1")
+            store.delete(record.object_id)
+            with self.assertRaises(StoreError):
+                store.add_metagroup_path(["001-Backend"])
+
+    def test_object_type_fn_used_for_depth_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(
+                spec=questctl_like_spec(object_type_fn=lambda segs: "custom" if not segs else "X"),
+                root=Path(tmp) / "questions",
+            )
+            record = store.add(metagroup_path=[], name="Q1")
+            self.assertEqual(record.object_type, "custom")
+
+    def test_variable_depth_false_by_default_unaffected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=taskctl_spec(), root=Path(tmp) / "tasks")
+            # variable_depth=False (the default): an empty metagroup_path
+            # is not a valid depth-0 shortcut for a fixed-depth tool -- it
+            # falls straight through to the pre-existing "no such metagroup"
+            # failure, same as any other never-created path would.
+            with self.assertRaises(Exception):
+                store.add(metagroup_path=[], name="No phase")
+
+
+class TestVariableDepthSingleFileMode(unittest.TestCase):
+    def test_add_with_no_metagroup_path_at_depth_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions.md")
+            record = store.add(metagroup_path=[], name="Q1")
+            self.assertEqual(record.metagroup_levels, ())
+            self.assertEqual(record.object_type, "______")
+
+    def test_established_depth_zero_rejects_add_group(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions.md")
+            store.add(metagroup_path=[], name="Q1")
+            with self.assertRaises(StoreError):
+                store.add_metagroup_path(["001-Backend"])
+
+    def test_round_trips_through_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions.md")
+            record = store.add(metagroup_path=[], name="Q1", description="What?")
+            reloaded = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions.md")
+            fetched = reloaded.get(record.object_id)
+            self.assertEqual(fetched.metagroup_levels, ())
+            self.assertEqual(fetched.content["Description"], "What?")
+
+
+class TestAnnotateContent(unittest.TestCase):
+    """design-questctl.md, "Operations": questctl's `answer` writes content
+    and logs T in one step -- lib/store.py's annotate_content()."""
+
+    def test_replaces_content_and_logs_t_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            record = store.add(metagroup_path=[], name="Q1")
+            updated = store.annotate_content(record.object_id, "Answer", "42", "initial answer")
+            self.assertEqual(updated.content["Answer"], "42")
+            self.assertEqual(updated.history[-1].prefix, "T")
+            self.assertEqual(updated.history[-1].message, "initial answer")
+            self.assertTrue(updated.history[-1].has_transition)
+            self.assertEqual(updated.history[-1].old_status, updated.history[-1].new_status)
+
+    def test_does_not_change_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            record = store.add(metagroup_path=[], name="Q1")
+            store.set_status(record.object_id, "~")
+            updated = store.annotate_content(record.object_id, "Answer", "42", "note")
+            self.assertEqual(updated.status, "~")
+
+    def test_second_call_overwrites_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            record = store.add(metagroup_path=[], name="Q1")
+            store.annotate_content(record.object_id, "Answer", "first answer", "m1")
+            updated = store.annotate_content(record.object_id, "Answer", "second answer", "m2")
+            self.assertEqual(updated.content["Answer"], "second answer")
+            t_entries = [e for e in updated.history if e.prefix == "T"]
+            self.assertEqual(len(t_entries), 2)
+
+    def test_persists_across_reload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=questctl_like_spec(), root=Path(tmp) / "questions")
+            record = store.add(metagroup_path=[], name="Q1")
+            store.annotate_content(record.object_id, "Answer", "42", "note")
+            reloaded = Store(spec=questctl_like_spec(), root=store.root)
+            fetched = reloaded.get(record.object_id)
+            self.assertEqual(fetched.content["Answer"], "42")
 
 
 if __name__ == "__main__":

@@ -1,15 +1,16 @@
-# scripts/ — Python-CLI-Tools (taskctl.py, rulectl.py, adrctl.py, specctl.py)
+# scripts/ — Python-CLI-Tools (taskctl.py, questctl.py, rulectl.py, adrctl.py, specctl.py)
 
-Agentische CLI-Tools für Taskmanagement (`taskctl.py`), Code-Qualitäts-Regeln
-(`rulectl.py`), Architecture Decision Records (`adrctl.py`) und
-Spezifikationsdokumente (`specctl.py`). Objektmodell, Dateiformat und
-CLI-Kontrakt sind spezifiziert in:
+Agentische CLI-Tools für Taskmanagement (`taskctl.py`), offene Fragen
+(`questctl.py`), Code-Qualitäts-Regeln (`rulectl.py`), Architecture Decision
+Records (`adrctl.py`) und Spezifikationsdokumente (`specctl.py`). Objektmodell,
+Dateiformat und CLI-Kontrakt sind spezifiziert in:
 
 - `architecture/docs/scripts/design.md` — allgemeines Objektmodell, CLI-Kontrakt,
-  Locking, Index-Dateien (gilt für alle vier Tools als Basis; specctl weicht an
+  Locking, Index-Dateien (gilt für alle fünf Tools als Basis; specctl weicht an
   mehreren dort explizit vermerkten Stellen ab).
-- `architecture/docs/scripts/design-taskctl.md`, `design-rulectl.md`,
-  `design-adrctl.md`, `design-specctl.md` — tool-spezifische Ergänzungen.
+- `architecture/docs/scripts/design-taskctl.md`, `design-questctl.md`,
+  `design-rulectl.md`, `design-adrctl.md`, `design-specctl.md` —
+  tool-spezifische Ergänzungen.
 
 Bei Widersprüchen zwischen vorhandenem Code und diesen Dokumenten sind die
 Design-Dokumente maßgeblich — nicht der Code.
@@ -253,7 +254,53 @@ Grundlage hat. Der generische `deferred_operations`/`register_deferred`-
 Mechanismus (`lib/cliapp.py`, `lib/toolspec.py`) wurde komplett entfernt, da
 er nach dieser Änderung von keinem Tool mehr genutzt wird.
 
-454 Unit-/Integrationstests insgesamt unter `tests/`
+**`questctl.py` ist jetzt implementiert** (`design-questctl.md`;
+`design-decisions.md`, "Amendments (2026-08-22, questctl/taskctl
+implementation)"), zusammen mit einer Erweiterung des generischen Modells um
+**variable Metagroup-Tiefe** — `ToolSpec.variable_depth`, genutzt von
+`taskctl.py` (0 oder 1: Phase optional) und `questctl.py` (0, 1 oder 2:
+Group/Subgroup optional). Die Tiefe ist eine Store-weite Eigenschaft, nie pro
+Objekt, und wird nicht als eigener Marker persistiert, sondern aus dem
+vorhandenen Inhalt abgeleitet (`Store._established_depth()`) — analog zu
+`resolve_root`s eigenem Directory-vs-File-Inferenzprinzip: das erste
+erfolgreiche `add` legt die Tiefe fest, ebenso ein `add-<Typ>` auf der
+jeweils **tiefsten** deklarierten Ebene eines Tools (bei taskctl also schon
+`add-phase` selbst, da Phase zugleich einzige und tiefste Ebene ist; bei
+questctl erst `add-subgroup`, nicht das bloße `add-group`). Einmal
+festgelegt, akzeptiert `add-<Typ>` weiterhin jede Tiefe **bis einschließlich**
+der festgelegten (`Store._check_metagroup_creation_depth`), während ein
+neues Objekt exakt diese Tiefe treffen muss
+(`Store._check_object_depth`) — beides über `--root`/Store-Grenzen hinweg
+konsistent implementiert, kein Tool-Sonderfall. Depth-0-Objekte liegen im
+Directory-Mode direkt im Store-Root, das sich dafür selbst als
+Metagroup-Verzeichnis registriert (`lib/metagroup.py`s
+`dir_ensure_root_registered`, wiederverwendet `index.write_abbrev`
+unverändert); ihr Object Type ist die um eine 0-Ebenen-Zeile erweiterte
+generische Ableitung aus `lib/abbrev.py` (`______`, keine neue
+Sonderkonstante).
+
+questctls `answer`-Befehl (Antworttext + Pflicht-`--message`) schreibt eine
+eigene `### Answer`-Sektion und loggt dafür `T` statt `M` — über eine neue,
+generische `Store.annotate_content()`-Methode (Content-Schreiben +
+`T`-Eintrag in einem Schritt) plus `ToolSpec.no_generic_setter`, das
+`lib/cliapp.py` an den drei Stellen greift, an denen sonst automatisch ein
+generisches `set-answer`/`--answer` entstünde (Inline-Flag auf `add`,
+`set-<Block>`-Subcommand, `add`-Dispatch). `next`/`next-all` unterscheiden
+über eine neue `NoWorkAvailable(StoreError)`-Exception (trägt einen
+`reason`-String, bei `--json` als eigenes Feld statt der reinen stderr-Zeile)
+drei "nichts verfügbar"-Fälle: `in_progress` (irgendwo `[~]` — sperrt neue
+Arbeit store-weit, nicht nur für `next-all`), `all_answered`, oder
+`awaiting_interaction`. questctls Status-Maschine importiert
+`validate_transition` und die Status-Konstanten direkt aus
+`lib/taskctl_spec.py` (kein drittes gemeinsames Modul, da bisher nur diese
+zwei Tools sie teilen). `lib/cliapp.py`s `_print_result` zeigt `next`-Resultate
+jetzt inkl. History (vorher nur `short_line`, obwohl design-taskctl.md das
+schon vor dieser Änderung versprach — ein bestehender, jetzt behobener
+Spec-vs-Implementierung-Gap, keine Verhaltensänderung durch die Neuerung
+selbst). `taskctl.py` selbst brauchte keine Code-Änderung — alles läuft über
+`lib/taskctl_spec.py` und das gemeinsame `lib/`-Modell.
+
+523 Unit-/Integrationstests insgesamt unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 170 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`, `init`/`set-title`/`set-preamble` und die Init-Pflicht für jede
@@ -273,11 +320,40 @@ Korrektheits-Review: ID-Kollision (Store- und SpecStore-Ebene), das
 simulierte Schreib-Fehlschlagszenario für `set_metagroup` (alte Datei
 überlebt), `lib/adr_lookup.py`, und OpenQuestions über die CLI (inkl.
 ADR-Gating), sowie 2 weitere Tests aus dem Folge-Review: kein `adrs/` bei
-fehlschlagendem Check, Lock während des Checks gehalten.
+fehlschlagendem Check, Lock während des Checks gehalten, sowie 60 weitere
+Tests aus der `questctl`/variablen-Tiefe-Einführung: 0-Ebenen-Ableitung
+(`lib/abbrev.py`), Root-Registrierung (`lib/metagroup.py`),
+Tiefen-Etablierung/-Ablehnung in Directory- und Single-File-Mode inkl.
+Persistenz über Store-Neuladen sowie `annotate_content` (`lib/store.py`),
+Phase-lose taskctl-Läufe End-to-End, und `questctl.py` End-to-End (alle drei
+Tiefen, `answer`/kein `set-answer`, die drei `next`/`next-all`-Gründe,
+wiederverwendete Status-Maschine).
 
 Noch offen:
 - Metagroup-Rename für taskctl/rulectl/adrctl (siehe oben) — im Contract
   dokumentiert, noch nicht implementiert.
+- Aus dem `questctl-author`/`-checker`/`-researcher`-Designpass
+  (`design-decisions.md`, "Amendments (2026-08-22, questctl-author/-checker/
+  -researcher design)"): die zwei kleinen Erweiterungen an `questctl` selbst
+  — `source`-Metainfo (`lib/questctl_spec.py`s `MetainfoSpec`-Tupel) und ein
+  optionaler `--group`/`--subgroup`-Scope-Filter auf `next`/`next-all`
+  (`questctl.py`s `_configure_parser`/`_handle_next`/`_handle_next_all`,
+  analog zu `list`s Filter in `lib/cliapp.py`s `dispatch()`, aber mit dem
+  `[~]`-Gate weiterhin ungescoped geprüft — `_no_work_reason` nimmt jetzt
+  sowohl die volle als auch die gescopte Record-Liste entgegen) — sind
+  implementiert, inkl. 9 neuer Tests (`TestSourceMetainfo`,
+  `TestNextScopeFilter`) unter `tests/test_questctl.py`. Alle drei Skills
+  (`questctl-author-cli`, `questctl-checker-cli`, `questctl-researcher-cli`)
+  sind jetzt als `architecture/skills/questctl-{author,checker,researcher}-cli/
+  SKILL.md` angelegt (jedes Recipe aller drei Skills gegen die echte CLI
+  verifiziert, inkl. der `info-review`-vor-`R`-Mechanik und des
+  Parallel-Modus' `[~]→B`-Sonderfalls bei fehlendem Match bzw. fehlender
+  Evidenz). Noch offen: nur noch die drei Subagents selbst
+  (`architecture/subagents/questctl-author.md` usw.) — Design-Dokumente
+  existieren bereits (`design-questctl-author.md`, `design-questctl-checker.md`,
+  `design-questctl-researcher.md` unter `architecture/docs/subagents/`),
+  aber noch keine tatsächlichen Dateien — anders als `rulectl-author`/
+  `rulectl-checker`, die beide Ebenen bereits haben.
 - specctl: die bidirektionale adrctl-Verknüpfung ist implementiert —
   `spec-ref=<id>`-Metainfo bei adrctl (einwertig, `design-decisions.md`,
   "Amendments (2026-08-19, spec-ref single-valued)"), `lib/spec_link.py`,
@@ -320,7 +396,7 @@ Noch offen:
 - Fehlermeldungen → stderr, reguläre Ausgabe → stdout.
 - CLI-Struktur (Subcommands, `--json`-Flag, `--root` als einzelner,
   projektweit gemeinsamer Pfad, Positionsargumente ans Ende) einheitlich über
-  alle vier Tools halten, auch wenn ein Tool das jeweilige Feature (noch)
+  alle fünf Tools halten, auch wenn ein Tool das jeweilige Feature (noch)
   nicht braucht — das gilt für specctl trotz eigener CLI-Implementierung
   (kein `lib/cliapp.py`) genauso.
 - Bei einer Änderung an einem Tool prüfen, ob dieselbe Änderung auch bei
@@ -331,15 +407,19 @@ Noch offen:
 ```
 architecture/scripts/
 ├── CLAUDE.md
-├── taskctl.py         # CLI: Taskliste
+├── taskctl.py         # CLI: Taskliste (0/1-Ebenen Phase, variable_depth)
+├── questctl.py        # CLI: offene Fragen (0/1/2-Ebenen Group/Subgroup, variable_depth)
 ├── rulectl.py         # CLI: Code-Qualitäts-Regeln
 ├── adrctl.py          # CLI: ADRs
 ├── specctl.py         # CLI: Spezifikationsdokumente (eigene CLI, kein lib/cliapp.py)
 └── lib/
-    ├── ...                # geteilt zwischen allen vier Tools (Locking, Atomic-IO,
+    ├── ...                # geteilt zwischen allen fünf Tools (Locking, Atomic-IO,
     │                      # Numbering, History, Text, Abbrev, Clock, ...)
     ├── model.py, objectfile.py, singlefile.py, store.py, toolspec.py, index.py, render.py
-    │                      # generisches Objektformat: taskctl/rulectl/adrctl
+    │                      # generisches Objektformat: taskctl/questctl/rulectl/adrctl
+    ├── taskctl_spec.py    # taskctls ToolSpec (aus taskctl.py extrahiert) -- validate_transition/
+    │                      # Status-Konstanten hier, da lib/questctl_spec.py sie direkt importiert
+    ├── questctl_spec.py   # questctls ToolSpec -- reuses taskctl_spec.py's status machine verbatim
     ├── adrctl_spec.py     # adrctls ToolSpec (aus adrctl.py extrahiert, einzige Quelle der
     │                      # Wahrheit -- ermöglicht lib/adr_lookup.py, ohne adrctl.py zu importieren)
     ├── adr_lookup.py      # specctl -> adrctl: prüft Existenz einer ADR-ID im adrctl-Store

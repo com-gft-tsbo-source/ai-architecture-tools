@@ -5,13 +5,14 @@ This document describes the general design principles for CLI tools that support
 Tools:
 
 - taskctl — see design-taskctl.md
+- questctl — see design-questctl.md
 - rulectl — see design-rulectl.md
 - adrctl — see design-adrctl.md
 - specctl — see design-specctl.md
 
 ## File and Directory Parameters
 
-Tools store their data in files or directories, resolved from a single `--root <path>` (see CLI Contract). Each tool has a fixed **store name** (`tasks` for taskctl, `rules` for rulectl, `adrs` for adrctl, `spec` for specctl — see each tool's design document) that names its data within a directory shared by all four tools — this is what lets tools reference each other's objects (e.g. adrctl ↔ specctl, design-specctl.md "ADR Linkage") without an ambiguous, separately-configured path.
+Tools store their data in files or directories, resolved from a single `--root <path>` (see CLI Contract). Each tool has a fixed **store name** (`tasks` for taskctl, `questions` for questctl, `rules` for rulectl, `adrs` for adrctl, `spec` for specctl — see each tool's design document) that names its data within a directory shared by all five tools — this is what lets tools reference each other's objects (e.g. adrctl ↔ specctl, design-specctl.md "ADR Linkage") without an ambiguous, separately-configured path.
 
 `--root <path>` is resolved to the tool's actual file-or-directory target in two steps:
 
@@ -47,6 +48,7 @@ There is no multi-root, read-only merge mode — `--root` takes exactly one path
 
 - Metagroups classify objects along a tool-specific, hierarchical axis (e.g. Category for rulectl, Component for adrctl, Phase for taskctl).
 - A metagroup is a Type/Name tuple. The set of metagroup Types and their order is fixed per tool, with a maximum of **3 levels** (exception: specctl, up to **5** levels — see design-specctl.md).
+- A tool may instead declare an **allowed range** of level-counts rather than one fixed number (taskctl: 0 or 1; questctl: 0, 1, or 2 — see design-taskctl.md/design-questctl.md, both "Metagroups"). Where it does, the depth actually used is a **whole-store** property, uniform across every object in that store — never a per-object choice; a store with any object at the deepest level has *every* object at that same depth. It is not persisted as an explicit marker; it is inferred, the same way `resolve_root` infers directory-vs-single-file mode, from whatever already exists on disk — fixed by the first event that reveals it (typically the first successful object `add`, or an earlier metagroup-path `add` reachable only at the deepest declared level). Once fixed, any later operation implying a different depth is rejected.
 - Each metagroup Name is itself a (partial) path reflecting its position in the hierarchy, e.g.:
 
       Type: Category
@@ -54,7 +56,7 @@ There is no multi-root, read-only merge mode — `--root` takes exactly one path
       Name (level 2, Context):   Python/backend
       Name (level 3, Category):  Python/backend/validation
 
-- **Every object belongs to exactly one metagroup** (one leaf-level path) — there is no multi-membership. If an object would logically belong to more than one path (e.g. an ADR affecting two components), the user manually creates a new metagroup that semantically represents the combination. This is a manual convention, not a tool feature.
+- **Every object belongs to exactly one metagroup** (one leaf-level path) — there is no multi-membership (exception: taskctl and questctl, whose stores may be configured with no metagroup axis in use at all — see their own design documents, "Metagroups"). If an object would logically belong to more than one path (e.g. an ADR affecting two components), the user manually creates a new metagroup that semantically represents the combination. This is a manual convention, not a tool feature.
 - The object's `Meta` section (see Object Format) lists the resolved value for every ancestor level of that one path, for easy filtering/display — this is a derived display of the single assignment, not independent membership.
 - A metagroup path that is referenced (e.g. via `add`/`group-<metagroup-type>`) but does not exist aborts the operation with an error, in both modes. Metagroup paths must be created explicitly first via `add-<metagroup-type> <name>` — tools never auto-create them.
   - In **directory mode**, this mirrors the metagroup hierarchy 1:1 as nested subdirectories; `add-<metagroup-type> <name>` creates that directory.
@@ -88,7 +90,7 @@ The Object Type is a short, stable code derived from the object's metagroup, uni
 
 - Letters are taken from the metagroup Name **after** stripping its `<nr>-` sort prefix.
 - If the result is shorter than 6 characters, it is right-padded with `_` to reach 6.
-- A tool may define an entirely different derivation (see design-taskctl.md and design-specctl.md for exceptions).
+- A tool may define an entirely different derivation (see design-taskctl.md and design-specctl.md for exceptions), or extend this table to a 0-level row (see design-taskctl.md and design-questctl.md, both "Object Type", for how a depth-0 store falls back to it).
 
 **Explicit override:** an abbreviation may be supplied explicitly when creating a metagroup path (`add-<metagroup-type> <name> --abbrev <code>`). In directory mode it is stored in `.index.md`; in single-file mode it is stored alongside the path in the `## Metagroups` section. Either way it is then stable / write-once — later collisions elsewhere never change an abbreviation once assigned.
 

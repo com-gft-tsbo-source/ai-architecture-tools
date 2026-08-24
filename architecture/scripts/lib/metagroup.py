@@ -170,6 +170,22 @@ def dir_create_path(
     return object_type
 
 
+def dir_ensure_root_registered(root: Path, *, object_type_fn=None) -> str:
+    """Register the store root itself as the depth-0 metagroup directory
+    (design.md, "Metagroups": a variable-depth tool's store may use no
+    grouping axis at all) and return its Object Type. Idempotent -- called
+    from the first depth-0 `add`, not via an explicit add-<type> command,
+    since there is no level left to name for an empty path. Depth-0's
+    Object Type is always derivable with no collision risk (design-taskctl.md/
+    design-questctl.md, both "Object Type"), so `known` is always empty here."""
+    existing = index.read_abbrev(root)
+    if existing is not None:
+        return existing
+    object_type = object_type_fn([]) if object_type_fn is not None else abbrev.derive_object_type([], {})
+    index.write_abbrev(root, object_type)
+    return object_type
+
+
 def dir_object_type_for(root: Path, path_segments: list[str]) -> str:
     directory = level_directory(root, path_segments)
     object_type = index.read_abbrev(directory)

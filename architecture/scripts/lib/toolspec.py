@@ -69,7 +69,24 @@ class ToolSpec:
     # Override for the generic lib.abbrev-based derivation, e.g. taskctl's
     # unpadded-Phase-number Object Type. Receives the object's per-level
     # metagroup names (root-to-leaf) and returns the Object Type string.
+    # Called with [] for a depth-0 object (design.md, "Metagroups": a
+    # variable_depth tool's store may use no grouping axis at all) --
+    # taskctl's override handles that case too (lib/taskctl_spec.py).
     object_type_fn: Optional[Callable[[list[str]], str]] = None
+    # design.md, "Metagroups": a tool may declare an *allowed range* of
+    # metagroup depths (0..len(metagroup_levels)) instead of requiring every
+    # object at the one fixed, deepest level -- taskctl (0 or 1) and
+    # questctl (0, 1, or 2) are the two tools that set this. The actual
+    # depth used is a whole-store property, inferred by lib/store.py's
+    # Store._established_depth(), never a per-object choice.
+    variable_depth: bool = False
+    # User Content blocks listed here still render/parse normally (design.md,
+    # "Object Format") but get no generic `set-<block>` command and no inline
+    # `--<block>` flag on `add` (lib/cliapp.py) -- questctl's Answer is the
+    # one user: it must be written only via its own bespoke `answer` command
+    # (design-questctl.md, "Operations"), never through the generic content
+    # setter, which always logs `M` where `answer` needs `T`.
+    no_generic_setter: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.default_mode not in ("file", "directory"):

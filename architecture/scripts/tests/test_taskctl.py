@@ -188,5 +188,61 @@ class TestStatusTransitions(unittest.TestCase):
             self.assertEqual(code, 0)
 
 
+class TestPhaselessMode(unittest.TestCase):
+    """design-taskctl.md, "Metagroups": taskctl's variable depth (0 or 1) --
+    a store either uses Phases for every Task, or none at all."""
+
+    def test_add_without_phase_succeeds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            code, out, _err = run(["--root", root, "--json", "add", "--name", "Only task"])
+            self.assertEqual(code, 0)
+            record = json.loads(out)
+            self.assertEqual(record["metagroup"], [])
+            self.assertEqual(record["type"], "______")
+
+    def test_add_phase_rejected_once_phaseless_is_established(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add", "--name", "First"])
+            code, _out, err = run(["--root", root, "add-phase", "Setup"])
+            self.assertEqual(code, 1)
+            self.assertIn("depth", err)
+
+    def test_add_phase_alone_locks_depth_before_any_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add-phase", "Setup"])
+            code, _out, err = run(["--root", root, "add", "--name", "No phase given"])
+            self.assertEqual(code, 1)
+            self.assertIn("depth", err)
+
+    def test_next_works_in_phaseless_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add", "--name", "A"])
+            run(["--root", root, "add", "--name", "B"])
+            code, out, _err = run(["--root", root, "--json", "next"])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(out)["name"], "A")
+
+    def test_next_shows_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add", "--name", "A"])
+            code, out, _err = run(["--root", root, "next"])
+            self.assertEqual(code, 0)
+            self.assertIn("Object created", out)
+
+    def test_phaseless_store_round_trips_across_invocations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            _c, out, _e = run(["--root", root, "--json", "add", "--name", "A"])
+            object_id = json.loads(out)["id"]
+            run(["--root", root, "set-status", object_id, "~"])
+            code, out, _err = run(["--root", root, "--json", "show", object_id])
+            self.assertEqual(json.loads(out)["status"], "~")
+
+
 if __name__ == "__main__":
     unittest.main()
