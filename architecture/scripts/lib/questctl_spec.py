@@ -27,6 +27,13 @@ def build_spec() -> ToolSpec:
             MetainfoSpec(type="review", choices=("none", "user", "subagent")),
             MetainfoSpec(type="assignee-type"),
             MetainfoSpec(type="assignee-name"),
+            # design-questctl.md, "Metainfo": traceability back to the
+            # document/passage a Question was drawn from -- same convention
+            # as rulectl's own `source` field. Not part of taskctl's own
+            # Metainfo set (its Tasks are usually authored directly, with
+            # nothing upstream to trace back to); questctl's Questions are
+            # routinely bulk-authored from a source document.
+            MetainfoSpec(type="source"),
         ),
         status=StatusSpec(
             codes=(OPEN, IN_PROGRESS, REVIEW_USER, REVIEW_SUBAGENT, BLOCKED, DONE),

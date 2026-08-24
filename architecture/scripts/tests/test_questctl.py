@@ -282,6 +282,102 @@ class TestReusedStatusMachine(unittest.TestCase):
             self.assertIn("--message", err)
 
 
+class TestSourceMetainfo(unittest.TestCase):
+    """design-questctl.md, "Metainfo": traceability, same convention as
+    rulectl's own `source` field."""
+
+    def test_inline_on_add(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "questions")
+            code, out, _err = run(
+                ["--root", root, "--json", "add", "--name", "Q", "--source", "req.md#3"]
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(out)["metainfo"]["source"], "req.md#3")
+
+    def test_info_source_sets_after_creation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "questions")
+            _c, out, _e = run(["--root", root, "--json", "add", "--name", "Q"])
+            qid = json.loads(out)["id"]
+            code, _out, _err = run(["--root", root, "info-source", qid, "https://example.com#Intro"])
+            self.assertEqual(code, 0)
+            code, out, _err = run(["--root", root, "--json", "show", qid])
+            self.assertEqual(json.loads(out)["metainfo"]["source"], "https://example.com#Intro")
+
+    def test_left_unset_when_not_given(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "questions")
+            _c, out, _e = run(["--root", root, "--json", "add", "--name", "Q"])
+            self.assertNotIn("source", json.loads(out)["metainfo"])
+
+
+class TestNextScopeFilter(unittest.TestCase):
+    """design-questctl.md, "CLI Contract additions": optional --group/
+    --subgroup filter on next/next-all; the [~] gate itself stays unscoped."""
+
+    def _two_groups(self, root):
+        run(["--root", root, "add-group", "Backend"])
+        run(["--root", root, "add-group", "Frontend"])
+        _c, o1, _e = run(["--root", root, "--json", "add", "--name", "Q-Backend", "--group", "Backend"])
+        _c, o2, _e = run(["--root", root, "--json", "add", "--name", "Q-Frontend", "--group", "Frontend"])
+        return json.loads(o1)["id"], json.loads(o2)["id"]
+
+    def test_next_scoped_to_group_skips_other_groups_question(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "questions")
+            self._two_groups(root)
+            code, out, _err = run(["--root", root, "--json", "next", "--group", "Frontend"])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(out)["name"], "Q-Frontend")
+
+    def test_next_all_scoped_returns_only_that_groups_questions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "questions")
+            self._two_groups(root)
+            code, out, _err = run(["--root", root, "--json", "next-all", "--group", "Backend"])
+            self.assertEqual(code, 0)
+            names = [r["name"] for r in json.loads(out)]
+            self.assertEqual(names, ["Q-Backend"])
+
+    def test_both_flags_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "questions")
+            self._two_groups(root)
+            code, _out, err = run(
+                ["--root", root, "next", "--group", "Backend", "--subgroup", "Backend/Auth"]
+            )
+            self.assertEqual(code, 1)
+            self.assertIn("at most one", err)
+
+    def test_global_gate_blocks_scoped_next_even_outside_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "questions")
+            id_backend, _id_frontend = self._two_groups(root)
+            run(["--root", root, "set-status", id_backend, "~"])
+            code, out, _err = run(["--root", root, "--json", "next", "--group", "Frontend"])
+            self.assertEqual(code, 1)
+            self.assertEqual(json.loads(out)["reason"], "in_progress")
+
+    def test_scoped_all_answered_even_though_other_scope_still_open(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "questions")
+            id_backend, _id_frontend = self._two_groups(root)
+            run(["--root", root, "set-status", id_backend, "~"])
+            run(["--root", root, "set-status", id_backend, "X"])
+            code, out, _err = run(["--root", root, "--json", "next", "--group", "Backend"])
+            self.assertEqual(code, 1)
+            self.assertEqual(json.loads(out)["reason"], "all_answered")
+
+    def test_unscoped_next_still_works(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "questions")
+            self._two_groups(root)
+            code, out, _err = run(["--root", root, "--json", "next"])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(out)["name"], "Q-Backend")
+
+
 class TestAnnotate(unittest.TestCase):
     def test_annotate_logs_t_without_touching_answer(self):
         with tempfile.TemporaryDirectory() as tmp:

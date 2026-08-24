@@ -300,7 +300,7 @@ Spec-vs-Implementierung-Gap, keine Verhaltensänderung durch die Neuerung
 selbst). `taskctl.py` selbst brauchte keine Code-Änderung — alles läuft über
 `lib/taskctl_spec.py` und das gemeinsame `lib/`-Modell.
 
-514 Unit-/Integrationstests insgesamt unter `tests/`
+523 Unit-/Integrationstests insgesamt unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 170 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`, `init`/`set-title`/`set-preamble` und die Init-Pflicht für jede
@@ -334,13 +334,16 @@ Noch offen:
   dokumentiert, noch nicht implementiert.
 - Aus dem `questctl-author`/`-checker`/`-researcher`-Designpass
   (`design-decisions.md`, "Amendments (2026-08-22, questctl-author/-checker/
-  -researcher design)"): zwei kleine Erweiterungen an `questctl` selbst sind
-  spezifiziert, aber noch nicht implementiert — `source`-Metainfo
-  (`lib/questctl_spec.py`s `MetainfoSpec`-Tupel) und ein optionaler
-  `--group`/`--subgroup`-Scope-Filter auf `next`/`next-all`
+  -researcher design)"): die zwei kleinen Erweiterungen an `questctl` selbst
+  — `source`-Metainfo (`lib/questctl_spec.py`s `MetainfoSpec`-Tupel) und ein
+  optionaler `--group`/`--subgroup`-Scope-Filter auf `next`/`next-all`
   (`questctl.py`s `_configure_parser`/`_handle_next`/`_handle_next_all`,
-  analog zu `list`s bereits vorhandenem Filter in `lib/cliapp.py`s
-  `dispatch()`). Die drei Subagents/Skills selbst (`design-questctl-author.md`,
+  analog zu `list`s Filter in `lib/cliapp.py`s `dispatch()`, aber mit dem
+  `[~]`-Gate weiterhin ungescoped geprüft — `_no_work_reason` nimmt jetzt
+  sowohl die volle als auch die gescopte Record-Liste entgegen) — sind
+  implementiert, inkl. 9 neuer Tests (`TestSourceMetainfo`,
+  `TestNextScopeFilter`) unter `tests/test_questctl.py`. Die drei
+  Subagents/Skills selbst (`design-questctl-author.md`,
   `design-questctl-checker.md`, `design-questctl-researcher.md` und ihre
   `-cli`-Skill-Dokumente unter `architecture/docs/skills/`) sind ebenfalls
   spezifiziert, aber noch nicht als `architecture/subagents/`/
