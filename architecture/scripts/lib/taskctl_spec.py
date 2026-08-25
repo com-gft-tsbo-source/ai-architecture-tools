@@ -89,6 +89,14 @@ def build_spec() -> ToolSpec:
             MetainfoSpec(type="review", choices=("none", "user", "subagent")),
             MetainfoSpec(type="assignee-type"),
             MetainfoSpec(type="assignee-name"),
+            # design-taskctl.md, "Metainfo": traceability back to the
+            # document a Task was derived from -- design-decisions.md,
+            # "Amendments (2026-08-25, taskctl-author/taskctl-worker Subagent
+            # design)": the same gap questctl's own `source` field (below,
+            # via lib/questctl_spec.py) was added to close, now that
+            # taskctl-author routinely bulk-authors Tasks from a set of
+            # source documents rather than Tasks always being hand-created.
+            MetainfoSpec(type="source"),
         ),
         status=StatusSpec(
             codes=(OPEN, IN_PROGRESS, REVIEW_USER, REVIEW_SUBAGENT, BLOCKED, DONE),

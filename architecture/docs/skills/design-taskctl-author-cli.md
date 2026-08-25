@@ -1,10 +1,8 @@
 # taskctl-author-cli
 
-Skill that wraps the `taskctl` CLI for a future `taskctl-author` Subagent
-(`architecture/VISION.md`; no Subagent design document exists yet —
-`design-decisions.md`, "Amendments (2026-08-25, taskctl `NoWorkAvailable` +
-taskctl-author-cli/taskctl-worker-cli design)"). Purely an instructional
-reference — a `SKILL.md`, no executable wrapper code. The invoking agent
+Skill that wraps the `taskctl` CLI for the `taskctl-author` Subagent
+(`architecture/docs/subagents/design-taskctl-author.md`). Purely an
+instructional reference — a `SKILL.md`, no executable wrapper code. The invoking agent
 calls the `taskctl` binary itself via Bash; this Skill only teaches it how
 to do that correctly for the task-authoring workflow: creating and
 extending a Task list. Companion to `taskctl-worker-cli`, which works the
@@ -19,17 +17,18 @@ creating and restructuring Tasks, never working them:
 
 - `add-phase` — create a Phase metagroup path.
 - `add` (with inline `--phase`, `--description`, `--review`,
-  `--assignee-type`, `--assignee-name`, and optionally `--set-status`) —
-  create a Task.
+  `--assignee-type`, `--assignee-name`, `--source`, and optionally
+  `--set-status`) — create a Task.
 - `list` — browse existing Tasks (by `--phase`/`--status`/metainfo) before
   adding more, e.g. to avoid duplicating or overlapping an already-covered
   piece of work.
 - `show`, `show-metagroups` — inspect one Task or the declared Phase tree,
   and re-read a just-created Task to confirm it actually persisted.
 - `set-description` — correct a just-created Task's Description.
-- `info-review`, `info-assignee-type`, `info-assignee-name` — set or
-  correct a Task's review requirement and assignment. (`info-review` is
-  also usable by `taskctl-worker-cli`, for a different purpose — see that
+- `info-review`, `info-assignee-type`, `info-assignee-name`,
+  `info-source` — set or correct a Task's review requirement, assignment,
+  and traceability back to its source document. (`info-review` is also
+  usable by `taskctl-worker-cli`, for a different purpose — see that
   Skill's own scope.)
 - `group-phase` — move a Task to a different Phase.
 - `reorder` — reposition a Task among its Phase siblings.
@@ -79,6 +78,7 @@ taskctl --root <root> add --name "<short name>" --description "<description text
   [--phase <name>] \
   [--review none|user|subagent] \
   [--assignee-type <value>] [--assignee-name <value>] \
+  [--source <value>] \
   [--set-status <code>]
 ```
 
@@ -86,11 +86,14 @@ taskctl --root <root> add --name "<short name>" --description "<description text
 phase-less one — never both within the same store (design-taskctl.md,
 "Metagroups": depth is a whole-store property). Omitting `--review`
 leaves it unset, which `taskctl`'s status machine treats the same as
-`none` (design-taskctl.md, "Status"). `--set-status` is rarely needed —
-it sets the Task's *initial* Status to any value, even one a normal
-transition couldn't reach (e.g. importing a Task that's already done or
-already in progress); this is an initial-value choice, not a transition,
-so it never needs `--force` (design.md, "Object Status").
+`none` (design-taskctl.md, "Status"). `--source` traces the Task back to
+the document (and section/passage, where identifiable) it was derived
+from — set it whenever the Task actually came from a source document;
+leave it unset for a Task with no such origin. `--set-status` is rarely
+needed — it sets the Task's *initial* Status to any value, even one a
+normal transition couldn't reach (e.g. importing a Task that's already
+done or already in progress); this is an initial-value choice, not a
+transition, so it never needs `--force` (design.md, "Object Status").
 
 **Browsing before extending**, to see what already exists — e.g. to avoid
 adding a Task that duplicates or overlaps one already on the list:
@@ -117,6 +120,7 @@ taskctl --root <root> set-description <id> "<new description>"
 taskctl --root <root> info-review <id> none|user|subagent
 taskctl --root <root> info-assignee-type <id> <value>
 taskctl --root <root> info-assignee-name <id> <value>
+taskctl --root <root> info-source <id> <value>
 ```
 
 **Restructuring an existing Task**:

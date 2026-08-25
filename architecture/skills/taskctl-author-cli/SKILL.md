@@ -18,14 +18,16 @@ Only these operations, because only these are needed to author Tasks:
 - `add-phase` — create a Phase metagroup path (optional; a store is either
   Phase-using or phase-less, decided once by whatever comes first).
 - `add` — create a Task, with inline `--phase`/`--description`/`--review`/
-  `--assignee-type`/`--assignee-name`, and optionally `--set-status`.
+  `--assignee-type`/`--assignee-name`/`--source`, and optionally
+  `--set-status`.
 - `list` — browse existing Tasks before adding more, to avoid duplicating
   or overlapping already-covered work.
 - `show`, `show-metagroups` — inspect one Task or the declared Phase tree;
   re-read a just-created Task to confirm it actually persisted.
 - `set-description` — correct a just-created Task's Description.
-- `info-review`, `info-assignee-type`, `info-assignee-name` — set or
-  correct a Task's review requirement and assignment.
+- `info-review`, `info-assignee-type`, `info-assignee-name`,
+  `info-source` — set or correct a Task's review requirement, assignment,
+  and source traceability.
 - `group-phase`, `reorder`, `delete` — restructure an existing Task.
 
 Never call `annotate`, `next`, or standalone `set-status` from this
@@ -64,13 +66,16 @@ taskctl --root <root> add --name "<short name>" --description "<description text
   [--phase <name>] \
   [--review none|user|subagent] \
   [--assignee-type <value>] [--assignee-name <value>] \
+  [--source <value>] \
   [--set-status <code>]
 ```
 
 `--phase` is required in a Phase-using store, omitted in a phase-less one —
-never mix within the same store. `--set-status` is rare: it sets the
-Task's *initial* status (even one a normal transition couldn't reach) —
-useful when importing a Task that's already done or already in progress.
+never mix within the same store. `--source` traces the Task back to the
+document it was derived from — set it whenever there is one. `--set-status`
+is rare: it sets the Task's *initial* status (even one a normal transition
+couldn't reach) — useful when importing a Task that's already done or
+already in progress.
 
 **Browse before extending**, to avoid duplicating or overlapping an
 existing Task:
@@ -93,6 +98,7 @@ taskctl --root <root> set-description <id> "<new description>"
 taskctl --root <root> info-review <id> none|user|subagent
 taskctl --root <root> info-assignee-type <id> <value>
 taskctl --root <root> info-assignee-name <id> <value>
+taskctl --root <root> info-source <id> <value>
 ```
 
 **Restructure an existing Task**:

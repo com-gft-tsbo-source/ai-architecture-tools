@@ -17,6 +17,11 @@ Like questctl (design-questctl.md, "Metagroups"), taskctl declares an **allowed 
 - `review`: `none` | `user` | `subagent`
 - `assignee-type`: free text
 - `assignee-name`: free text
+- `source`: free text — traceability back to the document a Task was derived
+  from, same convention as rulectl's own `source` field (design-decisions.md,
+  "Amendments (2026-08-25, taskctl-author/taskctl-worker Subagent design)").
+  Left unset for a Task with no such origin (e.g. a hand-created Task, or one
+  authored directly through `taskctl-author-cli` without a source document).
 
 ## Status
 

@@ -75,6 +75,23 @@ class TestEndToEnd(unittest.TestCase):
             code, out, _err = run(["--root", root, "show", object_id, "--history"])
             self.assertIn("progress made", out)
 
+    def test_source_metainfo_settable_inline_and_via_info(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._fresh_root(tmp)
+            code, out, _err = run(
+                ["--root", root, "--json", "add", "--name", "T", "--phase", "001-Setup",
+                 "--source", "design.md#Installation"]
+            )
+            self.assertEqual(code, 0)
+            record = json.loads(out)
+            object_id = record["id"]
+            self.assertEqual(record["metainfo"]["source"], "design.md#Installation")
+
+            code, out, _err = run(["--root", root, "info-source", object_id, "design.md#Compile"])
+            self.assertEqual(code, 0)
+            code, out, _err = run(["--root", root, "--json", "show", object_id])
+            self.assertEqual(json.loads(out)["metainfo"]["source"], "design.md#Compile")
+
 
 class TestCorrections(unittest.TestCase):
     """corrections.md: auto-numbering on add-phase, flexible --phase

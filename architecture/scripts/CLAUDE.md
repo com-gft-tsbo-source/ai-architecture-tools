@@ -300,7 +300,7 @@ Spec-vs-Implementierung-Gap, keine Verhaltensänderung durch die Neuerung
 selbst). `taskctl.py` selbst brauchte keine Code-Änderung — alles läuft über
 `lib/taskctl_spec.py` und das gemeinsame `lib/`-Modell.
 
-524 Unit-/Integrationstests insgesamt unter `tests/`
+525 Unit-/Integrationstests insgesamt unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 170 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`, `init`/`set-title`/`set-preamble` und die Init-Pflicht für jede
@@ -351,6 +351,20 @@ Anders als bei `rulectl`/`questctl` existieren die zugehörigen Subagents
 nicht — die Skills sind bewusst als workflow-unabhängige
 CLI-Kontrakt-Referenzen geschrieben, siehe das Amendment für die
 vollständige Befehls-Aufteilung.
+
+Ein weiterer `/grill-me`-Durchgang (2026-08-25, `design-decisions.md`,
+"Amendments (2026-08-25, taskctl-author/taskctl-worker Subagent design)")
+legte die beiden zugehörigen Subagent-Designdokumente an
+(`architecture/docs/subagents/design-taskctl-{author,worker}.md`) — die
+tatsächlichen Subagent-Dateien selbst existieren weiterhin noch nicht,
+analog zum aktuellen Stand bei `questctl-author`/`-checker`/`-researcher`.
+Dabei fiel eine weitere kleine, konsistente `taskctl`-Lücke auf: wie schon
+bei `questctl` fehlte ein `source`-Metainfo-Feld für Traceability. Jetzt
+ergänzt in `lib/taskctl_spec.py`s `MetainfoSpec`-Tupel (keine weiteren
+Code-Änderungen nötig); `design-taskctl.md`, `design-taskctl-author-cli.md`
+und `taskctl-author-cli/SKILL.md` entsprechend aktualisiert. Der
+widersprüchliche Kommentar in `lib/questctl_spec.py` ("not part of
+taskctl's own Metainfo set") wurde korrigiert.
 
 Noch offen:
 - Metagroup-Rename für taskctl/rulectl/adrctl (siehe oben) — im Contract
