@@ -59,7 +59,7 @@ In addition to the general `M` (management) entries from design.md, taskctl uses
 In addition to the general operations from design.md, taskctl supports:
 
 - `annotate`: append a History entry (`T`) documenting task execution progress.
-- `next`: find and display the earliest Task, in priority order, that is not `[X]` (see Sequential Processing) — including its History. This may be the next new `[ ]` Task, or an already-`[~]`/`[B]`/`[R]`/`[C]` Task blocking further progress.
+- `next`: find and display the earliest Task, in priority order, that is not `[X]` (see Sequential Processing) — including its History. This may be the next new `[ ]` Task, or an already-`[~]`/`[B]`/`[R]`/`[C]` Task blocking further progress. If no such Task exists (every Task is `[X]`, or the store is empty), `next` raises `NoWorkAvailable` with reason `all_done` — exit 1, plain stderr text, or with `--json` a machine-readable `{"reason": "all_done", "message": ...}` (design-decisions.md, "Amendments (2026-08-25, taskctl `NoWorkAvailable` + taskctl-author-cli/taskctl-worker-cli design)"; the same mechanism questctl's `next`/`next-all` already use, design-questctl.md, "CLI Contract additions" — taskctl only ever has this one "nothing to hand out" case, never questctl's other two).
 
 Phases and Tasks may also originate from `rulectl tasklist` (design-rulectl.md, "Operations") rather than being created directly through taskctl's own `add-phase`/`add` — such a Task's Object ID is shared with its source Rule, and `annotate`-style `T` History entries record every re-export. No taskctl-side behavior differs for these Tasks; this is purely informational.
 

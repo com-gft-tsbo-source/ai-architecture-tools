@@ -15,7 +15,7 @@ from pathlib import Path
 
 from lib import cliapp
 from lib.model import ObjectRecord
-from lib.store import Store, StoreError
+from lib.store import NoWorkAvailable, Store
 from lib.taskctl_spec import DONE, build_spec
 
 
@@ -26,7 +26,12 @@ def _handle_annotate(store: Store, args: argparse.Namespace) -> ObjectRecord:
 def _handle_next(store: Store, _args: argparse.Namespace) -> ObjectRecord:
     open_records = [r for r in store.list_all() if r.status != DONE]
     if not open_records:
-        raise StoreError("no open tasks")
+        # design-decisions.md, "Amendments (2026-08-25, taskctl NoWorkAvailable
+        # + taskctl-author-cli/taskctl-worker-cli design)": taskctl has exactly
+        # one "nothing to hand out" case (everything is [X], or the store is
+        # empty), unlike questctl's three -- but a looping taskctl-worker run
+        # still needs to tell it apart from a genuine error under --json.
+        raise NoWorkAvailable("all_done", "no open tasks")
     open_records.sort(key=lambda r: (r.metagroup_levels, r.number))
     return open_records[0]
 

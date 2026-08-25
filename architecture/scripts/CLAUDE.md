@@ -300,7 +300,7 @@ Spec-vs-Implementierung-Gap, keine Verhaltensänderung durch die Neuerung
 selbst). `taskctl.py` selbst brauchte keine Code-Änderung — alles läuft über
 `lib/taskctl_spec.py` und das gemeinsame `lib/`-Modell.
 
-523 Unit-/Integrationstests insgesamt unter `tests/`
+524 Unit-/Integrationstests insgesamt unter `tests/`
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 170 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`, `init`/`set-title`/`set-preamble` und die Init-Pflicht für jede
@@ -328,6 +328,29 @@ Persistenz über Store-Neuladen sowie `annotate_content` (`lib/store.py`),
 Phase-lose taskctl-Läufe End-to-End, und `questctl.py` End-to-End (alle drei
 Tiefen, `answer`/kein `set-answer`, die drei `next`/`next-all`-Gründe,
 wiederverwendete Status-Maschine).
+
+Ein `/grill-me`-Durchgang (2026-08-25, `design-decisions.md`, "Amendments
+(2026-08-25, taskctl `NoWorkAvailable` + taskctl-author-cli/taskctl-worker-cli
+design)") deckte einen kleinen, gezielten `taskctl.py`-Änderungsbedarf auf:
+`_handle_next` wirft jetzt `lib/store.py`s bereits vorhandenes
+`NoWorkAvailable("all_done", "no open tasks")` statt eines nackten
+`StoreError` — damit liefert `--json next` bei erschöpfter Liste
+strukturiertes `{"reason": "all_done", ...}` statt einer reinen
+stderr-Zeile, was ein schleifender `taskctl-worker`-Lauf braucht, um
+"fertig" zuverlässig von einem echten Fehler zu unterscheiden. Reversiert
+zwei frühere, zum jeweiligen Zeitpunkt richtige Entscheidungen ("taskctl
+braucht das nicht" — siehe die beiden Amendments vom 2026-08-22), jetzt
+weil erstmals ein Aufrufer diese Unterscheidung tatsächlich braucht.
+Die beiden Skills `taskctl-author-cli` (Tasks/Phasen anlegen und
+erweitern) und `taskctl-worker-cli` (Tasks abarbeiten, Status je nach
+Arbeit ändern) sind jetzt als
+`architecture/skills/taskctl-{author,worker}-cli/SKILL.md` angelegt,
+zusammen mit ihren Design-Dokumenten unter `architecture/docs/skills/`.
+Anders als bei `rulectl`/`questctl` existieren die zugehörigen Subagents
+(`taskctl-author`, `taskctl-worker`) und deren Design-Dokumente noch
+nicht — die Skills sind bewusst als workflow-unabhängige
+CLI-Kontrakt-Referenzen geschrieben, siehe das Amendment für die
+vollständige Befehls-Aufteilung.
 
 Noch offen:
 - Metagroup-Rename für taskctl/rulectl/adrctl (siehe oben) — im Contract

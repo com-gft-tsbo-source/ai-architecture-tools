@@ -56,6 +56,15 @@ class TestEndToEnd(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("no open tasks", err)
 
+    def test_next_no_work_available_is_json_structured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._fresh_root(tmp)
+            code, out, _err = run(["--root", root, "--json", "next"])
+            self.assertEqual(code, 1)
+            payload = json.loads(out)
+            self.assertEqual(payload["reason"], "all_done")
+            self.assertIn("no open tasks", payload["message"])
+
     def test_annotate_appends_progress(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = self._fresh_root(tmp)
