@@ -226,3 +226,120 @@ Implements the design above against `lib/`, `taskctl.py`, and a new `questctl.py
 - **Fixed in the same pass, a genuine pre-existing gap, not something the redesign introduced**: `lib/cliapp.py`'s `_print_result` only ever rendered a `next` result with `render.short_line` (no History), even though design-taskctl.md already promised "including its History" before this session's changes began. Now keyed on `args.command == "next"` generically (alongside the existing `show --history` case) — a one-line fix that benefits both taskctl's and questctl's `next` uniformly, since neither tool's own code decides this, the shared engine does.
 - **taskctl.py itself needed no code changes at all** — every behavioral change routes through `lib/taskctl_spec.py` (`variable_depth=True`, `object_type_from_phase`'s depth-0 fallback) and the shared `lib/` engine; the CLI script's own `_handle_next`/`_handle_annotate`/`_configure_parser` were already generic enough (e.g. `metagroup_levels` sorts fine on an all-empty-tuple store) to need nothing further.
 - **questctl's status machine is a direct import from `lib/taskctl_spec.py`** (`OPEN`/`IN_PROGRESS`/`REVIEW_USER`/`REVIEW_SUBAGENT`/`BLOCKED`/`DONE`, `validate_transition`), not a third shared module — the two tools are the only ones using this exact state machine, so extracting a new module for it would be premature; `lib/taskctl_spec.py`'s docstring now says so explicitly.
+
+## Amendments (2026-08-25, taskctl `NoWorkAvailable` + taskctl-author-cli/taskctl-worker-cli design)
+
+A `/grill-me` pass on the two planned Skills around `taskctl` itself (`architecture/docs/skills/design-taskctl-author-cli.md`, `design-taskctl-worker-cli.md`, and their `SKILL.md`s) — unlike `rulectl`/`questctl`'s Author/Checker(/Researcher) pairs, `taskctl` has no upstream tool exporting a bounded tasklist into it (design-taskctl.md, "Operations": Tasks may originate from `rulectl tasklist`, but `taskctl` itself doesn't care), so the pair here is Author (creates/extends Tasks directly) and **Worker** (works them, changing Status per the work done) rather than Author/Checker. Deliberately scoped to just the two Skills, not their future Subagents (`taskctl-author`/`taskctl-worker` — no `design-taskctl-author.md`/`design-taskctl-worker.md` yet, unlike `rulectl-author`/`rulectl-checker` which already had both layers before their Skills were written): the Skills stand as pure CLI-contract references, workflow-agnostic, the same way `rulectl-author-cli`/`rulectl-checker-cli` do.
+
+- **One small `taskctl.py` code change, found while scoping `taskctl-worker-cli`'s recipes**: `_handle_next` now raises `lib/store.py`'s existing `NoWorkAvailable("all_done", "no open tasks")` instead of a bare `StoreError`. This **reverses** the explicit call made in "Amendments (2026-08-22, grilling: uniform per-store depth, bespoke Answer section, `[~]` gating)" ("taskctl itself needed no equivalent three-way split... already treats 'nothing to hand out' as an error condition") and in "Amendments (2026-08-22, questctl/taskctl implementation)" ("taskctl.py itself needed no code changes at all") — both correct at the time (no consumer needed structured JSON on that path), but `taskctl-worker`'s loop mode (see below) now does: it must tell "drained, stop cleanly" apart from a genuine failure (a corrupt store, a lock timeout) when scripting against `--json next`, exactly the problem `NoWorkAvailable` already solves for questctl. taskctl needs only the one `all_done` reason — it has no `in_progress`/`awaiting_interaction`-shaped cases, since `next` already always hands back the blocking Task itself rather than reporting "unavailable" around it (design-taskctl.md, "Sequential Processing", unchanged). One line in `_handle_next`, no other code touched; `design-taskctl.md`'s "Operations" section now documents the `reason`/`--json` shape explicitly, mirroring design-questctl.md's own "CLI Contract additions" wording. Covered by a new `test_next_no_work_available_is_json_structured` (`tests/test_taskctl.py`); full suite now 524.
+- **Command partition mirrors "creating/extending" vs. "working"**, not "authoring" vs. "checking compliance" (there is no compliance verdict here, just arbitrary described work): `taskctl-author-cli` covers `add-phase`/`add`/`list`/`show`/`show-metagroups`/`set-description`/`group-phase`/`reorder`/`delete`/`info-review`/`info-assignee-type`/`info-assignee-name`; `taskctl-worker-cli` covers `next`/`set-status`/`annotate`/`show`, plus `info-review` for exactly one purpose (below). Both exclude `reindex`/`history` (maintenance/reporting, neither authoring nor working) and, per the same "pure CLI-contract reference" stance `rulectl-checker-cli` already takes, neither Skill prescribes *how* to judge a duplicate/overlapping Task or *how* to actually perform a Task's described work — that's the future Subagents' job.
+- **`taskctl-worker` may call `info-review` too, not just `taskctl-author`** — the one metainfo-axis operation shared across the split. A Task's `review` value is normally fixed at creation (`add --review ...`), but real work surfaces review needs an author can't always foresee; the Worker may escalate (`none`→`user`/`subagent`, mirroring `rulectl-checker`'s own `info-review <id> user`-before-`R` pattern, design-rulectl-checker.md) or de-escalate (`user`/`subagent`→`none`, symmetric case, e.g. a pre-flagged Task turns out not to need review after all) immediately before the corresponding `set-status` call. The Worker never touches `info-assignee-type`/`info-assignee-name` — reassignment is an authoring action.
+- **`taskctl-worker`'s iteration model defaults to one Task per invocation** (worked to its next resting point — `[X]`, or an escalation `[R]`/`[C]`/`[B]`), **looping only when the invoking user explicitly asks for it** (repeated `next` calls until `NoWorkAvailable`/`all_done`, or until `next` returns a Task already sitting in `[B]`/`[R]`/`[C]` — nothing further to do this run, since `next` would just keep re-returning it). This is an invocation-time instruction to the Subagent, not a `taskctl` CLI flag — no scope-filter equivalent to questctl's `next --group`/`--subgroup` was added, since `assignee-type`/`assignee-name` stay purely informational for `taskctl-worker` (see below), leaving nothing for a filter to scope by.
+- **The Worker never targets a Task ID other than the one `next` just returned.** Since `next` always returns the earliest not-done Task in priority order (design-taskctl.md, "Sequential Processing", unchanged), a later Task can only legitimately be `[~]` if a *prior*, in-order Worker invocation put it there — so this invariant is self-enforcing given `next`'s existing selection rule, not a new mechanism. A Task `next` returns already `[~]` is a **resume** (read its History via `show --history` for context; no redundant `[~]`-transition), never grounds to start a different Task instead.
+- **`assignee-type`/`assignee-name` stay purely informational for `taskctl-worker`** — considered and rejected: filtering `next` to only Tasks matching the Worker's own assignee (would have needed a new `next --assignee-type`/`--assignee-name` CLI filter, allowed in principle but not built). Rejected as a bigger model change than this pass's two-Skill scope warrants — `taskctl`'s "Sequential Processing" is one global queue, not per-assignee lanes — and revisit only if task hand-off routing is actually needed later, not speculatively.
+
+## Amendments (2026-08-25, taskctl-author/taskctl-worker Subagent design)
+
+A `/grill-me` pass writing the two Subagent design documents the previous
+amendment deliberately deferred (`architecture/docs/subagents/design-taskctl-author.md`,
+`design-taskctl-worker.md`) — the CLI-contract Skills already existed;
+this pass designs the workflows that actually use them. `taskctl-author`
+was explicitly modeled on `questctl-author`, diverging where taskctl's own
+purpose forces a real difference; `taskctl-worker` has no direct precedent
+(no sibling Subagent *executes* what it reads, the rest only ever judge
+or attribute).
+
+- **`taskctl` gains a `source` Metainfo type**, mirroring the identical gap
+  closed for `questctl` in "Amendments (2026-08-22, questctl-author/-checker/
+  -researcher design)" above, for the same reason: `taskctl-author` bulk-authors
+  Tasks from source documents, and a traceability field pointing a Task back
+  to what informed it was missing. **Implemented the same day** —
+  `lib/taskctl_spec.py`'s `MetainfoSpec` tuple gained the entry (no other
+  code changes needed, the generic `info-<type>`/`--<type>` machinery picks
+  it up automatically); `lib/questctl_spec.py`'s own `source` field comment,
+  which had claimed this was "not part of taskctl's own Metainfo set,"
+  updated to stop contradicting itself. `design-taskctl.md`'s "Metainfo"
+  section, `design-taskctl-author-cli.md`, and `taskctl-author-cli/SKILL.md`
+  updated to expose `--source`/`info-source` in the authoring workflow.
+  Covered by `test_source_metainfo_settable_inline_and_via_info`
+  (`tests/test_taskctl.py`); full suite now 525.
+- **`taskctl-author`'s generation model is prompt-driven synthesis, not
+  worklist atomization** — the single biggest departure from
+  `rulectl-author`/`questctl-author`, and from the original request's own
+  first framing ("arbeitet ähnlich wie questctl-author"). Those two
+  Subagents walk a document's own structure and reconcile every unit
+  against a report, guaranteeing nothing is silently dropped. A Tasklist is
+  a *plan* the user's prompt asks for, not an inventory of its sources — the
+  prompt does double duty as a **scope filter** (which subset of the
+  sources' content becomes Tasks at all) and a **detail constraint** on how
+  Tasks are written (e.g. "no Bash scripts, only Python"). This has a real
+  consequence for the trust story: since there's no worklist forcing
+  verbatim unit-by-unit extraction, **every Task Description is this
+  Subagent's own synthesis, never a copied excerpt** — which is what then
+  lets `taskctl-worker` treat a Task's Description as a trustworthy
+  instruction to execute (see below), a guarantee `questctl-checker`'s
+  deliberately-verbatim `answer` could never offer if it executed anything.
+- **No Phase-taxonomy confirmation gate**, unlike `questctl-author`'s
+  batched Group/Subgroup confirmation. That gate exists specifically
+  because a wrong *depth* choice has no cheap undo; taskctl's Phase model
+  is single-level and `taskctl-author-cli` already has cheap undo
+  (`group-phase`/`reorder`/`delete`), so the risk the gate exists to
+  prevent doesn't transfer. Phases are proposed and created directly,
+  reported afterward like everything else.
+- **Extend/shrink is prompt-triggered only, never auto-detected from store
+  state** — whether a run creates fresh Phases, adds to existing ones, or
+  removes Tasks is read entirely from what the invocation prompt says (a
+  reference to "die Installationsanweisungen der Tasklist" resolved via
+  `list`/`show`, the same judgment-based matching duplicate-checking
+  already uses), not branched on whether `--root` already has content.
+  This fell out directly from treating the existing store as "just more
+  context" (per the prompt-driven-synthesis point above) rather than as a
+  fresh-vs-extend mode switch requiring its own detection logic.
+- **Shrink is the one gated write in the whole design** — deletion has no
+  undo (`design.md`, "Object Operations": no tombstone), unlike every other
+  mistake this Subagent can make, so it's the one place a pre-write
+  confirmation belongs even though Q3's "no gate" reasoning otherwise holds
+  for everything else. Present exactly what would be deleted, wait for
+  explicit confirmation, delete only after. A run ending before that
+  confirmation arrives deletes nothing and reports
+  **deferred-awaiting-deletion-confirmation** for the targeted items —
+  reusing `questctl-author`'s own deferred-decision shape (no separate
+  resume mechanism; invoking again re-evaluates against the store's
+  then-current state).
+- **`taskctl-worker` states an explicit untrusted-content boundary**,
+  something no other Subagent needed to add this late because none of them
+  *execute* what they read — `rulectl-checker` only judges a codebase,
+  `questctl-checker` only attributes verbatim text into an `Answer` field.
+  `taskctl-worker` runs Bash/Edit/whatever a Task's Description calls for,
+  which is a materially larger blast radius if that content were ever
+  attacker-influenced. The boundary that makes it safe is stated from both
+  sides: `taskctl-author` never copies untrusted source text into a Task
+  verbatim (see above), and `taskctl-worker` trusts a Task's Description
+  specifically *because* of that — not as a blanket, unexamined trust in
+  anything labeled "Task."
+- **No `next` scope filter, no tool allow-list, no separate codebase-path
+  input for `taskctl-worker`** — three deliberate non-additions, all
+  following the same shape: `rulectl-checker` needed each of these (a
+  Rule-scope filter, a vetted-tool allow-list for `checkable=<tool>`
+  Tasks, an explicit codebase path independent of `--root`) because it is
+  *always* checking code against Rules from a possibly-different
+  repository. `taskctl-worker`'s Tasks are arbitrary by design — not
+  always code, not always in one repository — so none of those three
+  fixed-shape inputs generalizes; where scoping is needed at all, it's
+  expressed in the invocation prompt itself, in whatever terms fit that
+  run, not as a structured parameter.
+- **Iteration mode is prompt-controlled, confirmed unchanged from the
+  previous session's design**: one Task per invocation by default,
+  looping only when the prompt explicitly asks for it. This request's own
+  phrasing ("Wenn nicht im Prompt explizit anders spezifiziert, wird immer
+  nur die nächste Task bearbeitet") independently reconfirmed
+  `design-taskctl-worker-cli.md`'s existing "Iteration model" section
+  rather than changing it.
+- **`taskctl-worker`'s outcome judgment is adapted from `rulectl-checker`'s
+  compliance-verdict discipline and `questctl-researcher`'s evidence
+  threshold**, not invented fresh: `[X]` requires being able to state *why*
+  the work is actually complete and correct, not just that nothing
+  obviously failed; a concrete, reasoned `[R]`/`[C]`/`[B]` is preferable to
+  a guessed `[X]` the evidence doesn't back. Carried over as precedent
+  rather than re-litigated, since the same judgment-integrity concern
+  applies here as to every other Subagent that forms a verdict.

@@ -29,10 +29,11 @@ def build_spec() -> ToolSpec:
             MetainfoSpec(type="assignee-name"),
             # design-questctl.md, "Metainfo": traceability back to the
             # document/passage a Question was drawn from -- same convention
-            # as rulectl's own `source` field. Not part of taskctl's own
-            # Metainfo set (its Tasks are usually authored directly, with
-            # nothing upstream to trace back to); questctl's Questions are
-            # routinely bulk-authored from a source document.
+            # as rulectl's own `source` field, and (design-decisions.md,
+            # "Amendments (2026-08-25, taskctl-author/taskctl-worker
+            # Subagent design)") taskctl's own `source` field, added later
+            # for the identical reason once taskctl-author started
+            # bulk-authoring Tasks from source documents too.
             MetainfoSpec(type="source"),
         ),
         status=StatusSpec(
