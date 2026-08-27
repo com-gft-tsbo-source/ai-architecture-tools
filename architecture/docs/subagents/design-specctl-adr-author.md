@@ -82,7 +82,8 @@ promotion path, minting a founding ADR for it now.)
 ## Workflow
 
 1. **Resolve the invocation prompt's target Section(s)**
-   (`specctl-editor-cli`'s `list`/`show`/`show-metagroups`).
+   (`specctl-editor-cli`'s `list`/`show` — `specctl` has no
+   `show-metagroups`, unlike `adrctl`).
 2. **Decompose the change into topics.** A single invocation commonly
    addresses more than one coherent topic (e.g. "passe Abschnitt A an X an
    und ergänze Abschnitt B um Y") — read the prompt's own structure as the
@@ -156,19 +157,37 @@ promotion path, minting a founding ADR for it now.)
 6. **Revision — correction**, per topic:
    1. Identify the Section's existing governing ADR (already known from
       step 3's classification).
-   2. **Confirm with the user before proceeding** — every time, no
-      memory-based shortcut even for a third or fourth correction to the
-      same Section in the same session (each invocation is stateless
-      per the existing precedent, `design-rulectl-author.md`/
-      `design-taskctl-author.md`'s "no separate resume mechanism" — the
-      store is the only record between runs, and it can't record "the user
-      already said yes to this kind of thing"). State plainly which ADR
-      would be reused/overwritten and what the correction changes.
-      - **User confirms**: proceed with 3-4 below.
-      - **User declines** ("no, this actually is a new decision"): fall
-        back to step 5 (Revision — new decision) for this topic instead —
-        the classification was only ever a shortcut the user can override,
-        never a hard branch foreclosing the other path.
+   2. **Confirm before proceeding — every time, as a deferred, non-blocking
+      report, never an in-run interactive prompt.** No Subagent in this
+      project family blocks mid-run to ask a question — every existing
+      user-facing gate (`rulectl-author`'s Language decision,
+      `questctl-author`'s taxonomy confirmation, `taskctl-author`'s
+      shrink-deletion confirmation) reports the pending decision and stops
+      *for that item only*, resuming only when invoked again with the
+      answer folded into the next prompt (`design-rulectl-author.md`, step
+      3; `design-taskctl-author.md`, step 7 — "no separate resume
+      mechanism... invoking again re-evaluates"). This topic follows the
+      same shape: take **no action** on it this run — no content change, no
+      ADR update — and report **deferred-awaiting-correction-confirmation**,
+      stating plainly which ADR would be reused/overwritten and what the
+      correction would change, while every other topic in the same
+      invocation proceeds normally (mirrors `rulectl-author`'s own "only the
+      affected candidates wait" rule for its Language gate). No memory-based
+      shortcut across repeated corrections to the same Section in the same
+      session either — each invocation is stateless (same precedent), so
+      there is nothing that could remember "the user already said yes to
+      this kind of thing."
+
+      Resuming is simply being invoked again with the answer stated in the
+      prompt (e.g. "ja, das ist eine Korrektur an ADR `<id>`" / "nein, das
+      ist eine neue Entscheidung") — read as ordinary input to step 3's
+      classification on that later run, not a special resume mechanism:
+      - **Confirmed**: proceed with 3-4 below, now on that later
+        invocation.
+      - **Declined**: step 3 classifies the topic as "Revision — new
+        decision" instead and step 5 handles it — the classification was
+        only ever a shortcut the user can override, never a hard branch
+        foreclosing the other path.
    3. Apply the content change: `specctl set-description`/
       `set-open-questions` (no `--adr` needed — already set from the prior
       promotion/revision).
@@ -186,9 +205,9 @@ promotion path, minting a founding ADR for it now.)
      revision-new-decision / revision-correction) and the Section(s) it
      targeted.
    - **Under each**: the ADR(s) created (Signature/ID), the ADR(s)
-     superseded (if any), and the outcome per Section — **done** or
-     **failed** (the error). A correction topic the user declined also
-     reports which path it fell back to.
+     superseded (if any), and the outcome per Section — **done**,
+     **failed** (the error), or **deferred-awaiting-correction-confirmation**
+     (step 6.2 — no ADR/content change was made for this topic this run).
    - Retrospective, like every sibling Subagent's report — a record of what
      was done, not a plan awaiting approval (except the one, explicit,
      per-correction confirmation gate in step 6).

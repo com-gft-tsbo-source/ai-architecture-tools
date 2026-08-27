@@ -505,3 +505,88 @@ don't exist yet.
   allows it under `--force`) because reverting already-accepted content to
   unstructured free editing is a significant, easy-to-regret decision no
   routine prompt should be able to trigger.
+
+## Amendments (2026-08-27, specctl-author/specctl-adr-author implementation)
+
+A `/grill-me` pass writing the actual `SKILL.md`/Subagent files the previous
+pass's design docs described:
+`architecture/subagents/specctl-author.md`, `specctl-adr-author.md`,
+`architecture/skills/specctl-author-cli/SKILL.md`,
+`specctl-editor-cli/SKILL.md`, `adrctl-author-cli/SKILL.md`. Per the
+requester's own choice among three offered verification levels, every
+recipe across the three Skills was run against the real CLI in a scratch
+store before being condensed into the final files — not just transcribed
+from the design docs unverified. Two real mistakes surfaced this way, both
+corrected in the design docs themselves (not just the new implementation
+files, since a Skill's whole point is to be a CLI-contract reference a
+Subagent trusts without re-deriving it) plus one clarification neither
+needed code changes, only wording:
+
+- **`move-to-<level>`'s path argument is the parent path, one level
+  shallower than the target — not `<parent>/<own-new-name>`.** The original
+  `specctl-author-cli` recipe (`move-to-chapter <id>
+  "<Part name>/<new Chapter name>"`) was wrong on inspection: `move-to-chapter`
+  actually failed with "expects a 1-segment parent path (got 2: ...)" against
+  the real CLI. Worse, a second run confirmed `move-to-<level>` doesn't just
+  reparent — it **changes the Section's own depth to match the command**,
+  even converting an existing `Section`-depth object into a `Chapter` (its
+  Object Type re-derived accordingly) when given `move-to-chapter`. This was
+  always the documented behavior in `design-specctl.md`'s own "Operations"
+  section (`move-to-<metagroup-type>`, "one subcommand per target level") —
+  not a newly discovered tool behavior, just a mistake in how this pass's
+  own first-draft Skill recipe read that existing text. Fixed in
+  `design-specctl-author-cli.md` and the new `specctl-author-cli/SKILL.md`
+  alike.
+- **`specctl` has no `show-metagroups` command at all.** Both new specctl-
+  facing Skill design docs (`design-specctl-author-cli.md`,
+  `design-specctl-editor-cli.md`) and the `specctl-adr-author` subagent doc
+  referenced it by analogy with the other three tools' shared generic
+  engine — but `specctl.py` is its own hand-rolled CLI
+  (`architecture/scripts/CLAUDE.md`: "nutzt bewusst nicht `lib/cliapp.py`"),
+  confirmed directly against `build_parser()`'s subcommand list, which has
+  no such entry (and a live `specctl --root ... show-metagroups` call fails
+  with "invalid choice"). There's nothing for it to enumerate anyway — a
+  Section already carries its own position/type directly, unlike the other
+  tools' separate metagroup-path registry. Every reference now points at
+  `list --under <path>` instead. This also surfaced a second, related gap
+  while fixing the "Detecting initialization" recipe that had leaned on
+  `show-metagroups`' non-existent error: `list`/`render`/`history` are
+  explicitly **exempt** from `specctl`'s own initialization check
+  (`design-specctl.md`, "Operations") and return empty output on an
+  uninitialized store rather than erroring — verified directly (`list`
+  returns `[]`, exit `0`; `render` returns empty text, exit `0`) — so no
+  read command can ever detect "not initialized" at all. Only a **mutating**
+  call's specific error text (`this specctl document has not been
+  initialized yet -- run 'init <title>' first`, exit `1`) is a reliable
+  signal; the design doc's own "simpler and preferred" fallback option
+  already described exactly this, so the fix was deleting the broken first
+  option, not inventing a new one.
+- **The correction-confirmation gate (and `specctl-author`'s missing-Title
+  case) are deferred, non-blocking reports, not literal in-run questions**
+  — clarified in both subagent design docs and the new files, matching
+  every existing gate in this project rather than reading as an interactive
+  back-and-forth. Confirmed by checking precedent directly: no existing
+  Subagent's `tools:` frontmatter lists anything `AskUserQuestion`-shaped,
+  and `rulectl-author`'s Language gate, `questctl-author`'s taxonomy
+  confirmation, and `taskctl-author`'s shrink-deletion confirmation all
+  explicitly describe "no separate resume mechanism... invoking again
+  re-evaluates" rather than a blocking wait. `specctl-adr-author`'s
+  correction gate now reports `deferred-awaiting-correction-confirmation`
+  for that one topic and continues with every other topic in the same run
+  (mirroring `rulectl-author`'s "only the affected candidates wait");
+  `specctl-author`'s missing-Title case reports `deferred-awaiting-title`
+  for the whole run the same way.
+- **Neither new Subagent needs `Read`/`Glob`/`WebFetch`** — both take
+  prompt-only input (no document/URL mode), so their `tools:` frontmatter
+  is just `Bash, Skill`.
+- **Verification scope, as chosen by the requester**: every CLI recipe
+  actually run against a scratch store (catching the two mistakes above);
+  not extended to a full hand-simulated Subagent walkthrough, and not
+  extended to literally invoking the new Subagents via the Agent tool —
+  confirmed infeasible in this session regardless of choice, since
+  `architecture/subagents/*.md` isn't wired into this session's own Agent
+  tool at all (no existing project Subagent appears in its available agent
+  types either — these files are deliverables for whatever project deploys
+  these scripts, same as every existing one). The existing 525-test Python
+  suite was re-run as a sanity check (unchanged — no `.py` files were
+  touched) rather than skipped, per this project's own "Tester" role.

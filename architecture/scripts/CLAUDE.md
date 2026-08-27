@@ -384,6 +384,33 @@ existieren noch nicht, analog zum aktuellen Stand bei
 `taskctl-author`/`taskctl-worker` und `questctl-author`/`-checker`/
 `-researcher`.
 
+Ein weiterer `/grill-me`-Durchgang (2026-08-27, `design-decisions.md`,
+"Amendments (2026-08-27, specctl-author/specctl-adr-author implementation)")
+legte die tatsächlichen Dateien an:
+`architecture/subagents/specctl-author.md`,
+`architecture/subagents/specctl-adr-author.md`,
+`architecture/skills/specctl-author-cli/SKILL.md`,
+`architecture/skills/specctl-editor-cli/SKILL.md`,
+`architecture/skills/adrctl-author-cli/SKILL.md`. Jedes Recipe aller drei
+Skills wurde gegen die echte CLI in einem Scratch-Store verifiziert
+(`python -m unittest`-Suite unverändert bei 525 Tests, keine
+Code-Änderungen an `specctl.py`/`adrctl.py`) — dabei zwei Fehler in den
+Design-Dokumenten selbst gefunden und korrigiert: `move-to-<Ebene>` nimmt
+nur den **Eltern**-Pfad entgegen (eine Ebene flacher als das Ziel, nicht
+`<Eltern>/<neuer-Name>`) und ändert dabei die eigene Tiefe der Section auf
+die Zielebene, nicht nur ihren Elternknoten; `specctl` hat — anders als
+`taskctl`/`rulectl`/`adrctl` — **kein** `show-metagroups` (eigene,
+handgeschriebene CLI ohne das generische Engine-Kommando), betroffene
+Stellen nutzen jetzt `list` statt dessen. Beide Korrekturen auch in den
+Design-Dokumenten (`design-specctl-author-cli.md`,
+`design-specctl-editor-cli.md`) nachgezogen, damit Design und Implementierung
+nicht auseinanderlaufen. Außerdem präzisiert: der Bestätigungs-Gate für eine
+als Korrektur erkannte Revision (und `specctl-author`s "kein Titel
+vorhanden"-Fall) ist wie jedes andere Gate dieser Tool-Familie ein
+Deferred-Report, kein blockierendes Nachfragen im laufenden Run — verifiziert
+gegen das bestehende Muster (`rulectl-author`s Language-Gate,
+`taskctl-author`s Shrink-Bestätigung), keines davon blockiert tatsächlich.
+
 Noch offen:
 - Metagroup-Rename für taskctl/rulectl/adrctl (siehe oben) — im Contract
   dokumentiert, noch nicht implementiert.

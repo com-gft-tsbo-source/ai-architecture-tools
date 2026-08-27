@@ -42,10 +42,11 @@ is being created in the same run:
 - `show`, `list` (`--status`/`--under`/`--adr`) — resolve which Section(s)
   a change request targets, read a Section's current `adr` value before
   deciding whether this is a first-time promotion or a revision, and
-  re-read a just-changed Section to confirm the write persisted.
-- `show-metagroups` — disambiguate a Section reference against the
-  document's actual structure when the invocation prompt's own wording is
-  ambiguous.
+  re-read a just-changed Section to confirm the write persisted. **No
+  `show-metagroups`** — `specctl` doesn't have one (its own hand-rolled
+  CLI, unlike the other three tools' generic engine; see
+  `design-specctl-author-cli.md`, "Scope"); disambiguate an ambiguous
+  Section reference with `list --under "<path>"` instead.
 
 Not in scope (belongs to `specctl-author-cli` instead, and this Skill's
 Subagent never calls it): `init`, `set-title`, `set-preamble`,
@@ -77,7 +78,7 @@ specctl --root <root> --json show <id>
   from the identical `--root` value — `design.md`, "File and Directory
   Parameters").
 - **`--json`**: always pass this flag when the output needs to be parsed
-  programmatically (`show`, `list`, `show-metagroups`).
+  programmatically (`show`, `list`).
 - **Exit codes**: `0` = ok, `1` = error. Error text goes to stderr.
 - **Ordering matters.** Unlike `specctl-author-cli`'s independent,
   order-insensitive operations, this Skill's calls are almost always part
@@ -132,7 +133,6 @@ trail for *why*.
 ```
 specctl --root <root> --json list [--status stable] [--under "<path>"]
 specctl --root <root> --json show <id>
-specctl --root <root> --json show-metagroups
 ```
 
 Matching a prompt's natural-language reference against `list`/`show`

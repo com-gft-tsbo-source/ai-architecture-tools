@@ -58,8 +58,16 @@ handles that itself rather than requiring a separate manual step:
 1. On every invocation, check whether the store at `--root` is already
    initialized (`specctl-author-cli`, "Detecting initialization").
 2. If not: derive a Title from the prompt if one is obviously stated or
-   implied; otherwise ask the user for one (Title is mandatory, user-authored
-   content — never invented outright). Call `init`, with `--preamble` only if
+   implied; otherwise **stop and report `deferred-awaiting-title`** for the
+   whole run rather than inventing one (Title is mandatory, user-authored
+   content) — this Subagent never blocks mid-run to ask; it reports what it
+   needs and lets whoever invoked it re-run with a Title included in the
+   next prompt, the same deferred-and-resume shape `rulectl-author` uses for
+   an undecided Language (`design-rulectl-author.md`, step 3) and
+   `taskctl-author` uses for an unconfirmed deletion
+   (`design-taskctl-author.md`, step 7) — neither of which blocks either.
+   Once a Title is available (obvious from the prompt, or supplied on a
+   later invocation): call `init`, with `--preamble` only if
    the prompt supplies preamble text.
 3. Proceed with the rest of the prompt's instruction against the
    now-initialized store in the same run — `init` is not a separate

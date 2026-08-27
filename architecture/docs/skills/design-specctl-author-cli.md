@@ -35,9 +35,16 @@ combination:
   `move-to-point` — reassign a Section (and its whole subtree) to a
   different parent.
 - `delete` (with `--force-delete` for a subtree) — remove a Section outright.
-- `show`, `show-metagroups`, `list` (`--status`/`--under`) — inspect
-  existing content before adding to or restructuring it, and re-read a
-  just-created/-deleted Section to confirm the write actually took effect.
+- `show`, `list` (`--status`/`--under`) — inspect existing content before
+  adding to or restructuring it, and re-read a just-created/-deleted
+  Section to confirm the write actually took effect. **`specctl` has no
+  `show-metagroups` command** — unlike the other three tools' generic
+  engine, `specctl.py` is its own hand-rolled CLI
+  (`architecture/scripts/CLAUDE.md`), and a Section already carries its own
+  position/type directly (`design-specctl.md`, "Object Format" — there is
+  no separate metagroup registry to enumerate). Use `list` for the same
+  purpose instead — it returns every Section with its `path`/`level`/
+  `level_type` fields.
 
 Not in scope (belongs to a different workflow, so not documented here):
 `set-status`, `set-adr` — any Status change or ADR linkage is
@@ -47,25 +54,30 @@ convenience/reporting views neither authoring nor editing content.
 
 ## Detecting initialization
 
-There is no dedicated "is this store initialized?" query command. Use one
-of:
+There is no dedicated "is this store initialized?" query command, and
+reading doesn't help either: `list`/`render`/`history` are explicitly
+**exempt** from the initialization check (`design-specctl.md`, "Operations")
+and just return empty output on an uninitialized store — indistinguishable
+from "initialized, zero Sections yet" (verified directly: both return `[]`/
+empty text, exit `0`, no error). The only reliable signal is a **mutating**
+call's error text:
 
-- `specctl --root <root> --json show-metagroups` (or any other read
-  command) and check whether it fails with the "not initialized" error —
-  cheap, but conflates "not initialized" with any other read failure unless
-  the error text is inspected.
-- Simpler and preferred: attempt the first real operation the prompt
-  actually needs (e.g. `add-part <path>`); if it fails with the
-  not-initialized error, run `init` and retry the same operation once.
+```
+specctl --root <root> add-part "<name>" ...
+```
 
-Either way, `init` itself is idempotent-**rejecting**: calling it on an
+failing with `this specctl document has not been initialized yet -- run
+'init <title>' first` (exit `1`) means the store isn't initialized yet.
+Simply attempt the first real operation the prompt actually needs; on that
+specific error, run `init` and retry the same operation once. Any other
+error means something else is wrong — don't call `init` reflexively on
+every failure.
+
+`init` itself is idempotent-**rejecting**: calling it on an
 already-initialized store fails rather than silently discarding the
 existing Title/Preamble (`design-specctl.md`, "Amendments... specctl `init`
 lifecycle"). Never call `init` speculatively without first confirming the
-store isn't already initialized — a failed speculative `init` is expected
-and fine to treat as "already initialized, proceed," but calling it
-*after* a successful one in the same run would be a bug, not a recoverable
-error.
+store isn't already initialized via the error above.
 
 ## Invocation conventions
 
@@ -122,10 +134,21 @@ specctl --root <root> set-open-questions <id> "<new open questions text>"
 ```
 specctl --root <root> rename <id> "<new heading text>"
 specctl --root <root> reorder <id> --after <sibling-number>
-specctl --root <root> move-to-chapter <id> "<Part name>/<new Chapter name>"
+specctl --root <root> move-to-chapter <id> "<Part name>"
 ```
 
-`move-to-part` omits the path argument entirely (a Part has no parent).
+`move-to-<level>`'s path argument is the **parent** path only — one segment
+shallower than the target level (e.g. `move-to-chapter` takes just the Part
+name, not `<Part>/<Chapter>`; `move-to-section` takes `<Part>/<Chapter>`)
+— never the Section's own name, which `rename` (not `move-to-<level>`)
+controls. `move-to-part` omits the path argument entirely (a Part has no
+parent). This also **changes the Section's own depth to match the command**,
+not just which parent it sits under — `move-to-chapter` turns whatever
+Section it's given into a Chapter, even if it was a Section or Subsection
+before (verified against the real CLI: moving an existing `Section`-depth
+object via `move-to-chapter` changed its own `level_type` to `Chapter` and
+re-derived its Object Type accordingly). Pick the command for the depth the
+Section should actually end up at, not just "the level of the new parent."
 `reorder --after 0` inserts before all siblings. A moved Section carries its
 whole subtree with it and always lands as the new parent's last child —
 follow with `reorder` for a specific position.
@@ -143,7 +166,6 @@ Sections — pass it to remove the whole subtree in one step.
 
 ```
 specctl --root <root> --json list [--status draft] [--under "<path>"]
-specctl --root <root> --json show-metagroups
 ```
 
 **Inspecting one Section, or confirming a write actually persisted**:
