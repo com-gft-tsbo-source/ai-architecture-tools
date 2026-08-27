@@ -366,6 +366,24 @@ und `taskctl-author-cli/SKILL.md` entsprechend aktualisiert. Der
 widersprüchliche Kommentar in `lib/questctl_spec.py` ("not part of
 taskctl's own Metainfo set") wurde korrigiert.
 
+Ein `/grill-me`-Durchgang (2026-08-27, `design-decisions.md`, "Amendments
+(2026-08-27, specctl-author/specctl-adr-author design)") legte die ersten
+Subagent-/Skill-Designdokumente rund um `specctl` und `adrctl` gemeinsam an
+— beide Tools hatten zuvor noch keine, `VISION.md` erwähnte sie nicht:
+`architecture/docs/subagents/design-specctl-author.md`,
+`design-specctl-adr-author.md` sowie die drei Skill-Dokumente
+`architecture/docs/skills/design-specctl-author-cli.md`,
+`design-specctl-editor-cli.md`, `design-adrctl-author-cli.md`. Aufteilung
+nach Lebenszyklus-Phase, nicht nach Tool: `specctl-author` (Draft, volles
+CRUD, nur `specctl`) vs. `specctl-adr-author` (Promotion nach `stable` und
+jede weitere Änderung, immer ADR-autorisiert — der erste Subagent dieser
+Familie, der zwei Tools über zwei Skills bedient, `specctl-editor-cli` und
+`adrctl-author-cli`). Keine Code-Änderungen an `specctl.py`/`adrctl.py`
+nötig — reine Design-Dokumentation; die tatsächlichen Subagent-/Skill-Dateien
+existieren noch nicht, analog zum aktuellen Stand bei
+`taskctl-author`/`taskctl-worker` und `questctl-author`/`-checker`/
+`-researcher`.
+
 Noch offen:
 - Metagroup-Rename für taskctl/rulectl/adrctl (siehe oben) — im Contract
   dokumentiert, noch nicht implementiert.
