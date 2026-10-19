@@ -451,8 +451,19 @@ author create / extend + shrink pass 1 (blanket pre-authorization correctly
 refused) / pass 2 (confirmed ID deleted); worker single Task, resume of a
 `[~]` Task, loop to `all_done`, a `review=user` Task ending `[R]` (and
 blocking the next run), and a rulectl-style Task set `[B]` unworked. All
-passed. Observation, not acted on: a Task that itself describes an outward
-action (e.g. "publish to PyPI") is authored without flagging it — the
-worker's explicit-request rule then permits it, since the Task asks. If
-publishing should always need a human, the author could set
-`review=user` on such Tasks; not decided.
+passed.
+
+- **Outward-facing Tasks get `review=user`, and it gates the action, not
+  just the result** (follow-up to the smoke test, where the author created
+  a "publish to PyPI" Task unflagged and the worker's explicit-request rule
+  would have let it publish). The author always sets `review=user` on a
+  Task whose work includes an outward/irreversible action, in its own Task
+  separate from local preparation — an explicit exception to "review is
+  never inferred from subject matter", which the prompt can't waive. On
+  such a Task the worker stops at `[R]` "pending: needs user approval"
+  *before* the action and performs it only after a `[R]`→`[~]` History
+  entry approving it, then sets `[R]` again for the final check. No new
+  `taskctl` status or command: rework (`[R]`→`[~]`) already exists.
+  Rejected: plain `review=user` without the gate — the review would only
+  come after the irreversible action. The invocation prompt can't stand in
+  for the History approval (it may come from a calling agent).

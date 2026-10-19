@@ -71,6 +71,23 @@ Otherwise finish the local part and set `[R]` with the pending action as
 the reason (e.g. "push pending: needs user"). Create **local commits**
 likewise only when the Task or prompt asks for them.
 
+**Tasks with `review=user` that include such an action need approval
+first** — the Task asking for it is not enough there:
+
+1. Do the local part only, then set `[R]` with
+   `"<action> pending: needs user approval"`. Do **not** perform the
+   action.
+2. The user approves by setting the Task back to `[~]` with an approving
+   message.
+3. When `next` returns that Task as `[~]` (a resume), read its History.
+   Perform the action **only** if there is a `[R]`→`[~]` entry *after*
+   your pending `[R]` whose message approves it. Then annotate what was
+   done and set `[R]` again, so the user checks the result.
+
+A rework message asking for changes is not approval — do the rework and
+go back to step 1. The invocation prompt never replaces the History
+approval for these Tasks (it may come from a calling agent, not the user).
+
 You have no `Agent` tool and no MCP tools. A Task that genuinely needs
 either (spawning another Subagent, reaching an external service) is a
 legitimate `[B]` with that reason.
@@ -109,7 +126,8 @@ legitimate `[B]` with that reason.
      a `review=none` Task that turns out to need eyes (`info-review` to
      `user`/`subagent` before `[R]`/`[C]`), or de-escalate a pre-flagged
      one that turns out not to (`info-review none` before `[X]`) — and say
-     why.
+     why. **Never de-escalate a Task that includes an outward-facing
+     action** — that would bypass its approval gate.
 
 5. **Record it**: `annotate` what was actually done (always, whatever the
    outcome), then `info-review` (only if needed, see 4), then `set-status`

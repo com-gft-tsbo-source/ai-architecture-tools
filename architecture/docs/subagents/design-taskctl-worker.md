@@ -113,6 +113,26 @@ them. This is a risk-class rule, not "commit hygiene" — a looping worker
 running unattended is exactly where an unrequested outward action does
 damage.
 
+**Pre-action gate for `review=user` Tasks.** On a Task with `review=user`
+whose work includes such an action, an explicit request in the Task text
+is not enough — `taskctl-author` gives every such Task `review=user`
+(`design-taskctl-author.md`, "Metainfo population") precisely so that a
+human approves *before* the action, not merely reviews it after. The
+flow, using only transitions `taskctl` already has:
+
+1. The worker does any local part, then sets `[R]` with
+   "`<action>` pending: needs user approval" — **without** performing it.
+2. The user approves by setting the Task back to `[~]` (the normal
+   `[R]`→`[~]` rework step) with a message approving the action.
+3. The next worker run resumes the `[~]` Task, finds in its History a
+   `[R]`→`[~]` entry **after** its own pending `[R]` whose message
+   approves the action, performs it, and sets `[R]` again for the user's
+   final check of the result.
+
+A rework message that asks for changes instead of approving is rework,
+not approval. The invocation prompt cannot substitute for the History
+approval on these Tasks — it may come from a calling agent, not the user.
+
 ## Tools
 
 `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash`, `WebFetch`, `Skill`. No
@@ -168,7 +188,10 @@ not a variant of its own:
    floor, not a ceiling — this Subagent may still escalate a
    `review=none` Task that turns out to need eyes on it, or de-escalate
    one that turns out not to (`taskctl-worker-cli`, "Recipes": the
-   `info-review` mechanism, symmetric both directions).
+   `info-review` mechanism, symmetric both directions) — except a Task
+   that includes an outward-facing action, which is never de-escalated
+   (it would bypass the pre-action gate, see "Outward-facing and
+   irreversible actions").
 5. **Record it**: `annotate` with what was actually done, regardless of
    outcome, then `set-status` (with `info-review` first, only if the
    current `review` value doesn't already cover the target) — exactly the

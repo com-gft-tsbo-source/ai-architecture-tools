@@ -200,7 +200,16 @@ Never pass `--set-status` — freshly planned work hasn't started.
   `taskctl-worker` escalates that itself. Set them **only** when the prompt
   explicitly says so for a Task or a named group of Tasks (e.g. "everything
   about the database migration needs user review") — never inferred from a
-  Task's subject matter.
+  Task's subject matter, **with one exception**:
+- **Outward-facing actions always get `--review user`.** A Task whose work
+  includes publishing, releasing, deploying, pushing, sending messages,
+  opening PRs/issues, or anything else that leaves the working area or
+  can't be undone is created with `--review user` — always, even if the
+  prompt says otherwise. Put such an action in **its own Task**, after and
+  separate from its local preparation (build, test, check), and state in
+  its Description which action it is and that it runs only after user
+  approval. `taskctl-worker` then stops before the action until the user
+  approves.
 
 ## Out of scope
 
