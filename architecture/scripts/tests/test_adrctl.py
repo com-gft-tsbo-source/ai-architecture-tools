@@ -117,6 +117,35 @@ class TestSpecRefLinkage(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(out.count(f"adr={adr_id}"), 2)
 
+    def test_superseding_keeps_section_on_new_adr(self):
+        # design-specctl.md, "ADR Linkage": superseding moves the Section to
+        # the superseding ADR -- marking the old one superseded must not
+        # point the Section back at it.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "adrs")
+            run_specctl(["--root", root, "init", "Design Doc"])
+            _c, out, _e = run_specctl(["--root", root, "--json", "add-part", "Concurrency"])
+            section_id = json.loads(out)["id"]
+            run(["--root", root, "add-domain", "Backend"])
+
+            def add_adr(name):
+                _c, out, _e = run(
+                    [
+                        "--root", root, "--json", "add", "--name", name, "--domain", "Backend",
+                        "--spec-ref", section_id, "--set-status", "accepted",
+                    ]
+                )
+                return json.loads(out)["id"]
+
+            old_id = add_adr("Use locks")
+            new_id = add_adr("Use lock-free queues")
+            self.assertEqual(run(["--root", root, "info-superseded-by", old_id, new_id])[0], 0)
+            for status in ("superseded", "deprecated", "rejected"):
+                code, _out, err = run(["--root", root, "set-status", old_id, status, "--force"])
+                self.assertEqual(code, 0, err)
+                _c, out, _e = run_specctl(["--root", root, "--json", "show", section_id])
+                self.assertEqual(json.loads(out)["adr"], new_id, status)
+
     def test_set_spec_ref_retroactively_attaches(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "adrs")

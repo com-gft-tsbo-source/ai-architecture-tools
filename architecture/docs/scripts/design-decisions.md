@@ -344,6 +344,253 @@ or attribute).
   rather than re-litigated, since the same judgment-integrity concern
   applies here as to every other Subagent that forms a verdict.
 
+## Amendments (2026-08-27, specctl-author/specctl-adr-author design)
+
+A `/grill-me` pass designing the first Subagent+Skill pairs around `specctl`
+and `adrctl` together (`architecture/docs/subagents/design-specctl-author.md`,
+`design-specctl-adr-author.md`, and three Skill docs:
+`design-specctl-author-cli.md`, `design-specctl-editor-cli.md`,
+`design-adrctl-author-cli.md`) — neither tool had one before, and
+`VISION.md` didn't mention either. Design docs only, same as the
+`taskctl-author`/`taskctl-worker` pass: the actual `SKILL.md`/Subagent files
+don't exist yet.
+
+- **Split by lifecycle phase, not by tool**: `specctl-author` (draft-phase,
+  full CRUD, `specctl`-only) creates and freely restructures content while
+  it's still `draft`; `specctl-adr-author` (stable-phase) promotes a Section
+  to `stable` and, from then on, revises it — always under `adrctl`
+  governance. The two never call each other, and `specctl-adr-author` never
+  creates a new Section.
+- **First Subagent in this project family whose workflow spans two tools'
+  CLIs through two separate Skills** (`specctl-editor-cli` +
+  `adrctl-author-cli`), a deliberate exception to the otherwise-uniform
+  one-Subagent-one-Skill pattern (`VISION.md`: "jeweils als Paar"). Chosen
+  over splitting stable-phase work across two further Subagents (one per
+  tool, sequenced by a third orchestrator) because a stable-phase change is
+  a single atomic unit — the `specctl` edit and the `adrctl` decision that
+  authorizes it — and splitting that coupling across an invocation boundary
+  would only reintroduce the ordering problem it exists to solve (see
+  below). `specctl-editor-cli` is a second, narrower-scoped Skill over the
+  same `specctl` CLI that `specctl-author-cli` already covers in full —
+  mirrors the existing `rulectl-author-cli`/`rulectl-checker-cli` split over
+  one CLI for two different Subagents.
+- **Mechanically discovered ordering constraint, corrected mid-pass**: an
+  early recommendation had `specctl-author` perform the `draft`→`stable`
+  promotion itself, on the (unverified) assumption that only *subsequent*
+  content edits to an already-`stable` Section need a governing ADR.
+  Grepping `lib/spec_store.py`'s actual `set_status` showed the ADR
+  requirement (`_ADR_REQUIRING_STATUSES`) applies to the **transition
+  itself**, not just to edits made afterward — so promotion mechanically
+  requires an ADR to already exist at the moment of transition, exactly
+  like a content edit does, with no exception for a first-time `draft`→
+  `stable` move (unlike `add --set-status stable` on a *brand-new* Section,
+  which *is* exempt — an initial-value choice, not a transition,
+  `design-specctl.md`, "Status"). Promotion therefore moved entirely to
+  `specctl-adr-author`, which mints a single founding ADR (topic: "this
+  content is now accepted") and only then calls `set-status stable` — a
+  case study in why this project's process greps the implementation before
+  finalizing a recommendation that depends on undocumented mechanical
+  behavior, not just before shipping code.
+- **ADR-before-edit resolution, generally**: since `specctl` requires a
+  valid `adr` reference *already set* (inline `--adr`, or already
+  propagated) at the moment of a `stable` Section's status transition or
+  content edit, the literal call order for any stable-phase change is
+  always "mint/identify the ADR, then the `specctl` write" — even though
+  the Grundidee's own wording ("Änderungen an der Spec werden zuerst mit
+  `specctl` integriert. Danach werden... ADR(s)... erzeugt") reads the
+  opposite way. Resolved by reading that sentence as describing which
+  artifact is *authoritative* (the ADR is what makes the change legitimate),
+  not the literal CLI invocation sequence: `adrctl add --spec-ref
+  <section-id> --set-status accepted` first (auto-propagates the ADR's ID
+  into the Section's `adr` field, `design-specctl.md`, "ADR Linkage"), then
+  the `specctl` write, which now succeeds without even needing an inline
+  `--adr`.
+- **ADRs from this workflow are always created directly `accepted`**
+  (`add --set-status accepted`), never left at `adrctl`'s own default
+  initial Status `proposed` — the user's own change request already
+  constitutes the decision being documented; a separate `proposed` stage
+  would only add a redundant manual step with no real review happening in
+  between that it would meaningfully gate.
+- **One ADR per coherent topic, topics judgment-atomized from the change
+  request** — the same "atomic candidates" reasoning `rulectl-author`
+  applies to a document (`design-rulectl-author.md`, step 2), applied here
+  to a natural-language change request instead of a source document. No
+  duplicate-check step, unlike `rulectl-author`/`questctl-author`/
+  `taskctl-author`'s own candidate-deduplication passes: a topic here comes
+  directly from an explicit, already-decided request, not from atomizing
+  ambiguous external material, so there is no ambiguous candidate pool to
+  de-duplicate against.
+- **Multi-Section topics, given `spec-ref`'s single-valued constraint**
+  (already established, "Amendments (2026-08-19, spec-ref single-valued)"
+  above): the new ADR's `--spec-ref` names one "primary" Section (chosen
+  deterministically, e.g. first named in the prompt — carries no meaning
+  beyond being the one `spec-ref` points at); every additional Section the
+  same topic touches is linked afterward via `specctl set-adr <id>
+  <adr-id>` — the existing, documented-but-until-now-unused-for-this-purpose
+  manual correction command (`design-specctl.md`, "Operations": "a
+  correction tool, not validated"), reused here for a legitimate multi-link
+  case rather than inventing a new mechanism. The caller discipline this
+  requires (only ever pass an ADR ID this same run just created or
+  confirmed exists, since `set-adr` performs no validation of its own) is
+  stated explicitly in `design-specctl-editor-cli.md` and
+  `design-adrctl-author-cli.md`.
+- **Revising an already-governed Section explicitly supersedes the old
+  ADR** (`adrctl info-superseded-by` + `set-status superseded`) rather than
+  letting the Section's `adr` field get silently overwritten by
+  auto-propagation, leaving the old ADR sitting at `accepted` forever even
+  though it's no longer the governing decision — `adrctl` already has
+  `superseded-by` (`design-adrctl.md`, "Metainfo") precisely for this case;
+  not using it here would ignore a mechanism built for exactly this
+  situation, for no reason beyond it not being autopropagated by default.
+- **Intent classification — correction vs. new decision — is
+  prompt-driven, not tool-driven, decided by the requester over this
+  document's own first-draft framing** (which had proposed "every revision
+  to already-governed content gets its own new, superseding ADR,"
+  full stop). A user offering several quick revisions to the same
+  just-drafted wording ("das war falsch formuliert, mach nochmal") should
+  not accumulate one superseding ADR per iteration — that would flood the
+  ADR history with noise documenting wording churn, not decisions. Resolved:
+  when the prompt's own phrasing for a topic reads as a correction
+  ("revise"/"redo"/"correct"/"fix," or equivalent — judged semantically,
+  never by literal keyword match) to a Section that already has a governing
+  ADR, no new ADR is created; the existing one is reused **and its own
+  content updated** (only the fields that actually go stale) to stay
+  accurate, rather than just silently reusing its ID for gating purposes
+  alone. **Gated by an explicit user confirmation before every such
+  reuse/overwrite, with no memory-based shortcut across repeated
+  corrections in the same session** — each invocation is stateless per the
+  existing "no separate resume mechanism" precedent
+  (`design-rulectl-author.md`/`design-taskctl-author.md`), so nothing short
+  of asking every time could tell "the user already agreed to this kind of
+  thing" from "this correction is different." A declined confirmation falls
+  back to the normal new-ADR-plus-supersede path for that topic — the
+  classification is only ever a shortcut the user can override, never a
+  hard branch foreclosing the other path. A topic with **no** prior
+  governing ADR (a first-time promotion) is never eligible for this
+  classification at all — there is nothing yet to reuse.
+- **`specctl-author` self-`init`s a brand-new store** rather than requiring
+  a separate manual setup step, asking the user for a Title only when the
+  prompt's own wording doesn't already make one obvious — `specctl`'s own
+  `init` requirement (`design-specctl.md`, "Store";
+  "Amendments (2026-08-20, specctl `init` lifecycle)" above) is a mechanical
+  wrinkle every other tool's auto-vivification doesn't have; routing around
+  it inside the Subagent keeps "just works on a brand-new project"
+  uniform across the whole family rather than pushing an asymmetric manual
+  pre-step onto the user for this one tool.
+- **No batched creation gate for `specctl-author`'s Part-level metagroup**,
+  unlike `rulectl-author`'s Language gate or the new `adrctl-author-cli`'s
+  Domain gate (below): those gates exist to protect against an *autonomous*
+  judgment call over external material with no user present to correct it
+  mid-decision. `specctl-author` fulfills exactly what the user's own prompt
+  asks for, this exact turn — there is no autonomous-judgment risk left for
+  a gate to guard against, only the already-cheap `rename`/`move-to-<type>`
+  undo path if a placement turns out wrong.
+- **`adrctl-author-cli` gains a Domain-level creation gate**, mirroring
+  `rulectl-author-cli`'s Language gate exactly (`design-rulectl-author.md`,
+  step 3): `adrctl`'s Domain is the coarsest, only-2-level axis, and a
+  spurious top-level Domain is the expensive mistake to make casually, the
+  same reasoning that justified the Language gate originally. Component
+  (the leaf) is created freely, same as Context/Category.
+- **`specctl-author`'s deletions stay ungated**, deliberately diverging
+  from `taskctl-author`'s shrink-confirmation gate: draft content is
+  explicitly, by definition, pre-acceptance and low-stakes, and — unlike
+  `taskctl-author`'s autonomously-inferred shrink targets — the user is
+  driving this exact turn directly. A gate here would work against the
+  "kooperativ" nature `VISION.md` describes for this workflow without
+  preventing any real unattended-deletion risk.
+- **`stable`→`deprecated` and `stable`→`draft` rework are both explicitly
+  out of scope for v1**, manual/human-only CLI calls neither Subagent ever
+  issues — `deprecated` per the original request's own "ausschließlich durch
+  den User," and rework (newly surfaced during this pass, `design-specctl.md`
+  allows it under `--force`) because reverting already-accepted content to
+  unstructured free editing is a significant, easy-to-regret decision no
+  routine prompt should be able to trigger.
+
+## Amendments (2026-08-27, specctl-author/specctl-adr-author implementation)
+
+A `/grill-me` pass writing the actual `SKILL.md`/Subagent files the previous
+pass's design docs described:
+`architecture/subagents/specctl-author.md`, `specctl-adr-author.md`,
+`architecture/skills/specctl-author-cli/SKILL.md`,
+`specctl-editor-cli/SKILL.md`, `adrctl-author-cli/SKILL.md`. Per the
+requester's own choice among three offered verification levels, every
+recipe across the three Skills was run against the real CLI in a scratch
+store before being condensed into the final files — not just transcribed
+from the design docs unverified. Two real mistakes surfaced this way, both
+corrected in the design docs themselves (not just the new implementation
+files, since a Skill's whole point is to be a CLI-contract reference a
+Subagent trusts without re-deriving it) plus one clarification neither
+needed code changes, only wording:
+
+- **`move-to-<level>`'s path argument is the parent path, one level
+  shallower than the target — not `<parent>/<own-new-name>`.** The original
+  `specctl-author-cli` recipe (`move-to-chapter <id>
+  "<Part name>/<new Chapter name>"`) was wrong on inspection: `move-to-chapter`
+  actually failed with "expects a 1-segment parent path (got 2: ...)" against
+  the real CLI. Worse, a second run confirmed `move-to-<level>` doesn't just
+  reparent — it **changes the Section's own depth to match the command**,
+  even converting an existing `Section`-depth object into a `Chapter` (its
+  Object Type re-derived accordingly) when given `move-to-chapter`. This was
+  always the documented behavior in `design-specctl.md`'s own "Operations"
+  section (`move-to-<metagroup-type>`, "one subcommand per target level") —
+  not a newly discovered tool behavior, just a mistake in how this pass's
+  own first-draft Skill recipe read that existing text. Fixed in
+  `design-specctl-author-cli.md` and the new `specctl-author-cli/SKILL.md`
+  alike.
+- **`specctl` has no `show-metagroups` command at all.** Both new specctl-
+  facing Skill design docs (`design-specctl-author-cli.md`,
+  `design-specctl-editor-cli.md`) and the `specctl-adr-author` subagent doc
+  referenced it by analogy with the other three tools' shared generic
+  engine — but `specctl.py` is its own hand-rolled CLI
+  (`architecture/scripts/CLAUDE.md`: "nutzt bewusst nicht `lib/cliapp.py`"),
+  confirmed directly against `build_parser()`'s subcommand list, which has
+  no such entry (and a live `specctl --root ... show-metagroups` call fails
+  with "invalid choice"). There's nothing for it to enumerate anyway — a
+  Section already carries its own position/type directly, unlike the other
+  tools' separate metagroup-path registry. Every reference now points at
+  `list --under <path>` instead. This also surfaced a second, related gap
+  while fixing the "Detecting initialization" recipe that had leaned on
+  `show-metagroups`' non-existent error: `list`/`render`/`history` are
+  explicitly **exempt** from `specctl`'s own initialization check
+  (`design-specctl.md`, "Operations") and return empty output on an
+  uninitialized store rather than erroring — verified directly (`list`
+  returns `[]`, exit `0`; `render` returns empty text, exit `0`) — so no
+  read command can ever detect "not initialized" at all. Only a **mutating**
+  call's specific error text (`this specctl document has not been
+  initialized yet -- run 'init <title>' first`, exit `1`) is a reliable
+  signal; the design doc's own "simpler and preferred" fallback option
+  already described exactly this, so the fix was deleting the broken first
+  option, not inventing a new one.
+- **The correction-confirmation gate (and `specctl-author`'s missing-Title
+  case) are deferred, non-blocking reports, not literal in-run questions**
+  — clarified in both subagent design docs and the new files, matching
+  every existing gate in this project rather than reading as an interactive
+  back-and-forth. Confirmed by checking precedent directly: no existing
+  Subagent's `tools:` frontmatter lists anything `AskUserQuestion`-shaped,
+  and `rulectl-author`'s Language gate, `questctl-author`'s taxonomy
+  confirmation, and `taskctl-author`'s shrink-deletion confirmation all
+  explicitly describe "no separate resume mechanism... invoking again
+  re-evaluates" rather than a blocking wait. `specctl-adr-author`'s
+  correction gate now reports `deferred-awaiting-correction-confirmation`
+  for that one topic and continues with every other topic in the same run
+  (mirroring `rulectl-author`'s "only the affected candidates wait");
+  `specctl-author`'s missing-Title case reports `deferred-awaiting-title`
+  for the whole run the same way.
+- **Neither new Subagent needs `Read`/`Glob`/`WebFetch`** — both take
+  prompt-only input (no document/URL mode), so their `tools:` frontmatter
+  is just `Bash, Skill`.
+- **Verification scope, as chosen by the requester**: every CLI recipe
+  actually run against a scratch store (catching the two mistakes above);
+  not extended to a full hand-simulated Subagent walkthrough, and not
+  extended to literally invoking the new Subagents via the Agent tool —
+  confirmed infeasible in this session regardless of choice, since
+  `architecture/subagents/*.md` isn't wired into this session's own Agent
+  tool at all (no existing project Subagent appears in its available agent
+  types either — these files are deliverables for whatever project deploys
+  these scripts, same as every existing one). The existing 525-test Python
+  suite was re-run as a sanity check (unchanged — no `.py` files were
+  touched) rather than skipped, per this project's own "Tester" role.
+
 ## Amendments (2026-10-19, plugin distribution)
 
 The tools, Skills and Subagents are distributed as one Claude Code plugin,
@@ -504,3 +751,70 @@ changes and remote changes are the absolute exception:
   possible later backstop, not built: unverified whether Claude Code
   supports it per Subagent, a plugin-wide hook would affect the user's
   normal sessions, and a pattern list never catches everything.
+
+## Amendments (2026-10-19, specctl/adrctl fixes from integrating the specctl Subagents)
+
+Merging `main` (plugin layout) into the specctl-author/specctl-adr-author
+branch and re-running both its recipe verification and new end-to-end
+smoke tests of the two Subagents surfaced three pre-existing defects —
+none caused by the merge (no `.py` file changed in it) — plus several
+documentation gaps:
+
+- **adrctl re-pointed a Section at a superseded ADR (bug, fixed).**
+  `set-status` is a `spec-ref` propagation trigger, so the documented
+  supersede flow's last step (`set-status <old> superseded`) wrote the
+  *old* ADR's ID back into the Section — silently, contradicting
+  design-specctl.md ("superseding updates a Section's `adr`" to the
+  superseding ADR). Fix: no propagation while the ADR sits in a
+  no-longer-governing status (`superseded`/`deprecated`/`rejected`).
+  Rejected: propagating only on entering `accepted` — that would also stop
+  `add`/`info-spec-ref` of a `proposed` ADR from linking, which the
+  existing spec and tests rely on. Regression test:
+  `test_superseding_keeps_section_on_new_adr` (`tests/test_adrctl.py`).
+- **specctl rejected level skipping the spec allows (code brought to
+  spec).** design-specctl.md, "Metagroups", allowed "a Chapter may hold
+  Points directly", but `level` was derived from the path length. `level`
+  is now stored on `SpecSection`; a Section only has to be deeper than its
+  parent. The spec's own next sentence ("adding a `#####` heading requires
+  its enclosing `####`/`###`/`##` objects to already exist") contradicted
+  that literally and is now worded as "named ancestors must exist".
+  Two points the spec left open, decided here: **only a Part sits at the
+  root** (every branch hangs off a `##`; a root-level `###` has no anchor
+  for its Object Type and reads as a malformed document), and **skipped
+  levels contribute `__` to the Object Type**, keeping it level-aligned
+  (width still encodes the level; unskipped documents keep their exact
+  types). A moved subtree keeps its internal level gaps (uniform shift).
+  A second recipe re-check then found the one layout Markdown can't
+  express: a deeper child *after* a shallower sibling under the same
+  parent (a Point after a Section under one Chapter) — single-file mode
+  silently re-parented it on the next read. Decided: **sibling levels
+  never increase in document order**, enforced by `add`, `move-to-<level>`
+  and `reorder` on the in-memory result before writing (both modes, so the
+  model stays mode-independent). Rejected: auto-placing the Section before
+  its shallower siblings — keeps more layouts reachable, but breaks
+  "always lands as the last child" and needs renumbering; not worth it for
+  an edge case.
+- **`--json show-metagroups` printed Python tuples (bug, fixed)** in the
+  shared `lib/cliapp.py` — affecting taskctl/questctl/rulectl/adrctl,
+  whose author Skills all say to parse it as JSON. Now a JSON array of
+  paths (`[["001-Spec"], ["001-Spec", "001-Core"]]`, the same shape as
+  specctl's `path`); the plain output prints one `/`-joined path per line.
+- **Documentation**: specctl takes only the 6-character `id`, not the
+  Signature (both specctl Skills now say so — the smoke test's first move
+  attempt failed on exactly this); `info-spec-ref` leaves the previously
+  referenced Section's `adr` unchanged (adrctl-author-cli); two error
+  texts and `adr` null-vs-absent wording (specctl-editor-cli);
+  `design-specctl-author-cli.md` no longer lists the nonexistent specctl
+  `show-metagroups`; `specctl-adr-author` now documents the Domain gate it
+  inherits from `adrctl-author-cli` and its
+  **deferred-awaiting-domain-decision** outcome (the smoke test hit that
+  gate; the agent improvised a sensible report, but neither its design doc
+  nor its agent file named it).
+- **Skill wording from the re-check**: mutating specctl commands accept
+  only the 6-character `id` (`show` also takes the Signature); usage errors
+  exit `2` (argparse), not only `0`/`1`; a nonexistent `--adr` fails with
+  "adr '<id>': no object with ID", and `--adr` on a draft Section is
+  ignored.
+- **Clarified, not a defect**: `specctl set-description` writes no History
+  entry — by design (design-specctl.md, "History": content changes are not
+  logged; from `stable` on the trail lives in the ADR).

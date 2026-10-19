@@ -266,6 +266,16 @@ def _print_result(spec: ToolSpec, args: argparse.Namespace, result: object) -> N
                 print(f"  removed orphaned tmp file: {name}")
         return
 
+    if args.command == "show-metagroups":
+        # One declared path per entry, as its '<nr>-<name>' segments -- the
+        # same shape specctl's `--json` uses for a Section's `path`.
+        if args.json:
+            print(json.dumps([list(path) for path in result], indent=2))
+        else:
+            for path in result:
+                print("/".join(path))
+        return
+
     if args.json:
         if isinstance(result, ObjectRecord):
             print(render.to_json(result))

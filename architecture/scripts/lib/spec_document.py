@@ -10,9 +10,10 @@ it, both specctl-managed fields (design-specctl.md, "Title and Preamble")
 rather than opaque, untouched text. Ancestry is tracked with a plain
 depth-stack as sections are walked top to bottom: a new heading's ancestors
 are whatever remains on the stack once entries at its own depth or deeper
-are popped -- which is also what naturally rejects a heading that skips a
-depth (design-specctl.md: "adding a level 4 heading requires its enclosing
-... objects to already exist").
+are popped. A heading may skip depths below its parent (design-specctl.md,
+"Metagroups": "a Chapter may hold Points directly") -- its parent is simply
+the nearest shallower heading. Only a root-level heading must be a Part
+('##'): every branch hangs off one.
 """
 
 from __future__ import annotations
@@ -74,15 +75,12 @@ def parse_document(text: str) -> tuple[str, str, list[SpecSection]]:
     sections: list[SpecSection] = []
     stack: list[SpecSection] = []
     for depth, heading_text, content_lines in blocks:
-        while len(stack) >= depth:
+        while stack and stack[-1].level >= depth:
             stack.pop()
-        if len(stack) != depth - 1:
-            raise SpecDocumentError(
-                f"heading {heading_text!r} at depth {depth} has no enclosing depth-{depth - 1} heading"
-            )
+        check_parent_level(heading_text, depth, stack[-1].level if stack else 0)
 
         ancestor_levels = tuple(section.own_name for section in stack)
-        section = _build_section(heading_text, content_lines, ancestor_levels)
+        section = _build_section(heading_text, content_lines, ancestor_levels, depth)
         sections.append(section)
         stack.append(section)
 
@@ -99,18 +97,34 @@ def render_document(title: str, preamble: str, sections: list[SpecSection]) -> s
     return "\n\n".join(parts).rstrip("\n") + "\n"
 
 
-def parse_section_block(text: str, depth: int, ancestor_levels: tuple[str, ...]) -> SpecSection:
+def check_parent_level(heading_text: str, depth: int, parent_level: int) -> None:
+    """A Section must be deeper than its parent (it may skip levels), and a
+    root-level Section (`parent_level` 0) must be a Part."""
+    if parent_level == 0 and depth != 1:
+        raise SpecDocumentError(
+            f"heading {heading_text!r} at depth {depth} has no enclosing Part ('##') heading"
+        )
+    if depth <= parent_level:
+        raise SpecDocumentError(
+            f"heading {heading_text!r} at depth {depth} must be deeper than its "
+            f"depth-{parent_level} parent"
+        )
+
+
+def parse_section_block(text: str, parent_level: int, ancestor_levels: tuple[str, ...]) -> SpecSection:
     """Parse one Section's own heading + metadata comment + Description
     (design-specctl.md, "Object Format") from a self-contained block of
-    text -- the single-file mode's per-heading slice (`parse_document`), or
-    directory mode's `_content.md` file (lib/spec_store.py). `depth` and
-    `ancestor_levels` are supplied by the caller, since a lone block carries
-    no information about its own nesting."""
+    text -- directory mode's `_content.md` file (lib/spec_store.py). The
+    depth comes from the block's own heading; `parent_level` (0 for a root
+    Section) and `ancestor_levels` are supplied by the caller, since a lone
+    block carries no information about its own nesting."""
     lines = text.split("\n")
     match = _HEADING_RE.match(lines[0]) if lines else None
-    if not match or len(match.group(1)) - 1 != depth:
-        raise SpecDocumentError(f"section block must start with a depth-{depth} heading")
-    return _build_section(match.group(2), lines[1:], ancestor_levels)
+    if not match:
+        raise SpecDocumentError("section block must start with a '##'..'######' heading")
+    depth = len(match.group(1)) - 1
+    check_parent_level(match.group(2), depth, parent_level)
+    return _build_section(match.group(2), lines[1:], ancestor_levels, depth)
 
 
 def render_section_block(section: SpecSection) -> str:
@@ -131,7 +145,7 @@ def render_section_block(section: SpecSection) -> str:
 
 
 def _build_section(
-    heading_text: str, content_lines: list[str], ancestor_levels: tuple[str, ...]
+    heading_text: str, content_lines: list[str], ancestor_levels: tuple[str, ...], level: int
 ) -> SpecSection:
     try:
         comment_text, remaining = extract_comment(content_lines)
@@ -152,6 +166,7 @@ def _build_section(
             open_questions=comment.open_questions,
             adr=comment.adr,
             history=comment.history,
+            level=level,
         )
     except SpecModelError as exc:
         raise SpecDocumentError(str(exc)) from exc

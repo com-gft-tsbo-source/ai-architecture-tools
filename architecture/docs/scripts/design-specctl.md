@@ -28,7 +28,13 @@ This also resolves what would otherwise be "arbitrary heading depth": since a me
 
 The document's own `# <title>` is not a `specctl` **object** — it has no ID, Status, or History, and is never a metagroup path node. This is also why 5 is the natural cap, not an arbitrary choice: Markdown offers heading depths `#` through `######`; reserving `#` for the document title leaves exactly 5 usable depths.
 
-Not every branch needs all 5 levels — a Chapter may hold Points directly, skipping Section/Subsection, exactly as a shallower branch is allowed under the general metagroup model. As with the other tools, a path segment must be created before anything is added under it: adding a `#####` heading requires its enclosing `####`/`###`/`##` objects to already exist (this falls out naturally from Markdown nesting, not from an extra check).
+Not every branch needs all 5 levels — a Chapter may hold Points directly, skipping Section/Subsection, exactly as a shallower branch is allowed under the general metagroup model. A Section's parent is simply the nearest shallower heading above it; it only has to be *deeper* than that parent, not exactly one level deeper. Two rules bound this:
+
+- **Only a Part sits at the root.** Every branch hangs off a `##` heading; a root-level `###`..`######` is rejected.
+- **Sibling levels never increase in document order.** Under one parent, a deeper (level-skipping) Section must come *before* shallower siblings: Markdown attaches a heading to the nearest shallower heading above it, so a `######` Point written after a `####` sibling would nest under that sibling on the next read. `add` and `move-to-<level>` (which append as the last child) and `reorder` reject any result that breaks this, changing nothing.
+- **Named ancestors must already exist.** As with the other tools, a path segment must be created before anything is added under it: `add-point "<Part>/<Chapter>/<Point>"` requires that Part and Chapter to exist — skipped levels are simply absent, never created implicitly.
+
+So `add-<level>` takes a path of 1 to `<level>` segments (existing ancestors, then the new leaf), and `move-to-<level>` a parent path of at most `<level> - 1` segments; both reject a parent that isn't shallower than the target level. A moved subtree keeps its internal level gaps: every descendant shifts by the same amount as the moved Section.
 
 ## Title and Preamble
 
@@ -51,7 +57,7 @@ Replaces the general derivation table for this tool (a second named exception al
 | 4 (Subsection) | 2 | 8 |
 | 5 (Point) | 2 | 10 |
 
-Letters are taken from the metagroup Name after stripping its `<nr>-` prefix, same as the general rule. The same collision-resolution ladder from `design.md` (anchor on common prefix → extend up to 3 extra characters → numeric suffix → abort, require `--abbrev`) applies unchanged, generalized to the object's actual depth.
+Letters are taken from the metagroup Name after stripping its `<nr>-` prefix, same as the general rule. A skipped level (see Metagroups) contributes `__` instead of letters, so the type stays level-aligned — its width still tells the level: a Point directly under Part "Architektur" / Chapter "Komponenten" is `ArKo____Fe`. The same collision-resolution ladder from `design.md` (anchor on common prefix → extend up to 3 extra characters → numeric suffix → abort, require `--abbrev`) applies unchanged, generalized to the object's actual depth.
 
 ## Object Format (lightweight — replaces the general format entirely)
 
@@ -129,6 +135,7 @@ Deviates from the general model: only `M` entries for **Add**, **Rename**, **Mov
 - **adrctl → specctl**: the `adrctl` Metainfo field `spec-ref=<id>` — single-valued, like every Metainfo field (design-decisions.md, "Amendments"): one ADR names at most one governed Section. See the corresponding addition to `design-adrctl.md`.
 - **Propagation is automatic**, not a manual sync step: after a successful `adrctl add`, `adrctl set-status`, or `adrctl info-spec-ref` that leaves `spec-ref` set, `lib/spec_link.py`'s `propagate()` updates the `adr` field on the referenced `specctl` Section via `SpecStore.receive_adr_link` — and appends the matching `M` History entry there — within the same `adrctl` invocation (wired through `lib/cliapp.py`'s `after_dispatch` hook, so `adrctl.py` never imports `specctl.py`). `receive_adr_link` is distinct from the manual `set-adr` below in exactly this: it always logs an `M` History entry (a real ADR decision drives it), where `set-adr` does not (a manual correction, per the existing History rule above). A `spec-ref` naming a Section that doesn't exist aborts the `adrctl` operation (exit code 1) rather than being silently skipped; the ADR itself remains persisted regardless of that failure — the two stores are not updated transactionally (design-decisions.md, "Amendments"), consistent with directory-mode's own already-documented non-atomicity.
 - Superseding an ADR (`adrctl`'s existing `superseded-by` metainfo) updates a Section's `adr` value the same way, once the superseding ADR itself declares the matching `spec-ref` and has its status changed — older ADRs remain fully queryable in `adrctl`'s own History, even though a Section's `adr` field only ever shows the single current one.
+- **No propagation from a no-longer-governing ADR**: an `adrctl` operation that leaves the ADR `superseded`, `deprecated` or `rejected` does not touch its `spec-ref` Section. Otherwise marking the old ADR superseded — the last step of a supersede — would point the Section straight back at it.
 
 ## Operations
 

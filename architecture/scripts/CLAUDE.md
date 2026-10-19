@@ -300,7 +300,7 @@ Spec-vs-Implementierung-Gap, keine Verhaltensänderung durch die Neuerung
 selbst). `taskctl.py` selbst brauchte keine Code-Änderung — alles läuft über
 `lib/taskctl_spec.py` und das gemeinsame `lib/`-Modell.
 
-525 Unit-/Integrationstests insgesamt unter `tests/`
+551 Unit-/Integrationstests insgesamt unter `tests/` (davon 8 Plugin-Konsistenztests in `tests/test_plugin.py`)
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 170 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`, `init`/`set-title`/`set-preamble` und die Init-Pflicht für jede
@@ -365,6 +365,51 @@ und `taskctl-author-cli/SKILL.md` entsprechend aktualisiert. Der
 widersprüchliche Kommentar in `lib/questctl_spec.py` ("not part of
 taskctl's own Metainfo set") wurde korrigiert.
 
+Ein `/grill-me`-Durchgang (2026-08-27, `design-decisions.md`, "Amendments
+(2026-08-27, specctl-author/specctl-adr-author design)") legte die ersten
+Subagent-/Skill-Designdokumente rund um `specctl` und `adrctl` gemeinsam an
+— beide Tools hatten zuvor noch keine, `VISION.md` erwähnte sie nicht:
+`architecture/docs/subagents/design-specctl-author.md`,
+`design-specctl-adr-author.md` sowie die drei Skill-Dokumente
+`architecture/docs/skills/design-specctl-author-cli.md`,
+`design-specctl-editor-cli.md`, `design-adrctl-author-cli.md`. Aufteilung
+nach Lebenszyklus-Phase, nicht nach Tool: `specctl-author` (Draft, volles
+CRUD, nur `specctl`) vs. `specctl-adr-author` (Promotion nach `stable` und
+jede weitere Änderung, immer ADR-autorisiert — der erste Subagent dieser
+Familie, der zwei Tools über zwei Skills bedient, `specctl-editor-cli` und
+`adrctl-author-cli`). Keine Code-Änderungen an `specctl.py`/`adrctl.py`
+nötig — reine Design-Dokumentation; die tatsächlichen Subagent-/Skill-Dateien
+existieren noch nicht, analog zum aktuellen Stand bei
+`taskctl-author`/`taskctl-worker` und `questctl-author`/`-checker`/
+`-researcher`.
+
+Ein weiterer `/grill-me`-Durchgang (2026-08-27, `design-decisions.md`,
+"Amendments (2026-08-27, specctl-author/specctl-adr-author implementation)")
+legte die tatsächlichen Dateien an:
+`architecture/agents/specctl-author.md`,
+`architecture/agents/specctl-adr-author.md`,
+`architecture/skills/specctl-author-cli/SKILL.md`,
+`architecture/skills/specctl-editor-cli/SKILL.md`,
+`architecture/skills/adrctl-author-cli/SKILL.md`. Jedes Recipe aller drei
+Skills wurde gegen die echte CLI in einem Scratch-Store verifiziert
+(`python -m unittest`-Suite unverändert bei 525 Tests, keine
+Code-Änderungen an `specctl.py`/`adrctl.py`) — dabei zwei Fehler in den
+Design-Dokumenten selbst gefunden und korrigiert: `move-to-<Ebene>` nimmt
+nur den **Eltern**-Pfad entgegen (eine Ebene flacher als das Ziel, nicht
+`<Eltern>/<neuer-Name>`) und ändert dabei die eigene Tiefe der Section auf
+die Zielebene, nicht nur ihren Elternknoten; `specctl` hat — anders als
+`taskctl`/`rulectl`/`adrctl` — **kein** `show-metagroups` (eigene,
+handgeschriebene CLI ohne das generische Engine-Kommando), betroffene
+Stellen nutzen jetzt `list` statt dessen. Beide Korrekturen auch in den
+Design-Dokumenten (`design-specctl-author-cli.md`,
+`design-specctl-editor-cli.md`) nachgezogen, damit Design und Implementierung
+nicht auseinanderlaufen. Außerdem präzisiert: der Bestätigungs-Gate für eine
+als Korrektur erkannte Revision (und `specctl-author`s "kein Titel
+vorhanden"-Fall) ist wie jedes andere Gate dieser Tool-Familie ein
+Deferred-Report, kein blockierendes Nachfragen im laufenden Run — verifiziert
+gegen das bestehende Muster (`rulectl-author`s Language-Gate,
+`taskctl-author`s Shrink-Bestätigung), keines davon blockiert tatsächlich.
+
 Noch offen:
 - Metagroup-Rename für taskctl/rulectl/adrctl (siehe oben) — im Contract
   dokumentiert, noch nicht implementiert.
@@ -407,6 +452,35 @@ Noch offen:
   existierendes Tool-*Verzeichnis* gibt es noch keine analoge Regel.
 - Locking wurde nur innerhalb eines Prozesses (Threads) getestet, nicht
   über echte Multi-Prozess-Konkurrenz.
+- ADR umbenennen: `adrctl` hat keinen Befehl, um den Namen (und damit die
+  Signatur) eines ADR zu ändern. Fällt bei `specctl-adr-author`s
+  Korrektur-Pfad auf: nach einer bestätigten Korrektur bleibt ein
+  inzwischen falscher ADR-Titel stehen (`design-decisions.md`,
+  "Amendments (2026-10-19, specctl/adrctl fixes ...)").
+- `adrctl add --set-status <status>` schreibt nur den History-Eintrag
+  "Object created", keinen Status-Eintrag — beim Re-Test der
+  specctl-Skills aufgefallen, nicht untersucht, ob das dem allgemeinen
+  Modell (`design.md`, "Object Status": initialer Status ist keine
+  Transition) entspricht.
+- specctl Object-Type-Breiten: `design-specctl.md` ("Object Type") nennt 2
+  Buchstaben je Ebene (Part 2, Chapter 4, Section 6), `lib/abbrev.py`
+  nutzt für 1-3 Ebenen aber die allgemeinen Breiten (6 / 3+3 / 2+2+2,
+  z. B. `Archit`, `ArcKom`). Bestehende Abweichung, nicht entschieden, ob
+  Code oder Spec angepasst wird (ein Code-Fix änderte die Typen
+  bestehender Dokumente).
+
+Integration der specctl-Subagents (2026-10-19, `design-decisions.md`,
+"Amendments (2026-10-19, specctl/adrctl fixes from integrating the specctl
+Subagents)"): **specctl unterstützt jetzt übersprungene Ebenen** wie in
+`design-specctl.md` spezifiziert (`SpecSection.level` wird gespeichert
+statt aus der Pfadlänge abgeleitet; nur Parts auf Root-Ebene; `__` im
+Object Type für übersprungene Ebenen; unter einem Parent dürfen die Ebenen
+von Geschwistern in Dokumentreihenfolge nicht steigen, sonst würde
+Markdown-Verschachtelung neu zuordnen); **adrctl propagiert `spec-ref` nicht
+mehr aus einem superseded/deprecated/rejected ADR** (der Supersede-Ablauf
+zeigte die Section sonst wieder auf das alte ADR); **`--json
+show-metagroups` gibt echtes JSON aus** (`lib/cliapp.py`, alle vier
+generischen Tools).
 
 ## Tech-Stack
 

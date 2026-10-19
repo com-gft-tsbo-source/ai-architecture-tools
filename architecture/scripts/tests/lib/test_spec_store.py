@@ -908,3 +908,149 @@ class TestDirectoryMode(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLevelSkipping(unittest.TestCase):
+    """design-specctl.md, "Metagroups": a branch may skip levels -- e.g. a
+    Chapter holding Points directly -- with only Parts at the root."""
+
+    def _assert_skipping_roundtrip(self, root: Path) -> None:
+        store = SpecStore(root=root)
+        store.init("Design Doc")
+        store.add(1, ["Architektur"])
+        store.add(2, ["Architektur", "Komponenten"])
+        point = store.add(5, ["Architektur", "Komponenten", "Fehlerfall"], description="Exit 1.")
+
+        self.assertEqual(point.level, 5)
+        self.assertEqual(point.level_type, "Point")
+        # Level-aligned Object Type: '__' for the skipped Section/Subsection.
+        self.assertEqual(point.object_type, "ArKo____Fe")
+
+        reread = {s.object_id: s for s in SpecStore(root=root).list_all()}[point.object_id]
+        self.assertEqual(reread.level, 5)
+        self.assertEqual(reread.ancestor_levels, ("001-Architektur", "001-Komponenten"))
+        self.assertEqual(reread.description(), "Exit 1.")
+        self.assertIn("###### Fehlerfall", store.render_plain())
+
+    def test_add_point_directly_under_chapter_single_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._assert_skipping_roundtrip(Path(tmp) / "design.md")
+
+    def test_add_point_directly_under_chapter_directory_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._assert_skipping_roundtrip(Path(tmp) / "spec")
+
+    def test_unskipped_object_types_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["Architektur"])
+            chapter = store.add(2, ["Architektur", "Komponenten"])
+            self.assertEqual(chapter.object_type, "ArcKom")
+
+    def test_root_must_be_a_part(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            with self.assertRaisesRegex(SpecStoreError, "only a Part can sit at the root"):
+                store.add(3, ["Orphan"])
+
+    def test_child_must_be_deeper_than_parent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            store.add(3, ["A", "Section"])
+            with self.assertRaisesRegex(SpecStoreError, "must be deeper"):
+                store.add(3, ["A", "Section", "Other Section"])
+
+    def test_path_longer_than_level_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            with self.assertRaisesRegex(SpecStoreError, "1 to 2 segment"):
+                store.add(2, ["A", "B", "C"])
+
+    def test_move_to_point_with_short_parent_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            store.add(2, ["A", "Chapter"])
+            loose = store.add(1, ["Loose"])
+            moved = store.move(loose.object_id, 5, ["A", "Chapter"])
+            self.assertEqual(moved.level, 5)
+            self.assertEqual(moved.ancestor_levels, ("001-A", "001-Chapter"))
+            self.assertEqual(moved.object_type, "ACh____Lo_")
+
+    def test_move_shifts_subtree_keeping_level_gaps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            section = store.add(3, ["A", "Sec"])
+            point = store.add(5, ["A", "Sec", "Pt"])
+            store.add(1, ["B"])
+            store.move(section.object_id, 2, ["B"])
+            by_id = {s.object_id: s for s in store.list_all()}
+            self.assertEqual(by_id[section.object_id].level, 2)
+            self.assertEqual(by_id[point.object_id].level, 4)
+            self.assertEqual(by_id[point.object_id].ancestor_levels, ("002-B", "001-Sec"))
+
+    def test_move_rejects_parent_not_shallower(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = make_store(tmp)
+            store.add(1, ["A"])
+            store.add(3, ["A", "Sec"])
+            other = store.add(1, ["B"])
+            with self.assertRaisesRegex(SpecStoreError, "must be deeper"):
+                store.move(other.object_id, 3, ["A", "Sec"])
+
+
+class TestSkippedLevelSiblingOrder(unittest.TestCase):
+    """Under one parent, sibling levels must never increase in document
+    order -- otherwise Markdown nesting re-parents the deeper Section on the
+    next read (design-specctl.md, "Metagroups")."""
+
+    def _store(self, tmp: str, mode: str) -> SpecStore:
+        store = SpecStore(root=Path(tmp) / ("design.md" if mode == "file" else "spec"))
+        store.init("Design Doc")
+        return store
+
+    def test_add_deeper_after_shallower_sibling_rejected_and_unchanged(self):
+        for mode in ("file", "directory"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                store = self._store(tmp, mode)
+                store.add(1, ["Arch"])
+                store.add(2, ["Arch", "Chap"])
+                store.add(3, ["Arch", "Chap", "Sec"])
+                before = [(s.object_id, s.path_levels) for s in store.list_all()]
+                with self.assertRaisesRegex(SpecStoreError, "can't follow the shallower Section"):
+                    store.add(5, ["Arch", "Chap", "Direct"])
+                self.assertEqual([(s.object_id, s.path_levels) for s in store.list_all()], before)
+
+    def test_deeper_before_shallower_sibling_allowed_and_stable_on_reread(self):
+        for mode in ("file", "directory"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                store = self._store(tmp, mode)
+                store.add(1, ["Arch"])
+                store.add(2, ["Arch", "Chap"])
+                point = store.add(5, ["Arch", "Chap", "Direct"])
+                store.add(3, ["Arch", "Chap", "Sec"])
+                reread = {s.object_id: s for s in store.list_all()}[point.object_id]
+                self.assertEqual(reread.ancestor_levels, ("001-Arch", "001-Chap"))
+
+    def test_move_to_end_behind_shallower_sibling_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(tmp, "file")
+            store.add(1, ["P"])
+            store.add(3, ["P", "S"])
+            loose = store.add(1, ["Loose"])
+            with self.assertRaisesRegex(SpecStoreError, "can't follow"):
+                store.move(loose.object_id, 5, ["P"])
+
+    def test_reorder_putting_shallower_first_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(tmp, "file")
+            store.add(1, ["P"])
+            store.add(2, ["P", "C"])
+            store.add(5, ["P", "C", "Pt"])
+            sec = store.add(3, ["P", "C", "S"])
+            with self.assertRaisesRegex(SpecStoreError, "can't follow"):
+                store.reorder(sec.object_id, 0)
+            by_name = {s.name: s for s in store.list_all()}
+            self.assertEqual(by_name["Pt"].ancestor_levels, ("001-P", "001-C"))

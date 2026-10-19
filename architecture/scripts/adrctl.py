@@ -10,7 +10,10 @@ rulectl.
 Section it governs: after a successful `add`, `set-status`, or
 `info-spec-ref` that leaves `spec-ref` set, lib/spec_link.py propagates the
 ADR's ID into that Section's `adr` field (design-specctl.md, "ADR
-Linkage"). This runs via cliapp.main()'s `after_dispatch` hook rather than
+Linkage") -- unless the ADR now sits in a no-longer-governing status
+(superseded/deprecated/rejected): marking an old ADR superseded must not
+point its Section back at it (design-decisions.md, "Amendments
+(2026-10-19, ...)"). This runs via cliapp.main()'s `after_dispatch` hook rather than
 adrctl importing specctl.py directly (architecture/scripts/CLAUDE.md: "a
 CLI script never imports another CLI script as a whole") -- both tools
 instead import the shared lib/spec_link.py.
@@ -29,6 +32,8 @@ from lib.store import Store
 from lib.toolspec import ToolSpec
 
 _SPEC_LINK_TRIGGERS = ("add", "set-status", "info-spec-ref")
+# An ADR in one of these no longer governs its Section, so it never claims it.
+_NON_GOVERNING_STATUSES = ("superseded", "deprecated", "rejected")
 
 
 def _handle_spec_link(
@@ -37,7 +42,7 @@ def _handle_spec_link(
     if args.command not in _SPEC_LINK_TRIGGERS or not isinstance(result, ObjectRecord):
         return
     spec_ref = result.metainfo_value("spec-ref")
-    if not spec_ref:
+    if not spec_ref or result.status in _NON_GOVERNING_STATUSES:
         return
     try:
         spec_link.propagate(Path(args.root), spec_ref, result.object_id, message=f"adr={result.object_id}")

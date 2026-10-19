@@ -106,6 +106,17 @@ class TestCorrections(unittest.TestCase):
             code, out, _err = run(["--root", root, "show-metagroups"])
             self.assertIn("001-Setup", out)
 
+    def test_show_metagroups_json_is_a_list_of_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "tasks")
+            run(["--root", root, "add-phase", "Setup"])
+            run(["--root", root, "add-phase", "Build"])
+            code, out, _err = run(["--root", root, "--json", "show-metagroups"])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(out), [["001-Setup"], ["002-Build"]])
+            code, out, _err = run(["--root", root, "show-metagroups"])
+            self.assertEqual(out.splitlines(), ["001-Setup", "002-Build"])
+
     def test_add_phase_explicit_number_still_works(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "tasks")
