@@ -403,3 +403,56 @@ without changing the development layout of the repository.
 - **Releasing**: bump `version` in `plugin.json` (semver, checked by
   `tests/test_plugin.py`); `claude plugin validate .` must pass;
   optionally tag with `claude plugin tag`.
+
+## Amendments (2026-10-19, taskctl-author/taskctl-worker implementation)
+
+A `/grilling` pass turning `design-taskctl-author.md`/`design-taskctl-worker.md`
+into the actual Subagent files (`architecture/agents/taskctl-{author,worker}.md`)
+surfaced gaps the design left open; all now resolved in the design documents
+themselves:
+
+- **Shrink confirmation is two-pass.** The design said "wait for one
+  explicit confirmation", which a Subagent can't do — it runs to completion
+  and returns a report. Pass 1 deletes nothing and reports exact IDs as
+  deferred-awaiting-deletion-confirmation; a re-invocation confirming those
+  IDs deletes only those that still match. A blanket pre-authorization in
+  the first prompt ("delete without asking") explicitly does **not**
+  count — the person must confirm the concrete list they haven't seen yet.
+  Rejected: accepting pre-authorization (skips exactly what the gate is
+  for, on the one write with no undo).
+- **Phase-less stores**: a fresh store always gets Phases; an existing
+  phase-less store stays flat (never mixed, `taskctl`'s depth rule).
+- **Creation order is execution order** — made explicit for the author,
+  since the worker follows `next`'s global sequence and can't skip ahead.
+  `reorder` only to place a new Task before an existing *open* one.
+- **Description content standard**: goal, concrete work with every
+  applicable prompt constraint repeated per Task, and a checkable "done
+  when" criterion — the worker sees only the Task.
+- **Worker tools**: a fixed list without `Agent` and MCP tools; a Task
+  needing either is a `[B]`. Rejected: inheriting every tool.
+- **Worker outward-facing actions** (push, publish, deploy, send,
+  destructive operations outside the working area) only when the Task or
+  prompt explicitly asks; otherwise `[R]` with the pending action as reason.
+  Local commits likewise only on request.
+- **`rulectl tasklist` exports are not worked by `taskctl-worker`** — this
+  closes a gap in the worker's trust argument: the export copies Rule text
+  verbatim (`lib/tasklist.py`), so the "Description is the author's own
+  synthesis" guarantee doesn't hold, and those Tasks are compliance checks
+  for `rulectl-checker` anyway. Recognized heuristically by
+  `assignee-type` `agent`/`tool`; set `[B]` without claiming.
+  `VISION.md` no longer lists `rulectl tasklist` as a worker input.
+- **Worker report** specified (it wasn't): per Task status before → after,
+  what was done, evidence for the outcome, any `info-review` change; then
+  stop reason and end-of-run verification.
+
+Acceptance: manual smoke tests in a scratch store via
+`claude -p --plugin-dir ./architecture --agent architecture-tools:<agent>` —
+author create / extend + shrink pass 1 (blanket pre-authorization correctly
+refused) / pass 2 (confirmed ID deleted); worker single Task, resume of a
+`[~]` Task, loop to `all_done`, a `review=user` Task ending `[R]` (and
+blocking the next run), and a rulectl-style Task set `[B]` unworked. All
+passed. Observation, not acted on: a Task that itself describes an outward
+action (e.g. "publish to PyPI") is authored without flagging it — the
+worker's explicit-request rule then permits it, since the Task asks. If
+publishing should always need a human, the author could set
+`review=user` on such Tasks; not decided.

@@ -90,6 +90,37 @@ an engineering task, carrying the same general caution any coding agent
 already applies to untrusted repository content or tool output — nothing
 specific to `taskctl` beyond what's stated above.
 
+**Exception: Tasks exported by `rulectl tasklist`.** That export copies a
+Rule's Description/Procedure verbatim into the Task (`lib/tasklist.py`),
+and a Rule's text may itself be close to verbatim source-document content
+(`rulectl-author`) — the synthesis guarantee above does not hold for them.
+They are also not work orders but compliance checks, owned by
+`rulectl-checker`. This Subagent recognizes them by `assignee-type`
+`agent` or `tool` (the values the export sets — a heuristic: a hand-written
+Task could carry them too) and never works them: it claims nothing, sets
+`[B]` with "rulectl check task — use rulectl-checker", and reports it.
+
+## Outward-facing and irreversible actions
+
+Editing files in the working area is the normal case. Actions that leave
+it or can't be undone — `git push`, publishing, deploying, sending
+messages, deleting or overwriting outside the stated working area — are
+performed **only** when the Task's Description or the invocation prompt
+explicitly asks for them. Otherwise the Subagent completes the local part
+and sets `[R]` with the pending action as the reason (e.g. "push pending:
+needs user"). Local commits likewise only when the Task or prompt asks for
+them. This is a risk-class rule, not "commit hygiene" — a looping worker
+running unattended is exactly where an unrequested outward action does
+damage.
+
+## Tools
+
+`Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash`, `WebFetch`, `Skill`. No
+`Agent` (it never spawns further Subagents — a `review=subagent` Task goes
+to `[C]` for someone else) and no MCP tools (no reach into external
+services). A Task that genuinely needs either is a legitimate `[B]` with
+that reason.
+
 ## Iteration model, resume logic, and status transitions
 
 Fully specified at the CLI level in `taskctl-worker-cli`
@@ -144,6 +175,22 @@ not a variant of its own:
    `taskctl-worker-cli` recipes for done / needs-review / de-escalation /
    blocked.
 
+## Report
+
+Retrospective, like every sibling's. Per Task worked this run:
+
+- ID and Signature; status before → after.
+- What was done (files touched, commands run) — matching what was
+  `annotate`d.
+- The evidence behind the outcome: why `[X]` is justified, or why
+  `[R]`/`[C]`/`[B]`.
+- Any `info-review` change (escalation/de-escalation) and why.
+
+Then: the **stop reason** (single Task done / `all_done` / blocked by
+`<id>` in `[B]`/`[R]`/`[C]` / error) and the result of the end-of-run
+verification (`show` of every touched Task; any mismatch with this run's
+own bookkeeping reported as such — the store is the source of truth).
+
 ## Interaction with the taskctl-worker-cli Skill
 
 This Subagent never constructs `taskctl` command lines beyond what
@@ -170,10 +217,10 @@ something to work around ad hoc in the Subagent.
 - A `next` scope filter (Phase- or assignee-scoped) — see "Input"; not
   built, and not something this Subagent's workflow needs given
   `assignee-type`/`assignee-name` stay purely informational.
-- A tool allow-list (unlike `rulectl-checker`) — there is no
-  `assignee-type=tool`-shaped branch here to gate; a Task's described work
-  is performed with this Subagent's own ordinary toolset, not dispatched to
-  a specific named external tool.
+- A tool allow-list (unlike `rulectl-checker`) — `assignee-type=tool`
+  Tasks are never worked here (see the `rulectl tasklist` exception); a
+  Task's described work is performed with this Subagent's own ordinary
+  toolset, not dispatched to a specific named external tool.
 - A structured "codebase path" input — see "Input," point 2.
 - Prescribing *how* to do good engineering work (testing discipline,
   commit hygiene, etc.) — this Subagent's own general competence, not a
