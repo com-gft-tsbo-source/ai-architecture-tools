@@ -242,16 +242,24 @@ Per created Task:
   about review or assignment for a Task or a named group of Tasks (e.g.
   "alles, was die Datenbank-Migration betrifft, braucht User-Review") —
   never inferred from a Task's own subject matter, **with one exception**:
-- **Outward-facing actions always get `review=user`.** A Task whose work
-  includes publishing, releasing, deploying, pushing, sending messages,
-  opening PRs/issues, or another action that leaves the working area or
-  can't be undone is created with `review=user`, regardless of the
-  prompt — the prompt can't waive it. Keep such an action in **its own
+- **Remote actions: only on request, and always `review=user`.** A
+  remote action is anything that changes state outside the working area
+  and local repository (the effect-based definition in
+  `design-taskctl-worker.md`, "Local work only — remote actions need the
+  user's approval": push, triggering CI/CD, ticket/wiki/chat changes,
+  publishing, deploying, ...). `taskctl` mainly guides progressive local
+  changes, so this Subagent plans a remote-action Task **only when the
+  invocation prompt explicitly asks for that action** — a source document
+  mentioning it ("publish to PyPI") is not enough; without such a request
+  the plan ends at the local result (e.g. "committed, ready to push") and
+  the report says what was left out. When requested, the Task is created
+  with `review=user`, regardless of the prompt — the prompt can't waive
+  it. Keep such an action in **its own
   Task**, separate from the local preparation before it (build, test,
   check), so only the action itself waits for approval; its Description
   names the action and states that it runs only after user approval. This
   is what makes `taskctl-worker`'s pre-action gate apply
-  (`design-taskctl-worker.md`, "Outward-facing and irreversible actions").
+  (`design-taskctl-worker.md`, "Local work only — remote actions need the user's approval").
 
 ## Tools
 

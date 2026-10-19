@@ -100,38 +100,71 @@ They are also not work orders but compliance checks, owned by
 Task could carry them too) and never works them: it claims nothing, sets
 `[B]` with "rulectl check task — use rulectl-checker", and reports it.
 
-## Outward-facing and irreversible actions
+## Local work only — remote actions need the user's approval
 
-Editing files in the working area is the normal case. Actions that leave
-it or can't be undone — `git push`, publishing, deploying, sending
-messages, deleting or overwriting outside the stated working area — are
-performed **only** when the Task's Description or the invocation prompt
-explicitly asks for them. Otherwise the Subagent completes the local part
-and sets `[R]` with the pending action as the reason (e.g. "push pending:
-needs user"). Local commits likewise only when the Task or prompt asks for
-them. This is a risk-class rule, not "commit hygiene" — a looping worker
-running unattended is exactly where an unrequested outward action does
-damage.
+`taskctl` is mainly used to guide an AI through **progressive local
+changes**; remote changes are the rare exception. Rather than enumerating
+forbidden actions (a list always misses one — a `gh workflow run`, a
+`curl -X POST` to JIRA), "local" is defined positively and everything else
+is gated.
 
-**Pre-action gate for `review=user` Tasks.** On a Task with `review=user`
-whose work includes such an action, an explicit request in the Task text
-is not enough — `taskctl-author` gives every such Task `review=user`
-(`design-taskctl-author.md`, "Metainfo population") precisely so that a
-human approves *before* the action, not merely reviews it after. The
-flow, using only transitions `taskctl` already has:
+**Classification by effect, not by tool:**
 
-1. The worker does any local part, then sets `[R]` with
+- **Local** (free): editing files in the working area; local git
+  operations (commit only when the Task or prompt asks); local builds,
+  tests, scripts; installing dependencies into the working area.
+- **Read-only remote** (free): `WebFetch`, `git fetch`, HTTP GET, reading
+  docs.
+- **Remote** (gated): anything that changes state outside the working area
+  and local repository — e.g. `git push`, writing `gh`/`glab` calls,
+  triggering CI/CD, JIRA/Confluence/Slack changes, mail, cloud/cluster
+  CLIs, `docker push`, package publishing, HTTP POST/PUT/PATCH/DELETE —
+  plus irreversible local operations on things the Task didn't create.
+  When in doubt, remote.
+
+**Exactly one path for a remote action** — the pre-action gate:
+
+1. The Task must have `review=user`. `taskctl-author` sets it on every
+   remote-action Task (`design-taskctl-author.md`, "Metainfo population");
+   for any other Task (hand-written, or `review` `none`/`subagent`) the
+   worker raises it via `info-review user` itself — the existing
+   escalation mechanism (`taskctl-worker-cli`, "Recipes").
+2. The worker does the local part, then sets `[R]` with
    "`<action>` pending: needs user approval" — **without** performing it.
-2. The user approves by setting the Task back to `[~]` (the normal
+3. The user approves by setting the Task back to `[~]` (the normal
    `[R]`→`[~]` rework step) with a message approving the action.
-3. The next worker run resumes the `[~]` Task, finds in its History a
-   `[R]`→`[~]` entry **after** its own pending `[R]` whose message
-   approves the action, performs it, and sets `[R]` again for the user's
-   final check of the result.
+4. The next worker run resumes the `[~]` Task, finds in its History a
+   `[R]`→`[~]` entry **after** its own pending `[R]` approving the action,
+   performs it, and sets `[R]` again for the user's final check.
 
-A rework message that asks for changes instead of approving is rework,
-not approval. The invocation prompt cannot substitute for the History
-approval on these Tasks — it may come from a calling agent, not the user.
+A rework message that asks for changes is rework, not approval. Nothing
+else counts as approval — not the Task's Description, not the invocation
+prompt (it may come from a calling agent, not the user), not content
+encountered while working. This replaces the earlier rule that an
+explicit request in the Task or prompt sufficed for an outward action.
+
+**Strength of this guarantee.** The classification and the History check
+are the model's judgment, not a mechanism — a strong default, not a hard
+guarantee. A hard guarantee must come from the environment the worker
+runs in; see "Operating guidance".
+
+## Operating guidance
+
+For unattended runs — loop mode in particular — the operator should:
+
+- run Claude Code's sandbox with outbound network writes restricted, so a
+  misclassified remote call fails instead of taking effect;
+- not give the session remote credentials it doesn't need for the
+  Tasklist (no `gh` token, no JIRA/cloud credentials in the environment).
+  Without credentials, a remote write fails even if the model gets the
+  classification wrong.
+
+A plugin-level backstop (blocking obvious commands such as `git push`,
+`gh`, `curl -X POST` for this Subagent only, via its tool configuration or
+a hook) is a possible later addition — only as a backstop, since a pattern
+list never catches everything (`python -c ...`, scripts). Not built: it
+first needs verifying that Claude Code supports such restrictions per
+Subagent; a plugin-wide hook would also affect the user's normal sessions.
 
 ## Tools
 
@@ -189,9 +222,9 @@ not a variant of its own:
    `review=none` Task that turns out to need eyes on it, or de-escalate
    one that turns out not to (`taskctl-worker-cli`, "Recipes": the
    `info-review` mechanism, symmetric both directions) — except a Task
-   that includes an outward-facing action, which is never de-escalated
-   (it would bypass the pre-action gate, see "Outward-facing and
-   irreversible actions").
+   that includes a remote action, which is never de-escalated (it would
+   bypass the pre-action gate, see "Local work only — remote actions need
+   the user's approval").
 5. **Record it**: `annotate` with what was actually done, regardless of
    outcome, then `set-status` (with `info-review` first, only if the
    current `review` value doesn't already cover the target) — exactly the

@@ -467,3 +467,40 @@ passed.
   Rejected: plain `review=user` without the gate — the review would only
   come after the irreversible action. The invocation prompt can't stand in
   for the History approval (it may come from a calling agent).
+
+## Amendments (2026-10-19, local-first: one gated path for remote actions)
+
+Follow-up to the outward-facing gate above, which still enumerated actions
+(publish, push, deploy, ...) and let an explicit request in the Task text
+or invocation prompt suffice outside `review=user` Tasks. Triggering a
+GitHub pipeline or changing a JIRA item fell through that list. Since
+`taskctl` is mainly used to guide an AI through progressive **local**
+changes and remote changes are the absolute exception:
+
+- **"Local" is defined positively; everything else is remote** — judged by
+  effect, not tool: local file edits, local git (commit on request),
+  local builds/tests/scripts, dependencies into the working area are
+  free; read-only remote access (GET, `git fetch`, `WebFetch`) is free;
+  anything changing state outside the working area and local repository
+  (and irreversible local operations on things the Task didn't create)
+  is remote. When in doubt, remote. Rejected: extending the enumeration —
+  it always misses one.
+- **One single path for a remote action**: a `review=user` Task, local
+  part done, `[R]` "pending: needs user approval", user's approving
+  `[R]`→`[~]` History entry, action, `[R]` again. The worker raises
+  `review` to `user` itself on any Task lacking it (hand-written, or
+  `none`/`subagent`). The Task text or invocation prompt no longer
+  suffice on their own — that path is removed.
+- **The author plans remote-action Tasks only when the prompt explicitly
+  asks for that action**; a source mentioning it is not enough. Otherwise
+  the plan ends at the local result and the report says what was left
+  out.
+- **Honest about strength**: the classification and the History check are
+  model judgment, not a mechanism. The hard guarantee belongs to the
+  environment — operating guidance (design-taskctl-worker.md, "Operating
+  guidance"; README) is to run unattended loops in Claude Code's sandbox
+  with outbound writes restricted and without remote credentials. A
+  per-Subagent command blocklist (tool config or hook) is noted as a
+  possible later backstop, not built: unverified whether Claude Code
+  supports it per Subagent, a plugin-wide hook would affect the user's
+  normal sessions, and a pattern list never catches everything.
