@@ -403,3 +403,104 @@ without changing the development layout of the repository.
 - **Releasing**: bump `version` in `plugin.json` (semver, checked by
   `tests/test_plugin.py`); `claude plugin validate .` must pass;
   optionally tag with `claude plugin tag`.
+
+## Amendments (2026-10-19, taskctl-author/taskctl-worker implementation)
+
+A `/grilling` pass turning `design-taskctl-author.md`/`design-taskctl-worker.md`
+into the actual Subagent files (`architecture/agents/taskctl-{author,worker}.md`)
+surfaced gaps the design left open; all now resolved in the design documents
+themselves:
+
+- **Shrink confirmation is two-pass.** The design said "wait for one
+  explicit confirmation", which a Subagent can't do — it runs to completion
+  and returns a report. Pass 1 deletes nothing and reports exact IDs as
+  deferred-awaiting-deletion-confirmation; a re-invocation confirming those
+  IDs deletes only those that still match. A blanket pre-authorization in
+  the first prompt ("delete without asking") explicitly does **not**
+  count — the person must confirm the concrete list they haven't seen yet.
+  Rejected: accepting pre-authorization (skips exactly what the gate is
+  for, on the one write with no undo).
+- **Phase-less stores**: a fresh store always gets Phases; an existing
+  phase-less store stays flat (never mixed, `taskctl`'s depth rule).
+- **Creation order is execution order** — made explicit for the author,
+  since the worker follows `next`'s global sequence and can't skip ahead.
+  `reorder` only to place a new Task before an existing *open* one.
+- **Description content standard**: goal, concrete work with every
+  applicable prompt constraint repeated per Task, and a checkable "done
+  when" criterion — the worker sees only the Task.
+- **Worker tools**: a fixed list without `Agent` and MCP tools; a Task
+  needing either is a `[B]`. Rejected: inheriting every tool.
+- **Worker outward-facing actions** (push, publish, deploy, send,
+  destructive operations outside the working area) only when the Task or
+  prompt explicitly asks; otherwise `[R]` with the pending action as reason.
+  Local commits likewise only on request.
+- **`rulectl tasklist` exports are not worked by `taskctl-worker`** — this
+  closes a gap in the worker's trust argument: the export copies Rule text
+  verbatim (`lib/tasklist.py`), so the "Description is the author's own
+  synthesis" guarantee doesn't hold, and those Tasks are compliance checks
+  for `rulectl-checker` anyway. Recognized heuristically by
+  `assignee-type` `agent`/`tool`; set `[B]` without claiming.
+  `VISION.md` no longer lists `rulectl tasklist` as a worker input.
+- **Worker report** specified (it wasn't): per Task status before → after,
+  what was done, evidence for the outcome, any `info-review` change; then
+  stop reason and end-of-run verification.
+
+Acceptance: manual smoke tests in a scratch store via
+`claude -p --plugin-dir ./architecture --agent architecture-tools:<agent>` —
+author create / extend + shrink pass 1 (blanket pre-authorization correctly
+refused) / pass 2 (confirmed ID deleted); worker single Task, resume of a
+`[~]` Task, loop to `all_done`, a `review=user` Task ending `[R]` (and
+blocking the next run), and a rulectl-style Task set `[B]` unworked. All
+passed.
+
+- **Outward-facing Tasks get `review=user`, and it gates the action, not
+  just the result** (follow-up to the smoke test, where the author created
+  a "publish to PyPI" Task unflagged and the worker's explicit-request rule
+  would have let it publish). The author always sets `review=user` on a
+  Task whose work includes an outward/irreversible action, in its own Task
+  separate from local preparation — an explicit exception to "review is
+  never inferred from subject matter", which the prompt can't waive. On
+  such a Task the worker stops at `[R]` "pending: needs user approval"
+  *before* the action and performs it only after a `[R]`→`[~]` History
+  entry approving it, then sets `[R]` again for the final check. No new
+  `taskctl` status or command: rework (`[R]`→`[~]`) already exists.
+  Rejected: plain `review=user` without the gate — the review would only
+  come after the irreversible action. The invocation prompt can't stand in
+  for the History approval (it may come from a calling agent).
+
+## Amendments (2026-10-19, local-first: one gated path for remote actions)
+
+Follow-up to the outward-facing gate above, which still enumerated actions
+(publish, push, deploy, ...) and let an explicit request in the Task text
+or invocation prompt suffice outside `review=user` Tasks. Triggering a
+GitHub pipeline or changing a JIRA item fell through that list. Since
+`taskctl` is mainly used to guide an AI through progressive **local**
+changes and remote changes are the absolute exception:
+
+- **"Local" is defined positively; everything else is remote** — judged by
+  effect, not tool: local file edits, local git (commit on request),
+  local builds/tests/scripts, dependencies into the working area are
+  free; read-only remote access (GET, `git fetch`, `WebFetch`) is free;
+  anything changing state outside the working area and local repository
+  (and irreversible local operations on things the Task didn't create)
+  is remote. When in doubt, remote. Rejected: extending the enumeration —
+  it always misses one.
+- **One single path for a remote action**: a `review=user` Task, local
+  part done, `[R]` "pending: needs user approval", user's approving
+  `[R]`→`[~]` History entry, action, `[R]` again. The worker raises
+  `review` to `user` itself on any Task lacking it (hand-written, or
+  `none`/`subagent`). The Task text or invocation prompt no longer
+  suffice on their own — that path is removed.
+- **The author plans remote-action Tasks only when the prompt explicitly
+  asks for that action**; a source mentioning it is not enough. Otherwise
+  the plan ends at the local result and the report says what was left
+  out.
+- **Honest about strength**: the classification and the History check are
+  model judgment, not a mechanism. The hard guarantee belongs to the
+  environment — operating guidance (design-taskctl-worker.md, "Operating
+  guidance"; README) is to run unattended loops in Claude Code's sandbox
+  with outbound writes restricted and without remote credentials. A
+  per-Subagent command blocklist (tool config or hook) is noted as a
+  possible later backstop, not built: unverified whether Claude Code
+  supports it per Subagent, a plugin-wide hook would affect the user's
+  normal sessions, and a pattern list never catches everything.

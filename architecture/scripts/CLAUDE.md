@@ -346,18 +346,17 @@ erweitern) und `taskctl-worker-cli` (Tasks abarbeiten, Status je nach
 Arbeit ändern) sind jetzt als
 `architecture/skills/taskctl-{author,worker}-cli/SKILL.md` angelegt,
 zusammen mit ihren Design-Dokumenten unter `architecture/docs/skills/`.
-Anders als bei `rulectl`/`questctl` existieren die zugehörigen Subagents
-(`taskctl-author`, `taskctl-worker`) und deren Design-Dokumente noch
-nicht — die Skills sind bewusst als workflow-unabhängige
-CLI-Kontrakt-Referenzen geschrieben, siehe das Amendment für die
-vollständige Befehls-Aufteilung.
+Die Skills sind bewusst als workflow-unabhängige CLI-Kontrakt-Referenzen
+geschrieben, siehe das Amendment für die vollständige Befehls-Aufteilung.
 
 Ein weiterer `/grill-me`-Durchgang (2026-08-25, `design-decisions.md`,
 "Amendments (2026-08-25, taskctl-author/taskctl-worker Subagent design)")
 legte die beiden zugehörigen Subagent-Designdokumente an
-(`architecture/docs/subagents/design-taskctl-{author,worker}.md`) — die
-tatsächlichen Subagent-Dateien selbst existieren weiterhin noch nicht,
-analog zum aktuellen Stand bei `questctl-author`/`-checker`/`-researcher`.
+(`architecture/docs/subagents/design-taskctl-{author,worker}.md`). Die
+Subagents selbst sind inzwischen als
+`architecture/agents/taskctl-{author,worker}.md` umgesetzt
+(`design-decisions.md`, "Amendments (2026-10-19, taskctl-author/
+taskctl-worker implementation)").
 Dabei fiel eine weitere kleine, konsistente `taskctl`-Lücke auf: wie schon
 bei `questctl` fehlte ein `source`-Metainfo-Feld für Traceability. Jetzt
 ergänzt in `lib/taskctl_spec.py`s `MetainfoSpec`-Tupel (keine weiteren
@@ -385,12 +384,8 @@ Noch offen:
   SKILL.md` angelegt (jedes Recipe aller drei Skills gegen die echte CLI
   verifiziert, inkl. der `info-review`-vor-`R`-Mechanik und des
   Parallel-Modus' `[~]→B`-Sonderfalls bei fehlendem Match bzw. fehlender
-  Evidenz). Noch offen: nur noch die drei Subagents selbst
-  (`architecture/agents/questctl-author.md` usw.) — Design-Dokumente
-  existieren bereits (`design-questctl-author.md`, `design-questctl-checker.md`,
-  `design-questctl-researcher.md` unter `architecture/docs/subagents/`),
-  aber noch keine tatsächlichen Dateien — anders als `rulectl-author`/
-  `rulectl-checker`, die beide Ebenen bereits haben.
+  Evidenz). Die drei Subagents selbst existieren inzwischen ebenfalls
+  (`architecture/agents/questctl-{author,checker,researcher}.md`).
 - specctl: die bidirektionale adrctl-Verknüpfung ist implementiert —
   `spec-ref=<id>`-Metainfo bei adrctl (einwertig, `design-decisions.md`,
   "Amendments (2026-08-19, spec-ref single-valued)"), `lib/spec_link.py`,
