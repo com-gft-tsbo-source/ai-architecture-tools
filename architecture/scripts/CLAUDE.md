@@ -300,7 +300,7 @@ Spec-vs-Implementierung-Gap, keine Verhaltensänderung durch die Neuerung
 selbst). `taskctl.py` selbst brauchte keine Code-Änderung — alles läuft über
 `lib/taskctl_spec.py` und das gemeinsame `lib/`-Modell.
 
-533 Unit-/Integrationstests insgesamt unter `tests/` (davon 8 Plugin-Konsistenztests in `tests/test_plugin.py`)
+551 Unit-/Integrationstests insgesamt unter `tests/` (davon 8 Plugin-Konsistenztests in `tests/test_plugin.py`)
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 170 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`, `init`/`set-title`/`set-preamble` und die Init-Pflicht für jede
@@ -452,6 +452,35 @@ Noch offen:
   existierendes Tool-*Verzeichnis* gibt es noch keine analoge Regel.
 - Locking wurde nur innerhalb eines Prozesses (Threads) getestet, nicht
   über echte Multi-Prozess-Konkurrenz.
+- ADR umbenennen: `adrctl` hat keinen Befehl, um den Namen (und damit die
+  Signatur) eines ADR zu ändern. Fällt bei `specctl-adr-author`s
+  Korrektur-Pfad auf: nach einer bestätigten Korrektur bleibt ein
+  inzwischen falscher ADR-Titel stehen (`design-decisions.md`,
+  "Amendments (2026-10-19, specctl/adrctl fixes ...)").
+- `adrctl add --set-status <status>` schreibt nur den History-Eintrag
+  "Object created", keinen Status-Eintrag — beim Re-Test der
+  specctl-Skills aufgefallen, nicht untersucht, ob das dem allgemeinen
+  Modell (`design.md`, "Object Status": initialer Status ist keine
+  Transition) entspricht.
+- specctl Object-Type-Breiten: `design-specctl.md` ("Object Type") nennt 2
+  Buchstaben je Ebene (Part 2, Chapter 4, Section 6), `lib/abbrev.py`
+  nutzt für 1-3 Ebenen aber die allgemeinen Breiten (6 / 3+3 / 2+2+2,
+  z. B. `Archit`, `ArcKom`). Bestehende Abweichung, nicht entschieden, ob
+  Code oder Spec angepasst wird (ein Code-Fix änderte die Typen
+  bestehender Dokumente).
+
+Integration der specctl-Subagents (2026-10-19, `design-decisions.md`,
+"Amendments (2026-10-19, specctl/adrctl fixes from integrating the specctl
+Subagents)"): **specctl unterstützt jetzt übersprungene Ebenen** wie in
+`design-specctl.md` spezifiziert (`SpecSection.level` wird gespeichert
+statt aus der Pfadlänge abgeleitet; nur Parts auf Root-Ebene; `__` im
+Object Type für übersprungene Ebenen; unter einem Parent dürfen die Ebenen
+von Geschwistern in Dokumentreihenfolge nicht steigen, sonst würde
+Markdown-Verschachtelung neu zuordnen); **adrctl propagiert `spec-ref` nicht
+mehr aus einem superseded/deprecated/rejected ADR** (der Supersede-Ablauf
+zeigte die Section sonst wieder auf das alte ADR); **`--json
+show-metagroups` gibt echtes JSON aus** (`lib/cliapp.py`, alle vier
+generischen Tools).
 
 ## Tech-Stack
 

@@ -81,7 +81,8 @@ def build_parser() -> argparse.ArgumentParser:
         )
         level_parser.add_argument(
             "path",
-            help=f"'/'-separated path of {depth} heading name(s), ancestors then the new leaf",
+            help=f"'/'-separated path of 1-{depth} heading name(s), existing ancestors then the "
+                 "new leaf (intermediate levels may be skipped)",
         )
         level_parser.add_argument("--description", default="")
         level_parser.add_argument("--open-questions", dest="open_questions", default="")
@@ -137,8 +138,9 @@ def build_parser() -> argparse.ArgumentParser:
         move_parser.add_argument("id")
         move_parser.add_argument(
             "path", nargs="?", default=None,
-            help=f"'/'-separated path of {depth - 1} existing ancestor Section name(s) "
-                 + ("(omit for move-to-part, which has no parent)" if depth == 1 else "-- the new parent"),
+            help=f"'/'-separated path of existing ancestor Section name(s), at most {depth - 1} "
+                 + ("(omit for move-to-part, which has no parent)" if depth == 1
+                    else "-- the new parent (intermediate levels may be skipped)"),
         )
 
     show_parser = subparsers.add_parser("show", help="Display a Section")
@@ -184,10 +186,6 @@ def dispatch(store: SpecStore, args: argparse.Namespace) -> object:
     for depth, level_type in enumerate(LEVEL_TYPES, start=1):
         if command == _level_flag_name(level_type):
             path_segments = args.path.split("/")
-            if len(path_segments) != depth:
-                raise CliError(
-                    f"{command} expects a {depth}-segment path (got {len(path_segments)}: {args.path!r})"
-                )
             try:
                 return store.add(
                     depth, path_segments, description=args.description,

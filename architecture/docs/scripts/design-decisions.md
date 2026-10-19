@@ -751,3 +751,70 @@ changes and remote changes are the absolute exception:
   possible later backstop, not built: unverified whether Claude Code
   supports it per Subagent, a plugin-wide hook would affect the user's
   normal sessions, and a pattern list never catches everything.
+
+## Amendments (2026-10-19, specctl/adrctl fixes from integrating the specctl Subagents)
+
+Merging `main` (plugin layout) into the specctl-author/specctl-adr-author
+branch and re-running both its recipe verification and new end-to-end
+smoke tests of the two Subagents surfaced three pre-existing defects —
+none caused by the merge (no `.py` file changed in it) — plus several
+documentation gaps:
+
+- **adrctl re-pointed a Section at a superseded ADR (bug, fixed).**
+  `set-status` is a `spec-ref` propagation trigger, so the documented
+  supersede flow's last step (`set-status <old> superseded`) wrote the
+  *old* ADR's ID back into the Section — silently, contradicting
+  design-specctl.md ("superseding updates a Section's `adr`" to the
+  superseding ADR). Fix: no propagation while the ADR sits in a
+  no-longer-governing status (`superseded`/`deprecated`/`rejected`).
+  Rejected: propagating only on entering `accepted` — that would also stop
+  `add`/`info-spec-ref` of a `proposed` ADR from linking, which the
+  existing spec and tests rely on. Regression test:
+  `test_superseding_keeps_section_on_new_adr` (`tests/test_adrctl.py`).
+- **specctl rejected level skipping the spec allows (code brought to
+  spec).** design-specctl.md, "Metagroups", allowed "a Chapter may hold
+  Points directly", but `level` was derived from the path length. `level`
+  is now stored on `SpecSection`; a Section only has to be deeper than its
+  parent. The spec's own next sentence ("adding a `#####` heading requires
+  its enclosing `####`/`###`/`##` objects to already exist") contradicted
+  that literally and is now worded as "named ancestors must exist".
+  Two points the spec left open, decided here: **only a Part sits at the
+  root** (every branch hangs off a `##`; a root-level `###` has no anchor
+  for its Object Type and reads as a malformed document), and **skipped
+  levels contribute `__` to the Object Type**, keeping it level-aligned
+  (width still encodes the level; unskipped documents keep their exact
+  types). A moved subtree keeps its internal level gaps (uniform shift).
+  A second recipe re-check then found the one layout Markdown can't
+  express: a deeper child *after* a shallower sibling under the same
+  parent (a Point after a Section under one Chapter) — single-file mode
+  silently re-parented it on the next read. Decided: **sibling levels
+  never increase in document order**, enforced by `add`, `move-to-<level>`
+  and `reorder` on the in-memory result before writing (both modes, so the
+  model stays mode-independent). Rejected: auto-placing the Section before
+  its shallower siblings — keeps more layouts reachable, but breaks
+  "always lands as the last child" and needs renumbering; not worth it for
+  an edge case.
+- **`--json show-metagroups` printed Python tuples (bug, fixed)** in the
+  shared `lib/cliapp.py` — affecting taskctl/questctl/rulectl/adrctl,
+  whose author Skills all say to parse it as JSON. Now a JSON array of
+  paths (`[["001-Spec"], ["001-Spec", "001-Core"]]`, the same shape as
+  specctl's `path`); the plain output prints one `/`-joined path per line.
+- **Documentation**: specctl takes only the 6-character `id`, not the
+  Signature (both specctl Skills now say so — the smoke test's first move
+  attempt failed on exactly this); `info-spec-ref` leaves the previously
+  referenced Section's `adr` unchanged (adrctl-author-cli); two error
+  texts and `adr` null-vs-absent wording (specctl-editor-cli);
+  `design-specctl-author-cli.md` no longer lists the nonexistent specctl
+  `show-metagroups`; `specctl-adr-author` now documents the Domain gate it
+  inherits from `adrctl-author-cli` and its
+  **deferred-awaiting-domain-decision** outcome (the smoke test hit that
+  gate; the agent improvised a sensible report, but neither its design doc
+  nor its agent file named it).
+- **Skill wording from the re-check**: mutating specctl commands accept
+  only the 6-character `id` (`show` also takes the Signature); usage errors
+  exit `2` (argparse), not only `0`/`1`; a nonexistent `--adr` fails with
+  "adr '<id>': no object with ID", and `--adr` on a draft Section is
+  ignored.
+- **Clarified, not a defect**: `specctl set-description` writes no History
+  entry — by design (design-specctl.md, "History": content changes are not
+  logged; from `stable` on the trail lives in the ADR).

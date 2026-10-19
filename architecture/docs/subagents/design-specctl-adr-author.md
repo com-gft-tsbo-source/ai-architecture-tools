@@ -206,8 +206,10 @@ promotion path, minting a founding ADR for it now.)
      targeted.
    - **Under each**: the ADR(s) created (Signature/ID), the ADR(s)
      superseded (if any), and the outcome per Section — **done**,
-     **failed** (the error), or **deferred-awaiting-correction-confirmation**
-     (step 6.2 — no ADR/content change was made for this topic this run).
+     **failed** (the error), **deferred-awaiting-correction-confirmation**
+     (step 6.2 — no ADR/content change was made for this topic this run),
+     or **deferred-awaiting-domain-decision** (see "ADR placement" — no ADR
+     or Status change was made for this topic this run).
    - Retrospective, like every sibling Subagent's report — a record of what
      was done, not a plan awaiting approval (except the one, explicit,
      per-correction confirmation gate in step 6).
@@ -226,6 +228,23 @@ afterward via `specctl set-adr <id> <adr-id>` (`specctl-editor-cli`,
 which Section `spec-ref` happens to name — every governed Section is
 otherwise equal, and a `list --adr <adr-id>` (via `specctl-editor-cli`)
 finds all of them regardless of which one is primary.
+
+## ADR placement (Domain/Component)
+
+Every ADR this Subagent mints needs an `adrctl` Domain/Component path.
+`adrctl-author-cli` gates new **Domains** ("New Domains are batch-gated"):
+check the existing ones first and reuse a fitting Domain; never create a
+new top-level Domain autonomously. Components under an existing Domain are
+created freely.
+
+If any topic in this run needs a Domain that doesn't exist yet, collect
+every such topic into **one** batched proposal (suggested Domain/Component
+per topic — typically mirroring the targeted Section's own Part/Chapter)
+and report those topics as **deferred-awaiting-domain-decision**, making no
+ADR and no Status/content change for them this run; every topic whose
+Domain already exists proceeds normally. Resuming is the same shape as the
+correction gate: invoked again with the decision stated in the prompt
+(e.g. "Domain `Architektur`, Component `Komponenten` ist ok").
 
 ## ADR content synthesis
 

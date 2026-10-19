@@ -92,7 +92,8 @@ being the one `spec-ref` names; all governed Sections are otherwise equal.
   Parameters"). Never hardcode or guess a root.
 - **`--json`**: always pass this flag when the output needs to be parsed
   programmatically (`list`, `show`, `show-metagroups`).
-- **Exit codes**: `0` = ok, `1` = error. Error text goes to stderr.
+- **Exit codes**: `0` = ok, `1` = error. Error text goes to stderr. `2` =
+  a malformed command line (argparse: unknown subcommand or option).
 - **Ordering matters**: the ADR must be created (or, for a correction,
   identified) *before* the corresponding `specctl-editor-cli` write that
   depends on it — see `design-specctl-adr-author.md`'s workflow for the
@@ -169,6 +170,9 @@ Note this **replaces** the ADR's previous `spec-ref` value (single-valued)
 — it does not add a second governed Section. Only use it to move a single
 ADR's primary linkage; for adding an *additional* governed Section, use
 `specctl-editor-cli`'s `set-adr` instead (see "Multi-Section topics" above).
+The previously referenced Section keeps its `adr` pointing at this ADR —
+only the ADR side changes; correct that Section via `set-adr` if it should
+no longer be governed by it.
 
 **Superseding an ADR** being replaced by a new one (revision path, not a
 correction — `design-specctl-adr-author.md`, step 5):

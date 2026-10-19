@@ -6,6 +6,11 @@ metagroup-path node *is* the object at that level. `ancestor_levels` holds
 this section's ancestors' own "<nr>-<name>" segments (root..parent, same
 shape as lib.metagroup's path segments); the section's own `number`/`name`
 complete its own trailing path segment (`own_name`).
+
+`level` (1 = Part .. 5 = Point) is stored explicitly rather than derived
+from the path length: a branch may skip levels (design-specctl.md,
+"Metagroups": "a Chapter may hold Points directly"), so a Point can sit
+only two ancestors deep. It defaults to the path depth when not given.
 """
 
 from __future__ import annotations
@@ -43,17 +48,21 @@ class SpecSection:
     open_questions: str = ""
     adr: Optional[str] = None
     history: list[HistoryEntry] = field(default_factory=list)
+    level: int = 0  # 0 = derive from the path depth
 
     def __post_init__(self) -> None:
+        if self.level == 0:
+            self.level = len(self.ancestor_levels) + 1
         if not 1 <= self.level <= MAX_LEVEL:
             raise SpecModelError(
                 f"section {self.name!r} has depth {self.level}, "
                 f"specctl supports at most {MAX_LEVEL} levels"
             )
-
-    @property
-    def level(self) -> int:
-        return len(self.ancestor_levels) + 1
+        if self.level < len(self.ancestor_levels) + 1:
+            raise SpecModelError(
+                f"section {self.name!r} at level {self.level} cannot have "
+                f"{len(self.ancestor_levels)} ancestor(s)"
+            )
 
     @property
     def level_type(self) -> str:

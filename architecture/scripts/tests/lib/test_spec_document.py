@@ -89,8 +89,9 @@ class TestParseDocument(unittest.TestCase):
         )
         self.assertEqual(len(locking.history), 2)
 
-    def test_skipped_depth_raises(self):
-        bad = """# Title
+    def test_skipped_depth_parses_under_nearest_shallower_heading(self):
+        # design-specctl.md, "Metagroups": a branch may skip levels.
+        text = """# Title
 
 ## Concurrency
 
@@ -100,12 +101,44 @@ Content.
 
 #### Timeout Behaviour
 
-<!-- specctl id=f00d21 type=CoLoTi nr=001 status=draft -->
+<!-- specctl id=f00d21 type=Co__Ti nr=001 status=draft -->
 
 Content.
 """
+        _title, _preamble, sections = parse_document(text)
+        timeout = sections[1]
+        self.assertEqual(timeout.level, 3)
+        self.assertEqual(timeout.ancestor_levels, ("001-Concurrency",))
+        self.assertEqual(render_document("Title", "", sections), text)
+
+    def test_root_level_heading_must_be_a_part(self):
+        bad = """# Title
+
+### Orphan Chapter
+
+<!-- specctl id=a1a1a1 type=__Or__ nr=001 status=draft -->
+"""
         with self.assertRaises(SpecDocumentError):
             parse_document(bad)
+
+    def test_sibling_after_skipped_child_attaches_to_shared_parent(self):
+        text = """# Title
+
+## A
+
+<!-- specctl id=a1a1a1 type=A_____ nr=001 status=draft -->
+
+###### Deep Point
+
+<!-- specctl id=b2b2b2 type=A_______De nr=001 status=draft -->
+
+### Chapter
+
+<!-- specctl id=c3c3c3 type=A_Ch nr=002 status=draft -->
+"""
+        _title, _preamble, sections = parse_document(text)
+        self.assertEqual([s.level for s in sections], [1, 5, 2])
+        self.assertEqual(sections[2].ancestor_levels, ("001-A",))
 
     def test_duplicate_id_raises(self):
         bad = """# Title

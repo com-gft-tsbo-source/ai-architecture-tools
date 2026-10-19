@@ -49,7 +49,7 @@ Before deciding promotion vs. revision:
 specctl --root <root> --json show <id>
 ```
 
-- `status: draft`, `adr` absent → first-time promotion.
+- `status: draft`, `adr` null → first-time promotion.
 - `status: stable`, `adr` present → revision (every `stable` Section this
   workflow reaches already has an `adr` set, since promotion through this
   same Skill is the only way one ever gets there).
@@ -59,7 +59,12 @@ specctl --root <root> --json show <id>
 - **`--root <path>`**: the same value passed to the `adrctl` calls in the
   same run — both tools resolve their own store from it.
 - **`--json`**: pass it whenever parsing output (`show`, `list`).
-- **Exit codes**: `0` = ok, `1` = error, error text on stderr.
+- **`<id>`** is the 6-character `id` field from `--json list`/`show` (e.g.
+  `e306b7`). Every command that changes a Section accepts only that
+  `id`, not the Signature the human-readable output prints (`show`
+  also takes the Signature).
+- **Exit codes**: `0` = ok, `1` = error, error text on stderr; `2` = a
+  malformed command line (unknown subcommand or option).
 - **Ordering matters.** These calls are almost always part of a fixed
   sequence with `adrctl` calls interleaved: mint the ADR first, *then* the
   `specctl` write that depends on it existing. Calling `set-status stable`
@@ -107,10 +112,14 @@ is judgment, not exact-string matching.
 
 ## Error handling
 
-- **"requires a valid adr" rejection** on `set-status`/`set-description`/
+- **"requires a valid 'adr' reference" rejection** on `set-status`/`set-description`/
   `set-open-questions`: the preceding `adrctl` step (mint or link) was
   skipped or hasn't propagated — go do that first, then retry. Never invent
   an `--adr` value.
+- **A nonexistent `--adr <id>`** fails differently: `"<context>: adr '<id>':
+  no object with ID '<id>'"`. On a `draft` Section, `--adr` is ignored
+  (no ADR is required there, and it isn't stored) — set the link with
+  `adrctl` or `set-adr`, never via `--adr` on a draft.
 - **`set-adr` has no "not found"** (it isn't validated) — but a bad ID
   silently corrupts the linkage with no error at all. Discipline is on you:
   only pass an ID you just created or confirmed exists.

@@ -122,9 +122,14 @@ class TestAddAndShow(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")
             run_init(root)
+            # Too long a path for the level ...
+            code, _out, err = run(["--root", root, "add-chapter", "A/B/C"])
+            self.assertEqual(code, 1)
+            self.assertIn("1 to 2 segment", err)
+            # ... and a non-Part at the root, which has no parent to skip from.
             code, _out, err = run(["--root", root, "add-chapter", "OnlyOneSegment"])
             self.assertEqual(code, 1)
-            self.assertIn("2-segment", err)
+            self.assertIn("only a Part can sit at the root", err)
 
     def test_missing_parent_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -133,6 +138,22 @@ class TestAddAndShow(unittest.TestCase):
             code, _out, err = run(["--root", root, "add-chapter", "Nonexistent/Locking"])
             self.assertEqual(code, 1)
             self.assertIn("no metagroup segment matches", err)
+
+    def test_point_directly_under_chapter(self):
+        # design-specctl.md, "Metagroups": a Chapter may hold Points directly.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "design.md")
+            run_init(root)
+            self.assertEqual(run(["--root", root, "add-part", "Arch"])[0], 0)
+            self.assertEqual(run(["--root", root, "add-chapter", "Arch/Comp"])[0], 0)
+            code, _out, err = run(["--root", root, "add-point", "Arch/Comp/Detail"])
+            self.assertEqual(code, 0, err)
+            code, out, _err = run(["--root", root, "--json", "list"])
+            point = json.loads(out)[-1]
+            self.assertEqual((point["level"], point["level_type"]), (5, "Point"))
+            self.assertEqual(point["path"], ["001-Arch", "001-Comp", "001-Detail"])
+            code, out, _err = run(["--root", root, "render"])
+            self.assertIn("###### Detail", out)
 
 
 class TestStatusAndAdrFlow(unittest.TestCase):

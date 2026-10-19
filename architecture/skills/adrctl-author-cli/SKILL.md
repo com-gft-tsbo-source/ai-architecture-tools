@@ -69,7 +69,8 @@ after this ADR exists. "Primary" carries no meaning beyond being the one
 - **`--root <path>`**: the same value passed to the `specctl-editor-cli`
   calls in the same run.
 - **`--json`**: pass it whenever parsing output (`list`, `show`).
-- **Exit codes**: `0` = ok, `1` = error, error text on stderr.
+- **Exit codes**: `0` = ok, `1` = error, error text on stderr; `2` = a
+  malformed command line (unknown subcommand or option).
 - **Ordering matters**: mint/identify the ADR before the corresponding
   `specctl-editor-cli` write that depends on it.
 
@@ -77,7 +78,8 @@ after this ADR exists. "Primary" carries no meaning beyond being the one
 
 **Create a metagroup path**, each level before the next is created under
 it. **New Domains are batch-gated** — before creating one, check the
-existing Domains (`adrctl --root <root> --json show-metagroups`); never
+existing Domains (`adrctl --root <root> --json show-metagroups` — a JSON
+array of paths, e.g. `[["001-Spec"], ["001-Spec", "001-Core"]]`); never
 create a new top-level Domain autonomously — collect every ADR in this run
 needing an undecided Domain into one question, asked once, up front.
 **Components are created freely** once their Domain exists.
@@ -126,6 +128,10 @@ correction case), instead of `add`'s inline `--spec-ref` — note this
 ```
 adrctl --root <root> info-spec-ref <adr-id> <section-id>
 ```
+
+The previously referenced Section keeps its `adr` pointing at this ADR —
+only the ADR side changes. If that Section should no longer be governed by
+it, correct it with `specctl-editor-cli`'s `set-adr`.
 
 For adding an *additional* governed Section, use `specctl-editor-cli`'s
 `set-adr` instead (see "Multi-Section topics").

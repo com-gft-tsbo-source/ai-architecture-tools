@@ -64,7 +64,7 @@ Before deciding whether a change is a first-time promotion or a revision
 specctl --root <root> --json show <id>
 ```
 
-- `status: draft`, `adr` absent → first-time promotion path.
+- `status: draft`, `adr` null → first-time promotion path.
 - `status: stable`, `adr` present → revision path (every `stable` Section
   reachable by this workflow has an `adr` already set, since promotion
   through this same Skill is the only way a Section governed by this
@@ -79,7 +79,11 @@ specctl --root <root> --json show <id>
   Parameters").
 - **`--json`**: always pass this flag when the output needs to be parsed
   programmatically (`show`, `list`).
-- **Exit codes**: `0` = ok, `1` = error. Error text goes to stderr.
+- **`<id>`** is the 6-character `id` field from `--json list`/`show` —
+  every command that changes a Section accepts only that `id`, not the
+  Signature (`show` also takes the Signature).
+- **Exit codes**: `0` = ok, `1` = error. Error text goes to stderr. `2` =
+  a malformed command line (argparse: unknown subcommand or option).
 - **Ordering matters.** Unlike `specctl-author-cli`'s independent,
   order-insensitive operations, this Skill's calls are almost always part
   of a fixed sequence with `adrctl` calls interleaved — see
@@ -141,10 +145,14 @@ resolution is — not exact-string matching.
 
 ## Error handling
 
-- **"requires a valid adr" rejection** on `set-status`/`set-description`/
+- **"requires a valid 'adr' reference" rejection** on `set-status`/`set-description`/
   `set-open-questions`: means the preceding `adrctl` step (mint or link the
   ADR) was skipped or hasn't propagated yet — go back and do that first,
   then retry. Never work around this by inventing an `--adr` value.
+- **A nonexistent `--adr <id>`** fails differently: `"<context>: adr '<id>':
+  no object with ID '<id>'"`. On a `draft` Section, `--adr` is ignored
+  (no ADR is required there, and it isn't stored) — set the link with
+  `adrctl` or `set-adr`, never via `--adr` on a draft.
 - **`set-adr` "not found"-shaped failures don't exist** (the command isn't
   validated) — but passing a bad ID here silently corrupts the linkage
   with no error at all. The discipline is entirely on the caller: only ever

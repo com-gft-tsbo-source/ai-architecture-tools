@@ -62,7 +62,12 @@ error above first.
   guess it.
 - **`--json`**: pass it whenever you're going to parse the output (`show`,
   `list`).
-- **Exit codes**: `0` = ok, `1` = error, error text on stderr.
+- **`<id>`** is the 6-character `id` field from `--json list`/`show` (e.g.
+  `e306b7`). Every command that changes a Section accepts only that
+  `id`, not the Signature the human-readable output prints (`show`
+  also takes the Signature).
+- **Exit codes**: `0` = ok, `1` = error, error text on stderr; `2` = a
+  malformed command line (unknown subcommand or option).
 - Each call is independent — no transaction. A multi-step change is
   several sequential calls; if one fails partway, whatever was already
   created stays created.
@@ -88,7 +93,14 @@ specctl --root <root> add-point "<.../Point name>" ...
 ```
 
 A Section may skip intermediate levels (e.g. a Chapter holding Points
-directly) — target the depth that actually matches. Every new Section
+directly) — target the depth that actually matches; the path then names
+only the ancestors that exist (`add-point "<Part>/<Chapter>/<Point name>"`).
+Only a Part can sit at the root.
+Under one parent, a deeper (level-skipping) Section must come *before*
+shallower siblings — `add`/`move-to-<level>` append as last child, so they
+reject a Point after an existing Section under the same Chapter (in
+Markdown it would nest under that Section), and `reorder` rejects an order
+that breaks this. Every new Section
 starts `draft` unless `--set-status` is given — you never pass it.
 
 **Edit content**:

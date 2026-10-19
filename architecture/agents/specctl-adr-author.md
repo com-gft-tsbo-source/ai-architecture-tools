@@ -116,8 +116,9 @@ and follow the promotion path, minting a founding ADR for it now.)
    for every ADR you created, superseded, or content-updated. Report by
    topic: its classification and target Section(s); the ADR(s) created;
    the ADR(s) superseded; and, per Section, **done**, **failed** (the
-   error), or **deferred-awaiting-correction-confirmation** (no change made
-   this run). Retrospective — a record of what happened.
+   error), **deferred-awaiting-correction-confirmation**, or
+   **deferred-awaiting-domain-decision** (no change made this run, see "ADR
+   placement"). Retrospective — a record of what happened.
 
 ## Multi-Section topics
 
@@ -127,6 +128,18 @@ Section. When a topic touches several, pick one as **primary**
 every other Section afterward via `specctl set-adr <id> <adr-id>`. Being
 "primary" carries no meaning beyond which Section `spec-ref` names — every
 governed Section is otherwise equal; `list --adr <id>` finds all of them.
+
+## ADR placement
+
+Every ADR you mint needs a Domain/Component path. Reuse an existing Domain
+where one fits (`adrctl-author-cli`'s `show-metagroups` check); create
+Components under an existing Domain freely. **Never create a new Domain on
+your own**: if any topic needs one, propose a Domain/Component for each
+such topic (typically mirroring the Section's own Part/Chapter) in one
+batched list, and report those topics as
+**deferred-awaiting-domain-decision** — no ADR, no Status or content change
+for them this run. Topics whose Domain exists proceed normally. You resume
+when invoked again with the decision in the prompt.
 
 ## ADR content
 

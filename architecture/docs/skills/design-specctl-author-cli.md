@@ -85,9 +85,13 @@ store isn't already initialized via the error above.
   Subagent receives it from whoever invoked it — user or orchestrating
   Skill). Never hardcode or guess a root.
 - **`--json`**: always pass this flag when the output needs to be parsed
-  programmatically (`show`, `show-metagroups`, `list`) — do not scrape the
-  human-readable format.
-- **Exit codes**: `0` = ok, `1` = error. Error text goes to stderr.
+  programmatically (`show`, `list`) — do not scrape the human-readable
+  format. (`specctl` has no `show-metagroups`.)
+- **`<id>`** is the 6-character `id` field from `--json list`/`show` —
+  every command that changes a Section accepts only that `id`, not the
+  Signature (`show` also takes the Signature).
+- **Exit codes**: `0` = ok, `1` = error. Error text goes to stderr. `2` =
+  a malformed command line (argparse: unknown subcommand or option).
 - Every operation is a single, independent `specctl` invocation — there is
   no batch/transaction mode. A multi-step change (e.g. "create a Chapter,
   then add three Sections under it") is several sequential CLI calls; if one
@@ -117,7 +121,14 @@ specctl --root <root> add-point "<.../Point name>" ...
 A Section may skip intermediate levels where the document's own structure
 calls for it (e.g. a Chapter holding Points directly) — just target the
 depth that actually matches what's being added; there is no requirement to
-populate every level. Every newly created Section starts at `draft`
+populate every level. The path names only the ancestors that exist
+(`add-point "<Part>/<Chapter>/<Point name>"`); only a Part can sit at the
+root (design-specctl.md, "Metagroups").
+Under one parent, a deeper (level-skipping) Section must come *before*
+shallower siblings — `add`/`move-to-<level>` append as last child, so they
+reject a Point after an existing Section under the same Chapter (in
+Markdown it would nest under that Section), and `reorder` rejects an order
+that breaks this. Every newly created Section starts at `draft`
 (`specctl`'s default initial Status) unless `--set-status` is given — this
 Skill never passes `--set-status` (see `design-specctl-author.md`,
 "Status").

@@ -71,11 +71,76 @@ def _direct_children_own_names(sections: list[SpecSection], parent_levels: tuple
     return [s.own_name for s in sections if s.ancestor_levels == parent_levels]
 
 
-def _known_object_types(sections: list[SpecSection]) -> dict[str, tuple[str, ...]]:
+# Stands in for a skipped level in a Section's Object Type derivation
+# (design-specctl.md, "Object Type"): the type stays level-aligned -- a
+# Point is always 10 characters wide -- with '__' where a level is absent.
+_SKIPPED_LEVEL = "__"
+
+
+def _levels_by_path(sections: list[SpecSection]) -> dict[tuple[str, ...], int]:
+    return {s.path_levels: s.level for s in sections}
+
+
+def _aligned_type_names(
+    levels_by_path: dict[tuple[str, ...], int], path_levels: tuple[str, ...], own_level: int,
+) -> list[str]:
+    """One name per level 1..own_level for Object Type derivation: each
+    ancestor's segment at its own level, the Section's own segment last,
+    `_SKIPPED_LEVEL` wherever the branch skips a level."""
+    names = [_SKIPPED_LEVEL] * own_level
+    for i, segment in enumerate(path_levels[:-1]):
+        names[levels_by_path[path_levels[: i + 1]] - 1] = segment
+    names[own_level - 1] = path_levels[-1]
+    return names
+
+
+def _known_object_types(
+    sections: list[SpecSection], levels_by_path: Optional[dict[tuple[str, ...], int]] = None,
+) -> dict[str, tuple[str, ...]]:
+    """`levels_by_path` must cover every ancestor of `sections` -- pass the
+    whole document's map when `sections` is a subset of it."""
+    if levels_by_path is None:
+        levels_by_path = _levels_by_path(sections)
     return {
-        s.object_type: tuple(abbrev.strip_sort_prefix(p) for p in s.path_levels)
+        s.object_type: tuple(
+            abbrev.strip_sort_prefix(p)
+            for p in _aligned_type_names(levels_by_path, s.path_levels, s.level)
+        )
         for s in sections
     }
+
+
+def _check_sibling_order(sections: list[SpecSection], parent_levels: tuple[str, ...]) -> None:
+    """Under one parent, sibling levels must never increase in document
+    order (design-specctl.md, "Metagroups"): Markdown attaches a heading to
+    the nearest shallower heading above it, so a deeper (level-skipping)
+    Section written after a shallower sibling would silently nest under
+    that sibling on the next read. Checked on the in-memory result before
+    writing, so a rejected operation changes nothing."""
+    siblings = [s for s in sections if s.ancestor_levels == parent_levels]
+    for earlier, later in zip(siblings, siblings[1:]):
+        if later.level > earlier.level:
+            raise SpecStoreError(
+                f"a {later.level_type} ({later.name!r}) can't follow the shallower "
+                f"{earlier.level_type} {earlier.name!r} under the same parent -- in Markdown "
+                f"it would nest under that {earlier.level_type}. Under one parent, deeper "
+                "(level-skipping) Sections must come before shallower ones"
+            )
+
+
+def _check_parent_level(level: int, parent_level: int) -> None:
+    """A Section must sit deeper than its parent -- it may skip levels
+    (design-specctl.md, "Metagroups") -- and a root-level Section must be a
+    Part."""
+    if parent_level == 0 and level != 1:
+        raise SpecStoreError(
+            f"a {LEVEL_TYPES[level - 1]} needs a parent Section -- only a Part can sit at the root"
+        )
+    if level <= parent_level:
+        raise SpecStoreError(
+            f"a {LEVEL_TYPES[level - 1]} (level {level}) must be deeper than its "
+            f"{LEVEL_TYPES[parent_level - 1]} parent (level {parent_level})"
+        )
 
 
 def _insertion_index(sections: list[SpecSection], parent_levels: tuple[str, ...]) -> int:
@@ -245,7 +310,7 @@ class SpecStore:
         preamble = preamble_path.read_text(encoding="utf-8").rstrip("\n") if preamble_path.exists() else ""
 
         sections: list[SpecSection] = []
-        self._dir_read_children(self.root, (), sections)
+        self._dir_read_children(self.root, (), 0, sections)
         try:
             check_duplicate_ids(sections)
         except SpecDocumentError as exc:
@@ -253,9 +318,9 @@ class SpecStore:
         return title, preamble, sections
 
     def _dir_read_children(
-        self, directory: Path, ancestor_levels: tuple[str, ...], sections: list[SpecSection]
+        self, directory: Path, ancestor_levels: tuple[str, ...], parent_level: int,
+        sections: list[SpecSection],
     ) -> None:
-        depth = len(ancestor_levels) + 1
         lock_name = locking.lock_path_for(directory).name
         child_dirs = sorted(
             (p for p in directory.iterdir() if p.is_dir() and p.name != lock_name),
@@ -267,12 +332,14 @@ class SpecStore:
                 raise SpecStoreError(f"{child_dir}: missing its {_CONTENT_FILENAME!r} file")
             try:
                 section = parse_section_block(
-                    content_path.read_text(encoding="utf-8"), depth, ancestor_levels
+                    content_path.read_text(encoding="utf-8"), parent_level, ancestor_levels
                 )
             except SpecDocumentError as exc:
                 raise SpecStoreError(f"{content_path}: {exc}") from exc
             sections.append(section)
-            self._dir_read_children(child_dir, ancestor_levels + (section.own_name,), sections)
+            self._dir_read_children(
+                child_dir, ancestor_levels + (section.own_name,), section.level, sections
+            )
 
     def _dir_write(self, title: str, preamble: str, sections: list[SpecSection]) -> None:
         # Directory mode has no delete/create diffing -- like single-file
@@ -375,9 +442,9 @@ class SpecStore:
     ) -> SpecSection:
         if not 1 <= level <= MAX_LEVEL:
             raise SpecStoreError(f"unsupported level {level}; specctl supports 1-{MAX_LEVEL}")
-        if len(path_segments) != level:
+        if not 1 <= len(path_segments) <= level:
             raise SpecStoreError(
-                f"add-{LEVEL_TYPES[level - 1].lower()} expects a {level}-segment path "
+                f"add-{LEVEL_TYPES[level - 1].lower()} expects a path of 1 to {level} segment(s) "
                 f"(got {len(path_segments)}: {'/'.join(path_segments)!r})"
             )
 
@@ -386,6 +453,8 @@ class SpecStore:
             self._require_initialized(title)
             given_parents, given_leaf = path_segments[:-1], path_segments[-1]
             parent_levels = self._resolve_ancestor_path(sections, given_parents)
+            levels_by_path = _levels_by_path(sections)
+            _check_parent_level(level, levels_by_path.get(parent_levels, 0))
             siblings = _direct_children_own_names(sections, parent_levels)
             leaf_own_name = metagroup.assign_leaf_name(siblings, given_leaf)
             number_str, _, name = leaf_own_name.partition("-")
@@ -393,8 +462,9 @@ class SpecStore:
 
             known = _known_object_types(sections)
             full_path = list(parent_levels) + [leaf_own_name]
+            type_names = _aligned_type_names(levels_by_path, tuple(full_path), level)
             try:
-                object_type = abbrev.derive_object_type(full_path, known, abbrev=abbrev_override)
+                object_type = abbrev.derive_object_type(type_names, known, abbrev=abbrev_override)
             except abbrev.AbbrevCollisionError as exc:
                 raise SpecStoreError(str(exc)) from exc
 
@@ -421,9 +491,11 @@ class SpecStore:
                 content={"Description": description},
                 open_questions=open_questions,
                 history=[HistoryEntry(timestamp=now_iso(), prefix="M", message="Add")],
+                level=level,
             )
             index = _insertion_index(sections, parent_levels)
             sections.insert(index, section)
+            _check_sibling_order(sections, parent_levels)
             self._write(title, preamble, sections)
             return section
 
@@ -657,6 +729,7 @@ class SpecStore:
                 )
 
             sections = self._reorder_children_blocks(sections, parent_levels)
+            _check_sibling_order(sections, parent_levels)
             self._write(title, preamble, sections)
             return self._find_with_index(sections, object_id)[1]
 
@@ -689,13 +762,18 @@ class SpecStore:
         descendant's `ancestor_levels`, the whole prefix up to and including
         the moved Section's own segment can change here (both its values and
         its length), so every descendant's Object Type -- derived from its
-        full ancestor-name path -- must be re-derived too, not just patched."""
+        full ancestor-name path -- must be re-derived too, not just patched.
+
+        The parent path may be shorter than `level - 1` (levels may be
+        skipped, design-specctl.md, "Metagroups"); the moved subtree keeps
+        its internal level gaps -- every descendant shifts by the same
+        amount the moved Section itself does."""
         if not 1 <= level <= MAX_LEVEL:
             raise SpecStoreError(f"unsupported level {level}; specctl supports 1-{MAX_LEVEL}")
-        if len(path_segments) != level - 1:
+        if len(path_segments) > level - 1:
             raise SpecStoreError(
-                f"move-to-{LEVEL_TYPES[level - 1].lower()} expects a {level - 1}-segment parent path "
-                f"(got {len(path_segments)}: {'/'.join(path_segments)!r})"
+                f"move-to-{LEVEL_TYPES[level - 1].lower()} expects a parent path of at most "
+                f"{level - 1} segment(s) (got {len(path_segments)}: {'/'.join(path_segments)!r})"
             )
 
         with self.lock():
@@ -715,6 +793,8 @@ class SpecStore:
                     "change its position among unchanged siblings instead"
                 )
 
+            _check_parent_level(level, _levels_by_path(sections).get(new_parent_levels, 0))
+
             max_extra_depth = max(
                 (sections[j].level - section.level for j in range(index + 1, end)), default=0
             )
@@ -728,16 +808,20 @@ class SpecStore:
             section.ancestor_levels = new_parent_levels
             new_prefix = section.path_levels
 
+            level_shift = level - section.level
+            for j in range(index, end):
+                sections[j].level += level_shift
             for j in range(index + 1, end):
                 suffix = sections[j].ancestor_levels[len(old_prefix):]
                 sections[j].ancestor_levels = new_prefix + suffix
 
+            levels_by_path = _levels_by_path(sections)
             for j in range(index, end):
                 s = sections[j]
-                known = _known_object_types(sections[:j] + sections[j + 1:])
-                full_path = list(s.ancestor_levels) + [s.own_name]
+                known = _known_object_types(sections[:j] + sections[j + 1:], levels_by_path)
+                type_names = _aligned_type_names(levels_by_path, s.path_levels, s.level)
                 try:
-                    s.object_type = abbrev.derive_object_type(full_path, known)
+                    s.object_type = abbrev.derive_object_type(type_names, known)
                 except abbrev.AbbrevCollisionError as exc:
                     raise SpecStoreError(str(exc)) from exc
 
@@ -750,6 +834,7 @@ class SpecStore:
             remaining = sections[:index] + sections[end:]
             insertion_index = _insertion_index(remaining, new_parent_levels)
             sections = remaining[:insertion_index] + moved_block + remaining[insertion_index:]
+            _check_sibling_order(sections, new_parent_levels)
 
             self._write(title, preamble, sections)
             return self._find_with_index(sections, object_id)[1]
