@@ -1,0 +1,16 @@
+{
+  "name": "ai-architecture-tools",
+  "owner": {
+    "name": "Thomas Brunko"
+  },
+  "metadata": {
+    "description": "Architecture tooling: CLIs, Skills and Subagents for specs, ADRs, quality rules, open questions and task lists."
+  },
+  "plugins": [
+    {
+      "name": "architecture-tools",
+      "source": "./architecture",
+      "description": "taskctl, questctl, rulectl, adrctl and specctl CLIs plus the Skills and Subagents built on them."
+    }
+  ]
+}

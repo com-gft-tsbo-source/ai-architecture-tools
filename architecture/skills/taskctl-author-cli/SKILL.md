@@ -5,8 +5,8 @@ description: Wraps the taskctl CLI for the task-authoring workflow — creating 
 
 Full spec: `architecture/docs/skills/design-taskctl-author-cli.md`.
 
-You operate the `taskctl` CLI (already on `PATH`, or run as
-`python3 <repo>/architecture/scripts/taskctl.py`) via Bash for the
+You operate the `taskctl` CLI (on `PATH`, provided by the
+`architecture-tools` plugin's `bin/`) via Bash for the
 task-authoring workflow: creating and extending a Task list. This is a
 reference, not a wrapper script — call `taskctl` yourself, following the
 recipes below.
