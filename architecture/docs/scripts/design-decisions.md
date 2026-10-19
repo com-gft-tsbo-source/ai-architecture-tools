@@ -343,3 +343,63 @@ or attribute).
   a guessed `[X]` the evidence doesn't back. Carried over as precedent
   rather than re-litigated, since the same judgment-integrity concern
   applies here as to every other Subagent that forms a verdict.
+
+## Amendments (2026-10-19, plugin distribution)
+
+The tools, Skills and Subagents are distributed as one Claude Code plugin,
+without changing the development layout of the repository.
+
+- **The repo is its own plugin marketplace.** `.claude-plugin/marketplace.json`
+  at the repo root lists a single plugin, `architecture-tools`, with
+  `"source": "./architecture"`; `architecture/.claude-plugin/plugin.json` is
+  that plugin's manifest. Users install with
+  `/plugin marketplace add <git-url-or-path>` and
+  `/plugin install architecture-tools@ai-architecture-tools`. Rejected:
+  a separate distribution repo or a build step copying files into a
+  `dist/` tree — both add a second source of truth for no gain, since the
+  existing directories already match the plugin component formats.
+- **`architecture/` is the plugin root**, so `scripts/` (and, harmlessly,
+  `docs/`) ship together with the Skills and Subagents that call them.
+  `plugin.json` points at the existing directories via custom paths:
+  `"skills": "./skills/"` (adds to the default scan). **`architecture/subagents/`
+  was renamed to `architecture/agents/`**, the plugin format's default
+  directory: a custom `agents` key accepts only an explicit list of `.md`
+  files (no directory), which would have meant a hand-maintained list per
+  new Subagent. With the default directory, `plugin.json` sets no `agents`
+  key at all (`tests/test_plugin.py` enforces that — the key would
+  *replace* the default scan). Subagent names come from frontmatter and are
+  unaffected. The design documents stay in `architecture/docs/subagents/`:
+  "Subagent" remains the concept name; only the shipped directory follows
+  the plugin convention.
+- **CLIs reach `PATH` through `architecture/bin/`**: one POSIX `sh` wrapper per
+  `scripts/<tool>.py` (`exec python3 .../scripts/<tool>.py "$@"`, resolving
+  its own location via `readlink -f`). Claude Code puts an enabled plugin's
+  `bin/` on the Bash tool's `PATH`, so the Skills' CLI contract is just the
+  bare command name. The former fallback in every `SKILL.md`
+  (`python3 <repo>/architecture/scripts/<tool>.py`) was removed — it
+  pointed into a repository checkout a plugin user doesn't have. Outside
+  Claude Code, a user can put `architecture/bin` on their own `PATH`.
+  Stdlib-only Python (`architecture/scripts/CLAUDE.md`, "Tech-Stack") is what
+  makes this zero-install beyond `python3`. Known limitation: claude.ai/Cowork
+  do not install plugins with a top-level `bin/` — Claude Code only.
+- **Skills are referenced by bare name.** Installed, they are namespaced
+  (`architecture-tools:rulectl-author-cli`), but the Skill tool resolves the
+  bare name too (verified with Claude Code 2.1.303), so Subagents keep
+  naming their Skill without the plugin prefix and stay independent of the
+  plugin name.
+- **The plugin is disabled inside this repository** via
+  `.claude/settings.json` (`enabledPlugins`), enforcing the root `CLAUDE.md`
+  rule that the tools must not be used for work on this repo even when a
+  developer has installed the plugin at user scope. Development testing
+  loads the working tree explicitly: `claude --plugin-dir ./architecture`.
+- **"Full spec: `architecture/docs/...`" lines in Skills/Subagents stay** —
+  they are developer pointers into this repository, not runtime
+  instructions; in an installed plugin they resolve relative to the plugin
+  copy only by accident and are not relied upon.
+- **No pip/`pyproject.toml` packaging for now.** It would require renaming
+  the generic top-level package `lib` (it would collide in site-packages);
+  deferred until there is a concrete need to use the CLIs outside Claude
+  Code beyond putting `bin/` on `PATH`.
+- **Releasing**: bump `version` in `plugin.json` (semver, checked by
+  `tests/test_plugin.py`); `claude plugin validate .` must pass;
+  optionally tag with `claude plugin tag`.

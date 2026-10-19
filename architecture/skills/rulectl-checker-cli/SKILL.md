@@ -8,8 +8,7 @@ Full spec: `architecture/docs/skills/design-rulectl-checker-cli.md`.
 You operate `rulectl` (only `tasklist`) and `taskctl` via Bash for the
 rule-checking workflow. This is a reference, not a wrapper script — call
 the CLIs yourself, following the recipes below. `rulectl`/`taskctl` are
-already on `PATH`, or run as `python3 <repo>/architecture/scripts/rulectl.py`
-/ `taskctl.py`.
+on `PATH`, provided by the `architecture-tools` plugin's `bin/`.
 
 ## Scope
 

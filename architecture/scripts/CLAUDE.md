@@ -386,7 +386,7 @@ Noch offen:
   verifiziert, inkl. der `info-review`-vor-`R`-Mechanik und des
   Parallel-Modus' `[~]→B`-Sonderfalls bei fehlendem Match bzw. fehlender
   Evidenz). Noch offen: nur noch die drei Subagents selbst
-  (`architecture/subagents/questctl-author.md` usw.) — Design-Dokumente
+  (`architecture/agents/questctl-author.md` usw.) — Design-Dokumente
   existieren bereits (`design-questctl-author.md`, `design-questctl-checker.md`,
   `design-questctl-researcher.md` unter `architecture/docs/subagents/`),
   aber noch keine tatsächlichen Dateien — anders als `rulectl-author`/
@@ -439,11 +439,32 @@ Noch offen:
 - Bei einer Änderung an einem Tool prüfen, ob dieselbe Änderung auch bei
   den anderen Sinn ergibt (z. B. neue CLI-Option, Statuslogik).
 
+## Distribution (Claude-Code-Plugin)
+
+`architecture/` ist zugleich Plugin-Root des Plugins `architecture-tools`
+(Begründung: `design-decisions.md`, "Amendments (2026-10-19, plugin
+distribution)"). Daraus folgen Pflichten bei Änderungen:
+
+- Neues CLI-Tool `scripts/<tool>.py` → Wrapper `architecture/bin/<tool>`
+  (ausführbar, Muster der vorhandenen Wrapper) anlegen.
+- Subagents (`architecture/agents/*.md`) und Skills
+  (`architecture/skills/<name>/SKILL.md`) werden automatisch gefunden —
+  `plugin.json` darf keinen `agents`-Key setzen (er ersetzt den
+  Default-Scan).
+- Skills rufen CLIs nur über den nackten Namen auf (`rulectl ...`), nie über
+  einen Pfad in dieses Repository.
+- `tests/test_plugin.py` prüft diese Punkte; zusätzlich vor einem Release
+  `claude plugin validate .` (Repo-Root) und `version` in `plugin.json`
+  erhöhen.
+- Lokal testen: `claude --plugin-dir ./architecture` (in diesem Repo ist das
+  installierte Plugin per `.claude/settings.json` deaktiviert).
+
 ## Struktur
 
 ```
 architecture/scripts/
 ├── CLAUDE.md
+├── ../bin/<tool>      # Plugin-Wrapper je CLI (auf PATH, wenn Plugin aktiv)
 ├── taskctl.py         # CLI: Taskliste (0/1-Ebenen Phase, variable_depth)
 ├── questctl.py        # CLI: offene Fragen (0/1/2-Ebenen Group/Subgroup, variable_depth)
 ├── rulectl.py         # CLI: Code-Qualitäts-Regeln

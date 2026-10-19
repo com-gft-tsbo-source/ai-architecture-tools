@@ -5,8 +5,8 @@ description: Wraps the questctl CLI for the answer-attribution workflow — sequ
 
 Full spec: `architecture/docs/skills/design-questctl-checker-cli.md`.
 
-You operate the `questctl` CLI (already on `PATH`, or run as
-`python3 <repo>/architecture/scripts/questctl.py`) via Bash for the
+You operate the `questctl` CLI (on `PATH`, provided by the
+`architecture-tools` plugin's `bin/`) via Bash for the
 answer-attribution workflow. This is a reference, not a wrapper script —
 call `questctl` yourself, following the recipes below.
 

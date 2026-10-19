@@ -5,8 +5,8 @@ description: Wraps the rulectl CLI for the authoring workflow — creating Langu
 
 Full spec: `architecture/docs/skills/design-rulectl-author-cli.md`.
 
-You operate the `rulectl` CLI (already on `PATH`, or run as
-`python3 <repo>/architecture/scripts/rulectl.py`) via Bash for the
+You operate the `rulectl` CLI (on `PATH`, provided by the
+`architecture-tools` plugin's `bin/`) via Bash for the
 rule-authoring workflow. This is a reference, not a wrapper script — call
 `rulectl` yourself, following the recipes below.
 
