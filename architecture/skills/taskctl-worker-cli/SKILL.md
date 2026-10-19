@@ -5,8 +5,8 @@ description: Wraps the taskctl CLI for working a task list — picking the next 
 
 Full spec: `architecture/docs/skills/design-taskctl-worker-cli.md`.
 
-You operate the `taskctl` CLI (already on `PATH`, or run as
-`python3 <repo>/architecture/scripts/taskctl.py`) via Bash to work a task
+You operate the `taskctl` CLI (on `PATH`, provided by the
+`architecture-tools` plugin's `bin/`) via Bash to work a task
 list: picking the next Task, doing its described work (outside this Skill
 entirely — Read/Grep/Bash/whatever it calls for), and recording progress
 and outcome. This is a reference, not a wrapper script — call `taskctl`

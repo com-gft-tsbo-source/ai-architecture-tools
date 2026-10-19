@@ -1,0 +1,3 @@
+#!/bin/sh
+# Plugin entry point: puts `taskctl` on PATH; the implementation lives in scripts/.
+exec python3 "$(dirname "$(readlink -f "$0")")/../scripts/taskctl.py" "$@"

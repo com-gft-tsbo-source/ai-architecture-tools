@@ -590,3 +590,164 @@ needed code changes, only wording:
   these scripts, same as every existing one). The existing 525-test Python
   suite was re-run as a sanity check (unchanged — no `.py` files were
   touched) rather than skipped, per this project's own "Tester" role.
+
+## Amendments (2026-10-19, plugin distribution)
+
+The tools, Skills and Subagents are distributed as one Claude Code plugin,
+without changing the development layout of the repository.
+
+- **The repo is its own plugin marketplace.** `.claude-plugin/marketplace.json`
+  at the repo root lists a single plugin, `architecture-tools`, with
+  `"source": "./architecture"`; `architecture/.claude-plugin/plugin.json` is
+  that plugin's manifest. Users install with
+  `/plugin marketplace add <git-url-or-path>` and
+  `/plugin install architecture-tools@ai-architecture-tools`. Rejected:
+  a separate distribution repo or a build step copying files into a
+  `dist/` tree — both add a second source of truth for no gain, since the
+  existing directories already match the plugin component formats.
+- **`architecture/` is the plugin root**, so `scripts/` (and, harmlessly,
+  `docs/`) ship together with the Skills and Subagents that call them.
+  `plugin.json` points at the existing directories via custom paths:
+  `"skills": "./skills/"` (adds to the default scan). **`architecture/subagents/`
+  was renamed to `architecture/agents/`**, the plugin format's default
+  directory: a custom `agents` key accepts only an explicit list of `.md`
+  files (no directory), which would have meant a hand-maintained list per
+  new Subagent. With the default directory, `plugin.json` sets no `agents`
+  key at all (`tests/test_plugin.py` enforces that — the key would
+  *replace* the default scan). Subagent names come from frontmatter and are
+  unaffected. The design documents stay in `architecture/docs/subagents/`:
+  "Subagent" remains the concept name; only the shipped directory follows
+  the plugin convention.
+- **CLIs reach `PATH` through `architecture/bin/`**: one POSIX `sh` wrapper per
+  `scripts/<tool>.py` (`exec python3 .../scripts/<tool>.py "$@"`, resolving
+  its own location via `readlink -f`). Claude Code puts an enabled plugin's
+  `bin/` on the Bash tool's `PATH`, so the Skills' CLI contract is just the
+  bare command name. The former fallback in every `SKILL.md`
+  (`python3 <repo>/architecture/scripts/<tool>.py`) was removed — it
+  pointed into a repository checkout a plugin user doesn't have. Outside
+  Claude Code, a user can put `architecture/bin` on their own `PATH`.
+  Stdlib-only Python (`architecture/scripts/CLAUDE.md`, "Tech-Stack") is what
+  makes this zero-install beyond `python3`. Known limitation: claude.ai/Cowork
+  do not install plugins with a top-level `bin/` — Claude Code only.
+- **Skills are referenced by bare name.** Installed, they are namespaced
+  (`architecture-tools:rulectl-author-cli`), but the Skill tool resolves the
+  bare name too (verified with Claude Code 2.1.303), so Subagents keep
+  naming their Skill without the plugin prefix and stay independent of the
+  plugin name.
+- **The plugin is disabled inside this repository** via
+  `.claude/settings.json` (`enabledPlugins`), enforcing the root `CLAUDE.md`
+  rule that the tools must not be used for work on this repo even when a
+  developer has installed the plugin at user scope. Development testing
+  loads the working tree explicitly: `claude --plugin-dir ./architecture`.
+- **"Full spec: `architecture/docs/...`" lines in Skills/Subagents stay** —
+  they are developer pointers into this repository, not runtime
+  instructions; in an installed plugin they resolve relative to the plugin
+  copy only by accident and are not relied upon.
+- **No pip/`pyproject.toml` packaging for now.** It would require renaming
+  the generic top-level package `lib` (it would collide in site-packages);
+  deferred until there is a concrete need to use the CLIs outside Claude
+  Code beyond putting `bin/` on `PATH`.
+- **Releasing**: bump `version` in `plugin.json` (semver, checked by
+  `tests/test_plugin.py`); `claude plugin validate .` must pass;
+  optionally tag with `claude plugin tag`.
+
+## Amendments (2026-10-19, taskctl-author/taskctl-worker implementation)
+
+A `/grilling` pass turning `design-taskctl-author.md`/`design-taskctl-worker.md`
+into the actual Subagent files (`architecture/agents/taskctl-{author,worker}.md`)
+surfaced gaps the design left open; all now resolved in the design documents
+themselves:
+
+- **Shrink confirmation is two-pass.** The design said "wait for one
+  explicit confirmation", which a Subagent can't do — it runs to completion
+  and returns a report. Pass 1 deletes nothing and reports exact IDs as
+  deferred-awaiting-deletion-confirmation; a re-invocation confirming those
+  IDs deletes only those that still match. A blanket pre-authorization in
+  the first prompt ("delete without asking") explicitly does **not**
+  count — the person must confirm the concrete list they haven't seen yet.
+  Rejected: accepting pre-authorization (skips exactly what the gate is
+  for, on the one write with no undo).
+- **Phase-less stores**: a fresh store always gets Phases; an existing
+  phase-less store stays flat (never mixed, `taskctl`'s depth rule).
+- **Creation order is execution order** — made explicit for the author,
+  since the worker follows `next`'s global sequence and can't skip ahead.
+  `reorder` only to place a new Task before an existing *open* one.
+- **Description content standard**: goal, concrete work with every
+  applicable prompt constraint repeated per Task, and a checkable "done
+  when" criterion — the worker sees only the Task.
+- **Worker tools**: a fixed list without `Agent` and MCP tools; a Task
+  needing either is a `[B]`. Rejected: inheriting every tool.
+- **Worker outward-facing actions** (push, publish, deploy, send,
+  destructive operations outside the working area) only when the Task or
+  prompt explicitly asks; otherwise `[R]` with the pending action as reason.
+  Local commits likewise only on request.
+- **`rulectl tasklist` exports are not worked by `taskctl-worker`** — this
+  closes a gap in the worker's trust argument: the export copies Rule text
+  verbatim (`lib/tasklist.py`), so the "Description is the author's own
+  synthesis" guarantee doesn't hold, and those Tasks are compliance checks
+  for `rulectl-checker` anyway. Recognized heuristically by
+  `assignee-type` `agent`/`tool`; set `[B]` without claiming.
+  `VISION.md` no longer lists `rulectl tasklist` as a worker input.
+- **Worker report** specified (it wasn't): per Task status before → after,
+  what was done, evidence for the outcome, any `info-review` change; then
+  stop reason and end-of-run verification.
+
+Acceptance: manual smoke tests in a scratch store via
+`claude -p --plugin-dir ./architecture --agent architecture-tools:<agent>` —
+author create / extend + shrink pass 1 (blanket pre-authorization correctly
+refused) / pass 2 (confirmed ID deleted); worker single Task, resume of a
+`[~]` Task, loop to `all_done`, a `review=user` Task ending `[R]` (and
+blocking the next run), and a rulectl-style Task set `[B]` unworked. All
+passed.
+
+- **Outward-facing Tasks get `review=user`, and it gates the action, not
+  just the result** (follow-up to the smoke test, where the author created
+  a "publish to PyPI" Task unflagged and the worker's explicit-request rule
+  would have let it publish). The author always sets `review=user` on a
+  Task whose work includes an outward/irreversible action, in its own Task
+  separate from local preparation — an explicit exception to "review is
+  never inferred from subject matter", which the prompt can't waive. On
+  such a Task the worker stops at `[R]` "pending: needs user approval"
+  *before* the action and performs it only after a `[R]`→`[~]` History
+  entry approving it, then sets `[R]` again for the final check. No new
+  `taskctl` status or command: rework (`[R]`→`[~]`) already exists.
+  Rejected: plain `review=user` without the gate — the review would only
+  come after the irreversible action. The invocation prompt can't stand in
+  for the History approval (it may come from a calling agent).
+
+## Amendments (2026-10-19, local-first: one gated path for remote actions)
+
+Follow-up to the outward-facing gate above, which still enumerated actions
+(publish, push, deploy, ...) and let an explicit request in the Task text
+or invocation prompt suffice outside `review=user` Tasks. Triggering a
+GitHub pipeline or changing a JIRA item fell through that list. Since
+`taskctl` is mainly used to guide an AI through progressive **local**
+changes and remote changes are the absolute exception:
+
+- **"Local" is defined positively; everything else is remote** — judged by
+  effect, not tool: local file edits, local git (commit on request),
+  local builds/tests/scripts, dependencies into the working area are
+  free; read-only remote access (GET, `git fetch`, `WebFetch`) is free;
+  anything changing state outside the working area and local repository
+  (and irreversible local operations on things the Task didn't create)
+  is remote. When in doubt, remote. Rejected: extending the enumeration —
+  it always misses one.
+- **One single path for a remote action**: a `review=user` Task, local
+  part done, `[R]` "pending: needs user approval", user's approving
+  `[R]`→`[~]` History entry, action, `[R]` again. The worker raises
+  `review` to `user` itself on any Task lacking it (hand-written, or
+  `none`/`subagent`). The Task text or invocation prompt no longer
+  suffice on their own — that path is removed.
+- **The author plans remote-action Tasks only when the prompt explicitly
+  asks for that action**; a source mentioning it is not enough. Otherwise
+  the plan ends at the local result and the report says what was left
+  out.
+- **Honest about strength**: the classification and the History check are
+  model judgment, not a mechanism. The hard guarantee belongs to the
+  environment — operating guidance (design-taskctl-worker.md, "Operating
+  guidance"; README) is to run unattended loops in Claude Code's sandbox
+  with outbound writes restricted and without remote credentials. A
+  per-Subagent command blocklist (tool config or hook) is noted as a
+  possible later backstop, not built: unverified whether Claude Code
+  supports it per Subagent, a plugin-wide hook would affect the user's
+  normal sessions, and a pattern list never catches everything.

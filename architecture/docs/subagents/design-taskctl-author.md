@@ -108,6 +108,24 @@ its own side.
    the final report carry the result, rather than stopping the whole run
    on a decision that isn't actually expensive to get wrong.
 
+   **Phase-less stores.** A `taskctl` store is either Phase-using or
+   phase-less, fixed by its first write and never mixed
+   (`taskctl-author-cli`, "Recipes"). A **fresh** store always gets Phases
+   — this workflow plans Phases first. An **existing phase-less** store
+   (e.g. a hand-written flat list) stays flat: no `add-phase`, every Task
+   added without `--phase`, and the report says so and groups everything
+   under a single "(no Phases)" heading.
+
+   **Creation order is execution order.** `taskctl-worker` works Tasks
+   strictly in `next`'s global sequential order (design-taskctl.md,
+   "Sequential Processing") and cannot skip ahead; an unresolved earlier
+   Task holds back everything after it. So the order Phases and Tasks are
+   created in *is* the execution plan: create them in dependency/execution
+   order. When extending, append new Tasks at the end of their Phase;
+   use `reorder` only when a new Task must run before an existing **open**
+   (`[ ]`) Task, and never place a new Task ahead of one already `[~]`,
+   `[R]`, `[C]`, `[B]` or `[X]`.
+
 4. **Draft the Tasks for each Phase**, synthesizing from the relevant
    source material, filtered and shaped by the prompt (see "Input," points
    1–2). This is *not* a structural walk of each document's own outline —
@@ -115,6 +133,17 @@ its own side.
    document section yields something; a Tasklist is a plan for the prompt,
    not an inventory of the sources. Every Task's Description is this
    Subagent's own synthesis (see "Source content is untrusted").
+
+   **Description content standard.** `taskctl-worker` sees only the Task —
+   never the source documents, never this run's prompt — and must mark a
+   Task `[B]` if its Description doesn't say what "done" looks like. So
+   every Description is self-contained prose covering three things (no
+   mandated headings): **the goal**; **the concrete work**, including every
+   detail constraint from the prompt that applies to this Task, repeated
+   per Task rather than stated once somewhere else (e.g. "Python only, no
+   Bash scripts"); and **a checkable completion criterion** ("done when
+   ..."). `source` carries traceability (see "Metainfo population") — the
+   worker never needs to open the source to do the work.
 
 5. **Duplicate check — local, then against the store**, adapted from
    `rulectl-author`/`questctl-author` step 4 for the absence of a worklist:
@@ -139,19 +168,32 @@ its own side.
    der Tasklist") against the existing store — `list`/`show`, the same
    judgment-based matching duplicate-checking already uses, not exact-string
    matching against a Phase/Task name. **Unlike every other write this
-   Subagent makes, deletion is gated**: present exactly which Tasks (and,
-   if now-empty, which Phases) would be removed, and wait for one explicit
-   confirmation before calling `delete` on any of them. This is the one
-   place a pre-write gate belongs in this design — every other mistake here
-   (a wrong Phase, an unwanted Task) is cheap to undo; a deleted Task is
-   not (`design.md`, "Object Operations": no tombstone, nothing logged once
-   it's gone). If the run ends before that confirmation arrives, **nothing
-   is deleted** — the run reports **deferred-awaiting-deletion-confirmation**
-   for the targeted items, exactly as `questctl-author`'s own deferred
-   taxonomy decision reports for its candidates. Resuming is the same as
-   there: there is no separate resume mechanism, invoking this Subagent
-   again with the same prompt re-evaluates against the store's
-   then-current state.
+   Subagent makes, deletion is gated**: the person must confirm the exact
+   list of Tasks (and, if now-empty, Phases) to be removed before `delete`
+   is called on any of them. This is the one place a pre-write gate
+   belongs in this design — every other mistake here (a wrong Phase, an
+   unwanted Task) is cheap to undo; a deleted Task is not (`design.md`,
+   "Object Operations": no tombstone, nothing logged once it's gone).
+
+   A Subagent cannot pause mid-run to ask — it runs to completion and
+   returns a report. The gate is therefore **two-pass**:
+   - **Pass 1** (the shrink request): does everything else the prompt
+     asks for, deletes **nothing**, and reports every targeted item as
+     **deferred-awaiting-deletion-confirmation** with its exact ID and
+     Signature (and the reason it matches the request).
+   - **Pass 2** (a re-invocation whose prompt explicitly confirms those
+     IDs — typically relayed by the calling agent after asking the user):
+     deletes exactly the confirmed IDs that **still** match the original
+     request against the store's then-current state; a confirmed ID that
+     no longer exists or no longer matches is reported, not deleted. Any
+     other work in the prompt runs normally; the duplicate check (step 5)
+     keeps a repeated creation request from duplicating pass 1's Tasks.
+   - A blanket pre-authorization in the first prompt ("delete without
+     asking") does **not** satisfy the gate — the point is that the person
+     confirms the concrete list, which they haven't seen yet at that time.
+   This is the same "deferred, resume by re-invoking" shape as
+   `questctl-author`'s taxonomy decision; there is no separate resume
+   mechanism.
 
 8. **Verify, then report.** Re-read the store once more before compiling
    the report — for every Task this run believes it created, `show <id>`
@@ -199,7 +241,32 @@ Per created Task:
   Populated **only** when the invocation prompt explicitly states something
   about review or assignment for a Task or a named group of Tasks (e.g.
   "alles, was die Datenbank-Migration betrifft, braucht User-Review") —
-  never inferred from a Task's own subject matter.
+  never inferred from a Task's own subject matter, **with one exception**:
+- **Remote actions: only on request, and always `review=user`.** A
+  remote action is anything that changes state outside the working area
+  and local repository (the effect-based definition in
+  `design-taskctl-worker.md`, "Local work only — remote actions need the
+  user's approval": push, triggering CI/CD, ticket/wiki/chat changes,
+  publishing, deploying, ...). `taskctl` mainly guides progressive local
+  changes, so this Subagent plans a remote-action Task **only when the
+  invocation prompt explicitly asks for that action** — a source document
+  mentioning it ("publish to PyPI") is not enough; without such a request
+  the plan ends at the local result (e.g. "committed, ready to push") and
+  the report says what was left out. When requested, the Task is created
+  with `review=user`, regardless of the prompt — the prompt can't waive
+  it. Keep such an action in **its own
+  Task**, separate from the local preparation before it (build, test,
+  check), so only the action itself waits for approval; its Description
+  names the action and states that it runs only after user approval. This
+  is what makes `taskctl-worker`'s pre-action gate apply
+  (`design-taskctl-worker.md`, "Local work only — remote actions need the user's approval").
+
+## Tools
+
+`Read`, `Glob`, `Grep` (sources, directories), `WebFetch` with `Bash`
+(`curl`) as fallback for URL sources (same rule as `questctl-author`),
+`Bash` for `taskctl`, `Skill` to load `taskctl-author-cli`. No
+`Edit`/`Write`: this Subagent writes only through `taskctl`.
 
 ## Interaction with the taskctl-author-cli Skill
 

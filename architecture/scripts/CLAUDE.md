@@ -300,7 +300,7 @@ Spec-vs-Implementierung-Gap, keine Verhaltensänderung durch die Neuerung
 selbst). `taskctl.py` selbst brauchte keine Code-Änderung — alles läuft über
 `lib/taskctl_spec.py` und das gemeinsame `lib/`-Modell.
 
-525 Unit-/Integrationstests insgesamt unter `tests/`
+533 Unit-/Integrationstests insgesamt unter `tests/` (davon 8 Plugin-Konsistenztests in `tests/test_plugin.py`)
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 170 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`, `init`/`set-title`/`set-preamble` und die Init-Pflicht für jede
@@ -346,18 +346,17 @@ erweitern) und `taskctl-worker-cli` (Tasks abarbeiten, Status je nach
 Arbeit ändern) sind jetzt als
 `architecture/skills/taskctl-{author,worker}-cli/SKILL.md` angelegt,
 zusammen mit ihren Design-Dokumenten unter `architecture/docs/skills/`.
-Anders als bei `rulectl`/`questctl` existieren die zugehörigen Subagents
-(`taskctl-author`, `taskctl-worker`) und deren Design-Dokumente noch
-nicht — die Skills sind bewusst als workflow-unabhängige
-CLI-Kontrakt-Referenzen geschrieben, siehe das Amendment für die
-vollständige Befehls-Aufteilung.
+Die Skills sind bewusst als workflow-unabhängige CLI-Kontrakt-Referenzen
+geschrieben, siehe das Amendment für die vollständige Befehls-Aufteilung.
 
 Ein weiterer `/grill-me`-Durchgang (2026-08-25, `design-decisions.md`,
 "Amendments (2026-08-25, taskctl-author/taskctl-worker Subagent design)")
 legte die beiden zugehörigen Subagent-Designdokumente an
-(`architecture/docs/subagents/design-taskctl-{author,worker}.md`) — die
-tatsächlichen Subagent-Dateien selbst existieren weiterhin noch nicht,
-analog zum aktuellen Stand bei `questctl-author`/`-checker`/`-researcher`.
+(`architecture/docs/subagents/design-taskctl-{author,worker}.md`). Die
+Subagents selbst sind inzwischen als
+`architecture/agents/taskctl-{author,worker}.md` umgesetzt
+(`design-decisions.md`, "Amendments (2026-10-19, taskctl-author/
+taskctl-worker implementation)").
 Dabei fiel eine weitere kleine, konsistente `taskctl`-Lücke auf: wie schon
 bei `questctl` fehlte ein `source`-Metainfo-Feld für Traceability. Jetzt
 ergänzt in `lib/taskctl_spec.py`s `MetainfoSpec`-Tupel (keine weiteren
@@ -387,8 +386,8 @@ existieren noch nicht, analog zum aktuellen Stand bei
 Ein weiterer `/grill-me`-Durchgang (2026-08-27, `design-decisions.md`,
 "Amendments (2026-08-27, specctl-author/specctl-adr-author implementation)")
 legte die tatsächlichen Dateien an:
-`architecture/subagents/specctl-author.md`,
-`architecture/subagents/specctl-adr-author.md`,
+`architecture/agents/specctl-author.md`,
+`architecture/agents/specctl-adr-author.md`,
 `architecture/skills/specctl-author-cli/SKILL.md`,
 `architecture/skills/specctl-editor-cli/SKILL.md`,
 `architecture/skills/adrctl-author-cli/SKILL.md`. Jedes Recipe aller drei
@@ -430,12 +429,8 @@ Noch offen:
   SKILL.md` angelegt (jedes Recipe aller drei Skills gegen die echte CLI
   verifiziert, inkl. der `info-review`-vor-`R`-Mechanik und des
   Parallel-Modus' `[~]→B`-Sonderfalls bei fehlendem Match bzw. fehlender
-  Evidenz). Noch offen: nur noch die drei Subagents selbst
-  (`architecture/subagents/questctl-author.md` usw.) — Design-Dokumente
-  existieren bereits (`design-questctl-author.md`, `design-questctl-checker.md`,
-  `design-questctl-researcher.md` unter `architecture/docs/subagents/`),
-  aber noch keine tatsächlichen Dateien — anders als `rulectl-author`/
-  `rulectl-checker`, die beide Ebenen bereits haben.
+  Evidenz). Die drei Subagents selbst existieren inzwischen ebenfalls
+  (`architecture/agents/questctl-{author,checker,researcher}.md`).
 - specctl: die bidirektionale adrctl-Verknüpfung ist implementiert —
   `spec-ref=<id>`-Metainfo bei adrctl (einwertig, `design-decisions.md`,
   "Amendments (2026-08-19, spec-ref single-valued)"), `lib/spec_link.py`,
@@ -484,11 +479,32 @@ Noch offen:
 - Bei einer Änderung an einem Tool prüfen, ob dieselbe Änderung auch bei
   den anderen Sinn ergibt (z. B. neue CLI-Option, Statuslogik).
 
+## Distribution (Claude-Code-Plugin)
+
+`architecture/` ist zugleich Plugin-Root des Plugins `architecture-tools`
+(Begründung: `design-decisions.md`, "Amendments (2026-10-19, plugin
+distribution)"). Daraus folgen Pflichten bei Änderungen:
+
+- Neues CLI-Tool `scripts/<tool>.py` → Wrapper `architecture/bin/<tool>`
+  (ausführbar, Muster der vorhandenen Wrapper) anlegen.
+- Subagents (`architecture/agents/*.md`) und Skills
+  (`architecture/skills/<name>/SKILL.md`) werden automatisch gefunden —
+  `plugin.json` darf keinen `agents`-Key setzen (er ersetzt den
+  Default-Scan).
+- Skills rufen CLIs nur über den nackten Namen auf (`rulectl ...`), nie über
+  einen Pfad in dieses Repository.
+- `tests/test_plugin.py` prüft diese Punkte; zusätzlich vor einem Release
+  `claude plugin validate .` (Repo-Root) und `version` in `plugin.json`
+  erhöhen.
+- Lokal testen: `claude --plugin-dir ./architecture` (in diesem Repo ist das
+  installierte Plugin per `.claude/settings.json` deaktiviert).
+
 ## Struktur
 
 ```
 architecture/scripts/
 ├── CLAUDE.md
+├── ../bin/<tool>      # Plugin-Wrapper je CLI (auf PATH, wenn Plugin aktiv)
 ├── taskctl.py         # CLI: Taskliste (0/1-Ebenen Phase, variable_depth)
 ├── questctl.py        # CLI: offene Fragen (0/1/2-Ebenen Group/Subgroup, variable_depth)
 ├── rulectl.py         # CLI: Code-Qualitäts-Regeln

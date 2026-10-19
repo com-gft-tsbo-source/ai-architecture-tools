@@ -5,8 +5,8 @@ description: Wraps the specctl CLI for the ADR-governed side of its lifecycle â€
 
 Full spec: `architecture/docs/skills/design-specctl-editor-cli.md`.
 
-You operate the `specctl` CLI (already on `PATH`, or run as
-`python3 <repo>/architecture/scripts/specctl.py`) via Bash for the
+You operate the `specctl` CLI (on `PATH`, provided by the
+`architecture-tools` plugin's `bin/`) via Bash for the
 ADR-governed side of its lifecycle: promoting a Section to `stable`, and
 revising one that already is. This is a reference, not a wrapper script â€”
 call `specctl` yourself, following the recipes below. Always used alongside

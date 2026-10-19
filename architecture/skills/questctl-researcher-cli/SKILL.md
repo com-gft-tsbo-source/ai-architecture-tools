@@ -5,8 +5,8 @@ description: Wraps the questctl CLI for the answer-research workflow — sequent
 
 Full spec: `architecture/docs/skills/design-questctl-researcher-cli.md`.
 
-You operate the `questctl` CLI (already on `PATH`, or run as
-`python3 <repo>/architecture/scripts/questctl.py`) via Bash for the
+You operate the `questctl` CLI (on `PATH`, provided by the
+`architecture-tools` plugin's `bin/`) via Bash for the
 answer-research workflow. This is a reference, not a wrapper script —
 call `questctl` yourself, following the recipes below. Nearly identical
 in shape to `questctl-checker-cli` — both claim, resolve, and verify

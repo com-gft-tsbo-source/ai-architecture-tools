@@ -5,8 +5,8 @@ description: Wraps the adrctl CLI for creating and superseding ADRs that documen
 
 Full spec: `architecture/docs/skills/design-adrctl-author-cli.md`.
 
-You operate the `adrctl` CLI (already on `PATH`, or run as
-`python3 <repo>/architecture/scripts/adrctl.py`) via Bash for creating and
+You operate the `adrctl` CLI (on `PATH`, provided by the
+`architecture-tools` plugin's `bin/`) via Bash for creating and
 superseding ADRs that document `specctl` changes. This is a reference, not
 a wrapper script — call `adrctl` yourself, following the recipes below.
 Always used alongside `specctl-editor-cli` in the same run — see
