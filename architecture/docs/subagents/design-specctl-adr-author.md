@@ -60,24 +60,13 @@ This is the ADR-governed half of the `specctl` lifecycle described in
      correction to something already governed, or a new decision** — see
      "Intent classification" below.
 
-## Invariant: every `stable` Section reachable here already has a governing ADR
+## Read actual lifecycle state
 
-Because this Subagent is the only path by which a Section ever leaves
-`draft` (see "Companion to `specctl-author`" above — `specctl-author` never
-calls `set-status`, and this Subagent never creates new Sections), and
-because this Subagent's own promotion step (below) always establishes a
-governing `adr` before the transition completes, every `stable` Section
-this workflow ever encounters already has a non-empty `adr` field. This
-matters concretely: it means the "first-time promotion vs. revision" branch
-below can be decided purely from whether the target Section's `adr` field
-is set, with no edge case where a `stable` Section might have none. (A
-Section promoted to `stable` by some other means entirely — e.g. a human
-running raw `specctl`/`adrctl` commands outside this workflow, or the
-`add --set-status stable` initial-creation exception `design-specctl.md`
-allows — could in principle violate this invariant; if `specctl-editor-cli`'s
-initial `show <id>` ever finds a `stable` Section with no `adr` set, treat
-it as an unpromoted Section for this run's purposes and follow the
-promotion path, minting a founding ADR for it now.)
+Use each Section's Status and current ADR link, not an assumed history of
+how it was created. Draft Sections can already carry a link after an
+interrupted run; stable Sections created manually can lack one. Read and
+verify both stores before choosing dependent operations. CLI calls are not
+transactional across stores.
 
 ## Workflow
 
@@ -102,58 +91,49 @@ promotion path, minting a founding ADR for it now.)
    user change request — there is no ambiguous candidate pool to
    de-duplicate against, and inventing one would only add a check against a
    risk this workflow's own shape doesn't have.
-3. **For each topic, classify it against every Section it targets**:
-   - **First-time promotion**: the Section is `draft` (no `adr` yet) — see
-     step 4.
-   - **Revision — new decision**: the Section is `stable`, already governed
-     by an ADR, and this topic reads as a substantively new decision, not a
-     correction to the existing one — see step 5.
-   - **Revision — correction**: the Section is `stable`, already governed,
-     and the prompt's own wording for this topic reads as a correction —
-     "revise," "redo," "correct," "fix," or equivalent phrasing judged
-     semantically (not literal keyword matching: "korrigiere die Formatierung
-     in Abschnitt X" and "das war falsch formuliert, bitte anders" both
-     read as corrections without using any of the four example words) —
-     applied to a specific part of already-governed content. See step 6.
+3. **Classify each topic and its targeted Sections.** Read current Status,
+   `adr`, and content. Reject deprecated Sections; never infer promotion
+   solely from the presence or absence of an ADR. A draft Section may
+   already have a link from an interrupted earlier run.
+   - A topic containing a first-time promotion or a substantively new
+     decision follows steps 4-5: exactly one new ADR for the whole topic,
+     including any draft and stable Sections it jointly affects.
+   - A topic consisting only of corrections to governed stable content
+     follows step 6's confirmation/reuse path. Judge correction intent
+     semantically from the user's request, not by literal keyword matching.
+     Do not reuse an old ADR to authorize a first-time promotion.
+   - A stable Section without a governing ADR needs a founding ADR through
+     steps 4-5, without a status transition.
+4. **Create and link one ADR per topic**, including first-time promotion:
+   1. Before writing, read all targeted Sections and capture their old ADR
+      IDs. Describe the intended resulting content, promotion(s), and the
+      precise decisions/Sections being replaced in the new ADR. A partial
+      replacement must be understandable from this new record alone.
+   2. Choose one primary Section deterministically and create exactly one
+      accepted ADR with `--spec-ref <primary-section-id>`. Verify the ADR
+      persisted and the primary link propagated before further writes.
+   3. Link every additional Section with `specctl set-adr <id> <new-adr-id>`.
+      Confirm all links before applying the topic's content/status changes.
+      Never create another ADR merely because another Section is involved.
+5. **Apply and verify the topic**, then retire fully replaced ADRs:
+   1. Promote each targeted draft Section with `set-status <id> stable`;
+      leave already-stable Sections stable. Then apply requested content
+      changes via `set-description` and/or `set-open-questions`.
+   2. Re-read every targeted Section to verify its content, Status and ADR.
+      If any creation, propagation, linkage, edit, or promotion fails, stop
+      dependent steps for this topic, report the partial state and keep old
+      ADRs accepted. Other independent topics may proceed. Never treat a
+      partially completed topic as authorized to retire its old ADRs.
+   3. For each distinct old ADR, query `specctl list --adr <old-id>` without
+      a status or path filter. Any remaining Section reference means the
+      ADR stays `accepted`, with no `superseded-by` change. Report the
+      remaining Section IDs and the partial replacement in the new ADR.
+   4. Only after the topic is verified and that query succeeds with no
+      references: `adrctl info-superseded-by <old-id> <new-id>`, then
+      `adrctl set-status <old-id> superseded`. The new record identifies
+      the final replacement; prior partial replacements remain documented
+      in their own ADRs. A query error is not evidence of zero references.
 
-     A topic targeting several Sections may mix these — one Section being
-     promoted for the first time while another, already-stable Section in
-     the same request is being revised — each Section's own classification
-     is independent even within one topic.
-
-4. **First-time promotion**, per targeted Section:
-   1. `adrctl add --spec-ref <section-id> --set-status accepted ...` — mints
-      the founding ADR (`adrctl-author-cli`, "Creating an ADR"), which
-      auto-propagates its ID into the Section's `adr` field. This is
-      inherently a single-topic ADR — "this content is now accepted as-is"
-      needs no further decomposition, even if the Section being promoted
-      itself covers several ideas.
-   2. `specctl set-status <section-id> stable` (no `--adr` needed — already
-      set by propagation).
-   3. If the same prompt also asks for a content change alongside
-      promotion (e.g. "finalize Section X, fixing the typo while you're at
-      it"), apply it via `specctl set-description`/`set-open-questions`
-      after the promotion (also no `--adr` needed) — the founding ADR
-      already covers this Section's content as a whole.
-5. **Revision — new decision**, per topic (possibly spanning several
-   Sections — see "Multi-Section topics" below for the mechanics when it
-   does):
-   1. Read each targeted Section's *current* `adr` value first — this is
-      the old, about-to-be-superseded ADR (guaranteed present, per the
-      Invariant above).
-   2. `adrctl add --spec-ref <primary-section-id> --set-status accepted ...`
-      — mints the new ADR.
-   3. For every additional Section this topic touches beyond the primary
-      one: `specctl set-adr <id> <new-adr-id>` (see "Multi-Section topics").
-   4. For every distinct old ADR replaced by this new one (there may be
-      more than one if the topic merges concerns that previously had
-      separate governing ADRs): `adrctl info-superseded-by <old-id>
-      <new-id>` then `adrctl set-status <old-id> superseded` — never leave
-      a no-longer-governing ADR sitting at `accepted` (`adrctl-author-cli`,
-      "Superseding an ADR").
-   5. Apply the actual content change: `specctl set-description`/
-      `set-open-questions` per targeted Section (no `--adr` needed — set by
-      the propagation/linking above).
 6. **Revision — correction**, per topic:
    1. Identify the Section's existing governing ADR (already known from
       step 3's classification).
@@ -185,7 +165,7 @@ promotion path, minting a founding ADR for it now.)
       - **Confirmed**: proceed with 3-4 below, now on that later
         invocation.
       - **Declined**: step 3 classifies the topic as "Revision — new
-        decision" instead and step 5 handles it — the classification was
+        decision" instead and steps 4-5 handle it — the classification was
         only ever a shortcut the user can override, never a hard branch
         foreclosing the other path.
    3. Apply the content change: `specctl set-description`/
@@ -205,7 +185,7 @@ promotion path, minting a founding ADR for it now.)
      revision-new-decision / revision-correction) and the Section(s) it
      targeted.
    - **Under each**: the ADR(s) created (Signature/ID), the ADR(s)
-     superseded (if any), and the outcome per Section — **done**,
+     superseded or retained with remaining Section references (if any), and the outcome per Section — **done**,
      **failed** (the error), **deferred-awaiting-correction-confirmation**
      (step 6.2 — no ADR/content change was made for this topic this run),
      or **deferred-awaiting-domain-decision** (see "ADR placement" — no ADR
@@ -297,9 +277,3 @@ Subagent.
   (correction vs. new decision), the per-correction confirmation gate, and
   the multi-Section linking mechanics in particular deserve reproducible
   scenarios once a harness exists. Not designed yet.
-- **Re-litigating a superseded ADR's own Section governance.** Superseding
-  an ADR (step 5.4) never re-examines whether the *old* ADR governed other
-  Sections too (via a prior multi-Section topic of its own) — only the
-  Section(s) this run's new ADR now covers are re-linked. A stale
-  cross-reference on an old, multi-Section ADR's other Sections is not
-  auto-detected or fixed by this Subagent. Not designed yet.

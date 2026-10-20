@@ -97,6 +97,7 @@ def build_spec() -> ToolSpec:
             # taskctl-author routinely bulk-authors Tasks from a set of
             # source documents rather than Tasks always being hand-created.
             MetainfoSpec(type="source"),
+            MetainfoSpec(type="origin"),
         ),
         status=StatusSpec(
             codes=(OPEN, IN_PROGRESS, REVIEW_USER, REVIEW_SUBAGENT, BLOCKED, DONE),

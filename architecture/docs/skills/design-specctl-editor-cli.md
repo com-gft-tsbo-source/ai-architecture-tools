@@ -27,8 +27,8 @@ is being created in the same run:
   operations outside this workflow entirely (`design-specctl-adr-author.md`,
   "Out of scope").
 - `set-description`, `set-open-questions` (each with optional `--adr <id>`)
-  — change a `stable` Section's content once its governing ADR is
-  established.
+  — change stable content after its topic's ADR is linked and any requested
+  promotion has succeeded.
 - `set-adr <id> <value>` — the manual linkage correction command
   (`design-specctl.md`, "Operations"), used here for its documented purpose
   extended to one more concrete case: attaching an already-minted ADR to an
@@ -64,12 +64,13 @@ Before deciding whether a change is a first-time promotion or a revision
 specctl --root <root> --json show <id>
 ```
 
-- `status: draft`, `adr` null → first-time promotion path.
-- `status: stable`, `adr` present → revision path (every `stable` Section
-  reachable by this workflow has an `adr` already set, since promotion
-  through this same Skill is the only way a Section governed by this
-  workflow ever reaches `stable` in the first place — see
-  `design-specctl-adr-author.md`, "Invariant").
+- `status: draft` → first-time promotion, even if an ADR is already linked
+  after an interrupted operation. Read that ADR before taking further action.
+- `status: stable`, `adr` present → revision.
+- `status: stable`, `adr` absent → create a founding ADR; do not change Status.
+- `status: deprecated` → outside this workflow; no write.
+
+The Agent groups all Sections by coherent topic before minting an ADR.
 
 ## Invocation conventions
 
@@ -173,3 +174,15 @@ resolution is — not exact-string matching.
   an ADR — workflow judgment specified in `design-specctl-adr-author.md`,
   not something this Skill prescribes (mirrors `rulectl-author-cli`'s own
   "purely a CLI-contract reference" stance).
+
+## Checking remaining governance before ADR retirement
+
+```
+specctl --root <root> --json list --adr <old-adr-id>
+```
+
+Do not add a status/path filter: every remaining reference counts.
+A nonempty result keeps the old ADR `accepted`; only an empty successful
+result after verified completion of the new topic permits superseding it.
+Topic grouping applies equally to promotion and revision: one ADR may
+link several draft/stable Sections before their content/status changes.

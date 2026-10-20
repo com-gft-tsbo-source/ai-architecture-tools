@@ -49,6 +49,25 @@ def add_rule(
 
 
 class TestFieldMapping(unittest.TestCase):
+    def test_origin_is_persisted_and_repairs_legacy_exports(self):
+        for store_name in ("tasks", "tasks.md"):
+            with self.subTest(store=store_name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                tasks = make_taskctl_store(root / store_name)
+                tasks.add_metagroup_path(["Existing"])
+                rules = make_rulectl_store(root / "rules")
+                rule = add_rule(rules, object_id="rule01")
+                tasklist.run(root, rules)
+                expected = f"rulectl:{rule.object_id}"
+                self.assertEqual(tasks.get(rule.object_id).metainfo_value("origin"), expected)
+
+                # Simulate a legacy export without the new provenance marker.
+                tasks.set_metainfo(rule.object_id, "origin", "")
+                tasklist.run(root, rules)
+                persisted = make_taskctl_store(root / store_name)
+                self.assertEqual(persisted.get(rule.object_id).metainfo_value("origin"), expected)
+                self.assertEqual(len(persisted.list_all()), 1)
+
     def test_llm_checkable_rule_embeds_description_and_procedure(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

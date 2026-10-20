@@ -556,3 +556,9 @@ architecture/scripts/
     └── spec_model.py, spec_comment.py, spec_document.py, spec_store.py, spec_render.py
                            # specctl-eigenes, leichtgewichtiges Format (design-specctl.md)
 ```
+
+## Task export provenance (2026-10-20)
+
+Task Metainfo includes optional `origin`; `rulectl tasklist` stamps and
+refreshes `rulectl:<rule-id>` on every exported Task. Existing exports gain
+the marker on re-export. Assignment remains independent of provenance.

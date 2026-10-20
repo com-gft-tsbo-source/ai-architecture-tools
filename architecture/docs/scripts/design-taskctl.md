@@ -14,6 +14,8 @@ Like questctl (design-questctl.md, "Metagroups"), taskctl declares an **allowed 
 
 ## Metainfo
 
+- `origin`: optional producer reference, separate from document `source` and assignment. `rulectl tasklist` sets `rulectl:<rule-id>`; ordinary authored Tasks leave it unset. Exposed through `add --origin`, `info-origin`, `list --origin`, and JSON output like other Metainfo fields. This is provenance, not authentication.
+
 - `review`: `none` | `user` | `subagent`
 - `assignee-type`: free text
 - `assignee-name`: free text

@@ -1,165 +1,107 @@
 ---
 name: questctl-checker-cli
-description: Wraps the questctl CLI for the answer-attribution workflow — sequential next / parallel next-all work-selection, claiming a Question, recording an attributed answer (answer), a no-match trace (annotate), and the review/blocked outcomes (info-review, set-status). Use whenever a questctl-checker run matches an incoming answer-source against an existing catalog and records what it finds. Not for authoring Questions (that's questctl-author-cli) and not for reading/searching the answer-source itself (that's the Subagent's own job).
+description: Use when questctl-checker needs to select open Questions, claim them and record verbatim answer attributions with review or error outcomes. Not for authoring Questions, synthesizing answers or searching the answer-source itself.
 ---
 
 Full spec: `architecture/docs/skills/design-questctl-checker-cli.md`.
 
-You operate the `questctl` CLI (on `PATH`, provided by the
-`architecture-tools` plugin's `bin/`) via Bash for the
-answer-attribution workflow. This is a reference, not a wrapper script —
-call `questctl` yourself, following the recipes below.
+You operate `questctl` via Bash, using only the operations below.
+The calling Agent decides passage attribution and confidence.
 
-## Scope
+## Scope and conventions
 
-- `next [--group <path> | --subgroup <path>]` / `next-all [--group <path> |
-  --subgroup <path>]` — work-selection, sequential and parallel
-  respectively (see "Recipes").
-- `set-status <id> <code> --message <text>` — `~` (claim), `X`
-  (confidently matched), `R` (matched, attribution uncertain), `B`
-  (parallel-mode-only: claimed but no match found — see "Recipes").
-- `info-review <id> user` — switch a Question's review mode immediately
-  before escalating it to `R` (see "Status transitions").
-- `answer <id> <text> --message <text>` — record the attributed
-  (verbatim) text against a Question.
-- `annotate <id> --message <text>` — record a no-match trace on a
-  Question that stays `[ ]` (sequential mode only — see "Recipes").
-- `show <id>` — re-read a Question's actual persisted state.
+- Allowed: `next-all`, `show`, `annotate`, `set-status`, `answer`, `info-review`.
+- Use exactly the supplied `--root`. Put `--json` before `next-all` and
+  `show` when parsing their output. Invoke questctl from PATH through Bash;
+  no operations beyond the allow-list are permitted.
+- Exit `0` means success, `1` means error or no work. On initial
+  `next-all`, `all_answered`/`awaiting_interaction` means no available work;
+  `in_progress` means another run is active: defer without writes.
+- Never use `--force`, `next`, authoring, deletion, or regrouping commands.
 
-Never call `add`, `add-group`, `add-subgroup`, `set-description`,
-`info-source`, `delete`, `reorder`, `group-<metagroup-type>`, or
-`reindex` from this Skill — none of these are needed to attribute
-answers to an existing catalog; authoring is `questctl-author-cli`'s job.
-Reading/searching the answer-source itself is not this Skill's job
-either — use Read/Glob/Grep/WebFetch directly for that.
+## Snapshot and claims
 
-## Conventions
-
-- **`--root <path>`**: one shared path for every call in a run — use
-  exactly what you were given, never guess or hardcode one.
-- **`--json`**: pass it on `next`/`next-all` (parsing the returned
-  Question(s)) and `show` (the final re-read). Omit it on
-  `set-status`/`answer`/`annotate`/`info-review`: pure write calls whose
-  outcome is the exit code, nothing in their output is ever read.
-- **Exit codes**: `0` = ok, `1` = error — including `next`/`next-all`'s
-  three "nothing available" cases (`in_progress`/`all_answered`/
-  `awaiting_interaction`, distinguished via `--json`'s `"reason"` field).
-
-## Recipes
-
-**Sequential mode (default) — one Question at a time:**
+Read the ordered work set exactly once at run start:
 
 ```
-questctl --root <root> --json next [--group <path> | --subgroup <path>]
+questctl --root <root> --json next-all [--group <path> | --subgroup <path>]
 ```
 
-Parse the returned Question. Search the answer-source for it *before*
-touching status — no CLI call needed for the search itself, that's your
-own Read/Grep/WebFetch work against the answer-source, not a `questctl`
-operation.
+**Sequential (default):** scope is optional. Keep the returned IDs and
+process each at most once in order. `next-all` does not claim anything.
+Before examining an ID, `show` it and require status `[ ]`; otherwise skip
+and report the changed state. Search first; claim only if recording an answer.
+An unanswered Question stays open and does not prevent visiting later IDs.
+Never refresh the snapshot or loop through `next`.
 
-*No matching passage found:*
-```
-questctl --root <root> annotate <id> --message "checked against <source>, no matching passage found"
-```
-Leave the Question there — do **not** call `set-status`. Loop back to
-`next`.
+**Parallel (explicit request, named scope required):** use exactly that
+scope and claim the batch up front, one `set-status ~` per ID. Track only
+successful claims; skip/report failed claims without answering or mutating
+them further. Before examining a claimed ID, `show` and require `[~]`.
+Then process the successfully claimed batch individually.
 
-*Match found (confident or uncertain — see below), only now claim:*
-```
-questctl --root <root> set-status <id> "~" --message "checking against <source>"
-questctl --root <root> answer <id> "<verbatim attributed text>" --message "<which passage(s), e.g. 'client email, para 2'>"
-questctl --root <root> set-status <id> X --message "confidently matched"
-```
-For an uncertain attribution, `info-review` must run **before**
-`set-status ... R` — it switches the Question's forward path so
-`[~]→R` becomes a normal, on-path step; without it, `[~]→R` is off-path
-and fails without `--force` (verified against `lib/taskctl_spec.py`'s
-`validate_transition`, which questctl reuses directly — it reads the
-Question's *current* `review` metainfo at the moment of the transition,
-not a value fixed at creation):
-```
-questctl --root <root> info-review <id> user
-questctl --root <root> set-status <id> R --message "<why the attribution is uncertain>"
-```
-Then loop back to `next` — since this run's own claim already resolved
-before the next call, `next` should not report `in_progress` from this
-run's own prior work.
-
-**Parallel mode (only when the caller explicitly asked for it, naming a
-scope):**
-
-```
-questctl --root <root> --json next-all --group <path>   # or --subgroup <path>
-```
-
-Using the **caller's own named scope**, not the whole store. Parse every
-returned Question, then claim the *whole batch* up front, one call per
-Question, before examining any of them:
-
-```
-questctl --root <root> set-status <id-1> "~" --message "claimed for batch processing"
-questctl --root <root> set-status <id-2> "~" --message "claimed for batch processing"
-...
-```
-
-Then work each claimed Question independently, same match/uncertain
-outcomes as sequential mode above (skip the `set-status ~` step in each
-— already claimed):
-
-```
-questctl --root <root> answer <id> "<verbatim attributed text>" --message "<which passage(s)>"
-questctl --root <root> set-status <id> X --message "confidently matched"
-```
-For an uncertain attribution, `info-review <id> user` first, then
-`set-status <id> R --message "..."` — same as the sequential recipe
-above.
-
-*No matching passage found, parallel mode* — the Question is already
-`[~]`, and there is no `[~]→[ ]` step, so it cannot simply be left
-alone:
-```
-questctl --root <root> annotate <id> --message "checked against <source>, no matching passage found"
-questctl --root <root> set-status <id> B --message "no matching passage found in <source>"
-```
-
-**Multi-match**: if one passage addresses more than one Question, repeat
-the `answer`/`set-status` pair for each matching Question independently
-— never skip a second genuine match because a first one was already
-recorded.
-
-**Verify, then build the final report** (end of run): for every Question
-this run touched (claimed, answered, or annotated), re-read its actual
-persisted state:
 ```
 questctl --root <root> --json show <id>
+questctl --root <root> set-status <id> "~" --message "checking against <source>"
 ```
-Don't trust your own bookkeeping — a `set-status`/`answer` call that
-silently failed must not be reported as if it landed cleanly.
 
-## Status transitions, summarized
+The caller must serialize runs per root, even across disjoint scopes.
+Selection and claims are separate CLI calls, so the snapshot is not a lock.
+In sequential mode, claim only after finding an answer: an in-progress
+Question closes the store-wide selection gate. Delaying the claim keeps
+that window short. A Question without an answer stays open, so calling
+`next` again would return it repeatedly; advance through the snapshot instead.
 
-- Every claim is `[ ]→[~]` — `open`'s only forward step — before any
-  outcome status; a direct `[ ]→X`/`R`/`B` jump is off-path and fails
-  without `--force` (never used by this workflow).
-- Confident match: `[~]→X` directly.
-- Uncertain match: `info-review <id> user` first, then `[~]→R` — no
-  `--force` needed once `review` is set.
-- No match, parallel mode only: `[~]→B`, `--message` required —
-  reachable regardless of the Question's current `review` value.
-- No match, sequential mode: no transition at all — the Question was
-  never claimed.
+## Record the outcome
 
-## Error handling
+For a no-match outcome, annotate what source was searched.
 
-- A single Question's attribution failing (search inconclusive, an
-  `answer`/`set-status` call erroring) never stops the loop in
-  sequential mode — `annotate` what's known and continue to the next
-  `next` call. In parallel mode, resolve the affected Question to `B`
-  (it's already claimed) and continue with the rest of the batch.
-- Reaching `all_answered`/`awaiting_interaction` (sequential) or
-  exhausting the claimed batch (parallel) ends the run normally.
-- A non-zero exit or unparseable output from the **first** `next`/
-  `next-all` call (before anything is claimed) is categorically
-  different — no Question has been touched yet; stop the run and report
-  that failure directly.
+```
+questctl --root <root> annotate <id> --message "<source searched, no matching passage found>"
+```
+
+**No matching passage:** in sequential mode, leave status `[ ]` and advance to
+the next snapshot ID. In parallel mode the Question is already claimed:
+
+```
+questctl --root <root> set-status <id> B --message "<why no answer is supported>"
+```
+
+**Answer supported:** after a successful claim (skip claiming if already
+claimed in parallel mode), record the answer:
+
+```
+questctl --root <root> answer <id> "<verbatim source passage(s), unchanged>" --message "<source/section>"
+```
+
+For a confident answer:
+
+```
+questctl --root <root> set-status <id> X --message "<evidence for confidence>"
+```
+
+For uncertain attribution, set review before transitioning. The status
+validator uses the current review value to determine the permitted path:
+
+```
+questctl --root <root> info-review <id> user
+questctl --root <root> set-status <id> R --message "<reason for uncertainty>"
+```
+
+A passage may answer several Questions in the snapshot. Record each genuine attribution independently, preserving the source wording.
+
+## Errors and verification
+
+If the initial snapshot command fails or returns malformed output, stop
+before writing. If a claim fails, do not answer or further mutate that
+Question. For other item failures before claiming, report the failure and
+advance once to the next snapshot ID.
+After a successful claim, try to resolve a write failure to `[B]` with its
+reason. If that fails too, stop processing further IDs and report the
+unfinished claims and unvisited IDs; never label a failed write successful.
+
+When the snapshot is exhausted or the run stops with an error, use show
+for every touched ID. Report actual status and Answer, errors, conflicts
+and the stop reason. Exhausting the snapshot does not imply all_answered.
+The Agent is responsible for reading and searching the supplied
+answer-source.

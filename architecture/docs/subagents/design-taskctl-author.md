@@ -309,3 +309,10 @@ Skill, not something to work around ad hoc in the Subagent.
   smoke test, same as every sibling Subagent. See "Future extensions."
 - Duplicate detection across Phases other than a Task's exact target — see
   "Future extensions."
+
+## Producer provenance
+
+Ordinary authored Tasks leave `origin` unset, including Tasks assigned to
+`agent` or `tool`. `origin=rulectl:<rule-id>` is reserved for `rulectl tasklist`
+exports and routes those Tasks to `rulectl-checker`. Never fabricate this
+marker while authoring or infer it from an assignment or source document.
