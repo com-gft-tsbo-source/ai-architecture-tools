@@ -12,6 +12,7 @@ Vergleiche zunächst die Definitionen aus `e476614`, `0034def` und dem zu
 prüfenden Stand von `optimization`. Für einen späteren Optimierungslauf ist der
 vorherige geprüfte Stand die zusätzliche Vergleichsbasis. Notiere vollständige
 Commit-IDs und den Diff einer noch nicht committeten Kandidatenfassung.
+Die Commits `0034def` und `8286e07` wurden nachträglich zu `cf2b863` zusammengefasst; dessen Stand ist identisch mit `8286e07`.
 
 Verwende für alle Fassungen dasselbe Modell, denselben Aufrufer, dieselben
 Berechtigungen und Werkzeuge sowie dieselben Eingaben. Jede Ausführung erhält

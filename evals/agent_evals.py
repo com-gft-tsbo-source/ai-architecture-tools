@@ -6,7 +6,7 @@ plugin of two (or more) commits against fresh fixture stores, records full
 stream-json traces and evaluates every expectation individually.
 
 Usage:
-    python3 evals/agent_evals.py run --versions e476614 8286e07 \
+    python3 evals/agent_evals.py run --versions e476614 cf2b863 \
         --scenarios E1 E3 E4 --reps 1 --out <dir>
     python3 evals/agent_evals.py report <dir>
 """

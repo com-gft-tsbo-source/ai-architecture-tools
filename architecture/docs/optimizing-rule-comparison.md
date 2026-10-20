@@ -20,6 +20,8 @@ Begründungen, Historie und Zukunftsplanung bleiben in den Design-Dokumenten.
 
 ## Historischer Umfang des Commits 0034def
 
+Die Commits `0034def` und `8286e07` wurden nachträglich zu `cf2b863` zusammengefasst; dessen Stand ist identisch mit `8286e07`.
+
 Whitespace-getrennte Wörter, einschließlich Frontmatter, Beispiele und Code;
 keine Modell-Tokenmessung. Gemessen werden ausschließlich die 19 Runtime-
 Definitionen, nicht die zusätzlichen Design-/Abgleich-/Backlog-Dokumente.
