@@ -107,6 +107,7 @@ def fx_e1_rulectl_author(cli, root, work):
 def fx_e1_rulectl_checker(cli, root, work):
     _rules(cli)
     cli("rulectl", "add", "--category", "Python/General/Style", "--name", "Docstrings",
+        "--checkable", "llm",
         "--description", "Jede öffentliche Funktion hat einen Docstring.")
     code = work / "code"
     _write(code / "app.py", '''
@@ -435,6 +436,15 @@ def evaluate(r: dict) -> list[dict]:
         checks.append(_check("Benannte Skills geladen", None, "Rolle nicht gestartet"))
 
     case = r["case"]
+    if case == "E1-specctl-adr-author":
+        adrs = r["after"].get("adrctl", [])
+        sections = r["after"].get("specctl", [])
+        checks += [
+            _check("Genau eine ADR für das gemeinsame Thema", len(adrs) == 1, f"{len(adrs)} ADR(s)"),
+            _check("Beide Sections stable und mit dieser ADR verknüpft",
+                   len(adrs) == 1 and all(s.get("status") == "stable" and s.get("adr") == adrs[0]["id"]
+                                          for s in sections)),
+        ]
     if case.startswith(("E3", "E4")):
         checks += evaluate_worker(r, [c for c in calls if sub and c["parent"] == sub["id"]])
     return checks

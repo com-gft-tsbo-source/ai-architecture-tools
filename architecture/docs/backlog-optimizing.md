@@ -51,7 +51,9 @@ wenn sie ausdrücklich aufgeschoben werden.
 - Vor weiteren starken Kürzungen erforderlich: vergleichende echte Agent-Läufe.
   [Der vorbereitete Eval-Plan](evals/agent-instruction-comparison.md) enthält
   feste Eingaben, getrennte Routing-/Workflow-Prüfungen und Auswertungskriterien.
-  Der Plan ist noch nicht ausgeführt; B4 bleibt offen.
+  E1, E3 und E4 sind ausgeführt, ohne beobachtete Regression
+  ([Ergebnisse](evals/results-2026-10-20.md)). Offen: E5, die Fehlerfälle
+  unten sowie mehrdeutige Routing-Aufträge.
 - Aktuelle Validierung: dokumentierter Abgleich der bisherigen Regeln gegen
   die kompakten Definitionen sowie die bestehende Testsuite. Das belegt keine
   unveränderte Befolgung der Anweisungen durch ein Modell.

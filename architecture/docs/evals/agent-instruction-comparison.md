@@ -1,8 +1,10 @@
 # Vergleichende Agent-Evals vor weiteren starken Kürzungen
 
-Status: vorbereitet, nicht ausgeführt. Dieser Plan ersetzt weder tatsächliche
-Agent-Läufe noch die bestehende CLI-Testsuite. B4 im
-[Backlog](../backlog-optimizing.md) bleibt bis zu dokumentierten Läufen offen.
+Status: E1, E3 und E4 am 2026-10-20 ausgeführt
+([Ergebnisse](results-2026-10-20.md), Harness `evals/agent_evals.py`).
+E2 ist über die E1-Fixtures mit abgedeckt; E5 ist offen. Dieser Plan ersetzt
+nicht die bestehende CLI-Testsuite. B4 im [Backlog](../backlog-optimizing.md)
+bleibt für E5 und die dort genannten Fehlerfälle offen.
 
 ## Vergleichsaufbau
 
