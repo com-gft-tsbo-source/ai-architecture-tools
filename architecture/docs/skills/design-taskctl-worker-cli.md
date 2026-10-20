@@ -1,6 +1,6 @@
 # taskctl-worker-cli
 
-Skill that wraps the `taskctl` CLI for a future `taskctl-worker` Subagent
+Skill that wraps the `taskctl` CLI for the `taskctl-worker` Subagent
 (`architecture/VISION.md`; no Subagent design document exists yet —
 `design-decisions.md`, "Amendments (2026-08-25, taskctl `NoWorkAvailable` +
 taskctl-author-cli/taskctl-worker-cli design)"). Purely an instructional
@@ -11,7 +11,7 @@ never how to author or restructure the Task list (`taskctl-author-cli`'s
 job) and never how to perform a Task's described work (Read/Grep/Bash/etc.,
 entirely outside `taskctl` and this Skill). Companion to
 `taskctl-author-cli`, which creates the Tasks this Skill works; the two
-Skills' command surfaces are disjoint by design, and their future Subagents
+Skills' command surfaces are disjoint by design, and their Subagents
 never call each other's `taskctl` commands.
 
 Unlike `rulectl-checker-cli` (which wraps *two* CLIs, because `rulectl
@@ -126,7 +126,7 @@ is a genuine error, not "drained" — never conflate the two.
 
 **Do the described work** — Read/Grep/Bash/whatever the Task's Description
 actually calls for. Entirely outside `taskctl` and this Skill; this is the
-future `taskctl-worker` Subagent's own judgment, not something this Skill
+`taskctl-worker` Subagent's own judgment, not something this Skill
 prescribes.
 
 **Log what happened, regardless of outcome:**
@@ -238,7 +238,7 @@ successfully finalized.
   (design-decisions.md, "Amendments (2026-08-25, ...)").
 - Deciding *how* to actually perform a Task's described work, or *when*
   evidence is sufficient to call it done vs. blocked vs. needing review —
-  the future `taskctl-worker` Subagent's own judgment, not something this
+  the `taskctl-worker` Subagent's own judgment, not something this
   Skill prescribes (mirrors `rulectl-checker-cli`'s own "purely a
   CLI-contract reference" stance).
 

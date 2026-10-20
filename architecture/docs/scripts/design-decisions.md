@@ -840,3 +840,48 @@ reference query never counts as an empty one. The single-valued
 `superseded-by` points at the final replacement; earlier partial replacements
 remain recorded in their respective ADRs. These are agent-level lifecycle
 rules; general manual CLI status operations remain available.
+
+## Amendments (2026-10-20, compact runtime instructions)
+
+Agent/Skill runtime definitions are editorially compacted with no intended
+behavior change. Each role remains independently usable through its own
+named Skill(s); Author and Worker are normally separate invocations and
+never need each other's instructions. No common runtime reference or new
+loading mechanism is introduced. The two-Skill specctl-adr-author remains
+the existing explicit exception to one-Skill pairing.
+
+Agents own inputs/trust, semantic workflow, decisions, approval boundaries
+and report requirements. Skills own the full allowed CLI surface, command
+recipes, technical transitions, errors and persisted-state verification.
+Critical boundaries can be repeated at both levels where needed for clarity.
+Descriptions route to roles; rationale, implementation history, examples and
+future work remain in design documents. Existing Full-spec pointers remain
+developer references, not runtime dependencies.
+
+The rule comparison in `architecture/docs/optimizing-rule-comparison.md`
+records retained invariants and their new locations against commit e476614.
+Validation uses static comparison plus the existing CLI/plugin tests; it
+cannot establish unchanged model behavior. Actual Agent evals, shared
+runtime-reference architecture and potential rule changes are explicitly
+tracked in `architecture/docs/backlog-optimizing.md`, outside this editorial pass.
+
+## Amendments (2026-10-20, readability review of compact instructions)
+
+The compact definitions are revised for clarity rather than further shortening.
+Descriptions explicitly state use cases and neighboring role exclusions.
+Decision-relevant reasons remain in the runtime text, particularly for claim
+timing, provenance, approval, separate verification and partial ADR replacement.
+These are explanations of the existing contracts, not new exceptions.
+
+The repeated Runtime allocation notes are removed from the role designs.
+Their common ownership and validation policy is maintained once in
+[agent-skill-guidelines.md](../agent-skill-guidelines.md). Agent workflow details
+remain in their designs and the workflow-consistency amendment above, rather
+than the additional implementation section in VISION.md. scripts/CLAUDE.md
+keeps only the origin implementation note from that added section.
+
+The backlog now lives at `architecture/docs/backlog-optimizing.md`.
+[The comparative eval plan](../evals/agent-instruction-comparison.md) defines
+routing, skill-loading, unanswered-Question, review/provenance and ADR scenarios.
+It has not been executed; CLI tests and static review do not establish unchanged
+model behavior. Further substantial compaction waits for those comparisons.

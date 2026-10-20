@@ -557,13 +557,8 @@ architecture/scripts/
                            # specctl-eigenes, leichtgewichtiges Format (design-specctl.md)
 ```
 
-## Agent workflow consistency (2026-10-20)
+## Task export provenance (2026-10-20)
 
 Task Metainfo includes optional `origin`; `rulectl tasklist` stamps and
 refreshes `rulectl:<rule-id>` on every exported Task. Existing exports gain
 the marker on re-export. Assignment remains independent of provenance.
-Question agents use a read-only `next-all` snapshot with individual claims
-in sequential mode; no change to questctl's CLI selection semantics.
-ADR agents mint one ADR per topic (including multi-Section promotion) and
-retain partially replaced ADRs while any Section still references them.
-These agent decisions are defined in the corresponding design documents.

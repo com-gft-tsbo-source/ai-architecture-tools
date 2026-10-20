@@ -11,7 +11,7 @@ project that has (or is willing to start) a `rulectl` store; not specific to
 Given a document that expresses quality guidelines (a style guide, a review
 checklist, informal notes, ...), break it into individual, `rulectl`-sized
 Rules, place each under a fitting Language/Context/Category path, and persist
-them. This is the authoring half of the rulectl workflow; a separate, future
+them. This is the authoring half of the rulectl workflow; the separate `rulectl-checker`
 Subagent (and its own wrapping Skill) covers checking a codebase against
 already-authored Rules — out of scope here.
 
@@ -329,7 +329,7 @@ the Subagent.
 ## Out of scope
 
 - Checking existing code/documents against already-authored Rules
-  (`tasklist` and everything downstream) — a separate, future Subagent.
+  (`tasklist` and everything downstream) — the separate `rulectl-checker` Subagent.
 - A pre-write approval step — deliberately not part of this workflow (see
   "Status" above).
 - A dedicated automated test/eval harness — v1 acceptance is a manual smoke

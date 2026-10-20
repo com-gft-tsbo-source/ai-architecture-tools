@@ -1,6 +1,6 @@
 ---
 name: questctl-researcher-cli
-description: Wraps the questctl CLI for the answer-research workflow — one next-all snapshot with sequential or explicit batch claiming, claiming a Question, recording the research trace (annotate, always), the synthesized answer (answer), and the confident/thin-evidence/no-evidence outcomes (info-review, set-status). Use whenever a questctl-researcher run investigates a Datenbasis and writes what it finds against open Questions. Not for authoring Questions (that's questctl-author-cli) and not for attributing existing answer text verbatim (that's questctl-checker-cli) — this Skill is for genuine synthesis, not authoring or attribution.
+description: Use when questctl-researcher needs to select open Questions, record research traces and synthesized answers, and set supported, uncertain or blocked outcomes. Not for authoring Questions, attributing passages verbatim or conducting the research itself.
 ---
 
 Full spec: `architecture/docs/skills/design-questctl-researcher-cli.md`.
@@ -11,8 +11,9 @@ The calling Agent decides research scope and evidence sufficiency.
 ## Scope and conventions
 
 - Allowed: `next-all`, `show`, `annotate`, `set-status`, `answer`, `info-review`.
-- Use the explicitly supplied `--root` for every call. Use `--json` before
-  `next-all` and `show`; parse JSON rather than human-readable output.
+- Use exactly the supplied `--root`. Put `--json` before `next-all` and
+  `show` when parsing their output. Invoke questctl from PATH through Bash;
+  no operations beyond the allow-list are permitted.
 - Exit `0` means success, `1` means error or no work. On initial
   `next-all`, `all_answered`/`awaiting_interaction` means no available work;
   `in_progress` means another run is active: defer without writes.
@@ -44,8 +45,12 @@ questctl --root <root> --json show <id>
 questctl --root <root> set-status <id> "~" --message "researching"
 ```
 
-Claims and snapshot selection are not atomic. The caller must serialize
-runs per whole `--root`, even for disjoint scopes.
+The caller must serialize runs per root, even across disjoint scopes.
+Selection and claims are separate CLI calls, so the snapshot is not a lock.
+In sequential mode, claim only after finding an answer: an in-progress
+Question closes the store-wide selection gate. Delaying the claim keeps
+that window short. A Question without an answer stays open, so calling
+`next` again would return it repeatedly; advance through the snapshot instead.
 
 ## Record the outcome
 
@@ -75,7 +80,8 @@ For a confident answer:
 questctl --root <root> set-status <id> X --message "<evidence for confidence>"
 ```
 
-For thin or ambiguous evidence, set review before transitioning:
+For thin or ambiguous evidence, set review before transitioning. The status
+validator uses the current review value to determine the permitted path:
 
 ```
 questctl --root <root> info-review <id> user
@@ -86,15 +92,16 @@ Never fabricate an answer to close a Question. Evidence sufficiency and uncertai
 
 ## Errors and verification
 
-Stop on an initial snapshot error or malformed output before writing.
-A failed claim permits no answer or further mutation of that Question.
-For a per-Question failure before claiming, report it and advance once.
+If the initial snapshot command fails or returns malformed output, stop
+before writing. If a claim fails, do not answer or further mutate that
+Question. For other item failures before claiming, report the failure and
+advance once to the next snapshot ID.
 After a successful claim, try to resolve a write failure to `[B]` with its
 reason. If that fails too, stop processing further IDs and report the
 unfinished claims and unvisited IDs; never label a failed write successful.
 
-Snapshot exhaustion ends the run normally, even with Questions still open.
-Re-read every touched ID with `show` and report actual status, answer,
-errors, skipped conflicts, and the stop reason. Never infer `all_answered`
-from snapshot exhaustion. Other than reading/searching the supplied
-bounded Datenbasis (no live web search), source handling belongs to the Agent.
+When the snapshot is exhausted or the run stops with an error, use show
+for every touched ID. Report actual status and Answer, errors, conflicts
+and the stop reason. Exhausting the snapshot does not imply all_answered.
+The Agent is responsible for reading and searching the supplied
+bounded Datenbasis; this workflow does not permit live web research.

@@ -8,7 +8,7 @@ to do that correctly for the task-authoring workflow: creating and
 extending a Task list. Companion to `taskctl-worker-cli`, which works the
 Tasks this Skill creates and changes their Status accordingly — the two
 Skills' command surfaces are disjoint by design (see "Out of scope"), and
-their future Subagents never call each other's `taskctl` commands.
+their Subagents never call each other's `taskctl` commands.
 
 ## Scope
 
@@ -158,7 +158,7 @@ taskctl --root <root> delete <id>
   working a Task list.
 - Judging whether a candidate Task duplicates or overlaps an existing one,
   how to break a larger goal into Tasks, or how to structure a Phase
-  breakdown — workflow judgment for the future `taskctl-author` Subagent,
+  breakdown — workflow judgment for the `taskctl-author` Subagent,
   not something this Skill prescribes (mirrors `rulectl-author-cli`'s own
   "purely a CLI-contract reference" stance).
 - Working the Task list itself (deciding what "done" means for a given

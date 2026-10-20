@@ -10,7 +10,7 @@ CRUD over a document's still-`draft` content. Companion to
 which covers the narrower, ADR-gated subset of `specctl` that
 `specctl-adr-author` uses for `stable` content instead — the two Skills'
 command surfaces overlap only where the underlying CLI genuinely has no
-narrower equivalent (`show`/`list`), and neither Skill's future Subagent
+narrower equivalent (`show`/`list`), and neither Skill's Subagent
 calls the other's exclusive commands.
 
 ## Scope
