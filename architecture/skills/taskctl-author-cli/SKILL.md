@@ -117,3 +117,10 @@ taskctl --root <root> delete <id>
   ID from content each time.
 - **Any other failure**: report the stderr text as-is for that one item,
   and move on to the next Task/Phase rather than stopping the run.
+
+## Producer provenance
+
+Ordinary authored Tasks leave `origin` unset, including Tasks assigned to
+`agent` or `tool`. `origin=rulectl:<rule-id>` is reserved for `rulectl tasklist`
+exports and routes those Tasks to `rulectl-checker`. Never fabricate this
+marker while authoring or infer it from an assignment or source document.

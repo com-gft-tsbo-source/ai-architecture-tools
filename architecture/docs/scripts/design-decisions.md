@@ -818,3 +818,25 @@ documentation gaps:
 - **Clarified, not a defect**: `specctl set-description` writes no History
   entry — by design (design-specctl.md, "History": content changes are not
   logged; from `stable` on the trail lives in the ADR).
+
+## Amendments (2026-10-20, agent workflow consistency)
+
+Question processors select one read-only `next-all` snapshot in both modes.
+Sequential processing claims only answerable Questions individually; no-match
+Questions stay open without preventing progress to later snapshot IDs.
+Batch claiming remains explicit and scoped. Runs must be serialized per root.
+
+Task Metainfo gains optional `origin`, distinct from source documents and
+assignment. Rule exports stamp/refresh `rulectl:<rule-id>`; assignment alone
+cannot distinguish an exported compliance check from ordinary agent work.
+Legacy exports need re-export before worker use. Review requirements are
+preserved unless the user explicitly instructs otherwise; remote-action gates
+remain mandatory.
+
+ADR creation is per coherent topic for both promotion and revision. New
+records document partial replacements; an old ADR remains accepted until no
+Section references it. Verify the topic before retiring old ADRs; a failed
+reference query never counts as an empty one. The single-valued
+`superseded-by` points at the final replacement; earlier partial replacements
+remain recorded in their respective ADRs. These are agent-level lifecycle
+rules; general manual CLI status operations remain available.

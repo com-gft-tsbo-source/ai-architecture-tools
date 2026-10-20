@@ -136,7 +136,10 @@ def _tool_description(rule: ObjectRecord, tool: str, tool_rule: str) -> str:
 
 def _export_rule(taskctl_store: Store, rule: ObjectRecord, phase_path: list[str]) -> ObjectRecord:
     assignee_type, assignee_name, description = _map_fields(rule)
-    metainfo = {"assignee-type": assignee_type, "assignee-name": assignee_name}
+    metainfo = {
+        "assignee-type": assignee_type, "assignee-name": assignee_name,
+        "origin": f"rulectl:{rule.object_id}",
+    }
 
     try:
         existing = taskctl_store.get(rule.object_id)

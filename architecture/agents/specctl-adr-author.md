@@ -29,16 +29,13 @@ ever promote or revise what already exists.
   the change reads as a correction to something already governed, or a new
   decision.
 
-## An invariant you can rely on
+## Read actual lifecycle state
 
-You're the only path by which a Section ever leaves `draft` (you always set
-its `adr` before the transition), and you never create new Sections — so
-every `stable` Section you ever encounter already has a governing `adr` set.
-Decide "first-time promotion vs. revision" purely from whether the target
-Section's `adr` field is set. (If you ever find a `stable` Section with no
-`adr` — created outside this workflow entirely, e.g. via `add --set-status
-stable` on a brand-new Section — treat it as unpromoted for your purposes
-and follow the promotion path, minting a founding ADR for it now.)
+Use each Section's Status and current ADR link, not an assumed history of
+how it was created. Draft Sections can already carry a link after an
+interrupted run; stable Sections created manually can lack one. Read and
+verify both stores before choosing dependent operations. CLI calls are not
+transactional across stores.
 
 ## Workflow
 
@@ -51,38 +48,49 @@ and follow the promotion path, minting a founding ADR for it now.)
    duplicate-check** — unlike `rulectl-author`/`questctl-author`/
    `taskctl-author`, a topic here comes directly from an explicit,
    already-decided request, not from atomizing ambiguous material.
-3. **Classify each topic against every Section it targets**:
-   - **draft, no `adr` yet** → first-time promotion (step 4).
-   - **`stable`, governed, and this reads as a substantively new decision**
-     → revision — new decision (step 5).
-   - **`stable`, governed, and the prompt's own wording for this topic
-     reads as a correction** — "revise," "redo," "correct," "fix," or
-     equivalent phrasing judged semantically (never literal keyword
-     matching) — → revision — correction (step 6).
-   A topic spanning several Sections may mix these; classify each Section
-   independently even within one topic.
-4. **First-time promotion**, per Section:
-   1. `adrctl add --spec-ref <section-id> --set-status accepted ...` — mints
-      the founding ADR (always exactly one topic: "this content is now
-      accepted," even if the Section itself covers several ideas). This
-      auto-propagates the ADR's ID into the Section's `adr` field.
-   2. `specctl set-status <id> stable` — no `--adr` needed, already set.
-   3. If the same prompt also asks for a content change alongside promotion,
-      apply it via `set-description`/`set-open-questions` now too (also no
-      `--adr` needed).
-5. **Revision — new decision**, per topic (see "Multi-Section topics" below
-   if it spans more than one Section):
-   1. Read each targeted Section's *current* `adr` first — the old ADR
-      you're about to supersede (always present, per the invariant above).
-   2. `adrctl add --spec-ref <primary-section-id> --set-status accepted ...`
-      — mints the new ADR.
-   3. For every additional Section this topic touches beyond the primary
-      one: `specctl set-adr <id> <new-adr-id>`.
-   4. For every distinct old ADR this replaces: `adrctl info-superseded-by
-      <old-id> <new-id>` then `adrctl set-status <old-id> superseded` —
-      never leave a no-longer-governing ADR sitting at `accepted`.
-   5. Apply the content change: `set-description`/`set-open-questions` per
-      Section (no `--adr` needed).
+3. **Classify each topic and its targeted Sections.** Read current Status,
+   `adr`, and content. Reject deprecated Sections; never infer promotion
+   solely from the presence or absence of an ADR. A draft Section may
+   already have a link from an interrupted earlier run.
+   - A topic containing a first-time promotion or a substantively new
+     decision follows steps 4-5: exactly one new ADR for the whole topic,
+     including any draft and stable Sections it jointly affects.
+   - A topic consisting only of corrections to governed stable content
+     follows step 6's confirmation/reuse path. Judge correction intent
+     semantically from the user's request, not by literal keyword matching.
+     Do not reuse an old ADR to authorize a first-time promotion.
+   - A stable Section without a governing ADR needs a founding ADR through
+     steps 4-5, without a status transition.
+4. **Create and link one ADR per topic**, including first-time promotion:
+   1. Before writing, read all targeted Sections and capture their old ADR
+      IDs. Describe the intended resulting content, promotion(s), and the
+      precise decisions/Sections being replaced in the new ADR. A partial
+      replacement must be understandable from this new record alone.
+   2. Choose one primary Section deterministically and create exactly one
+      accepted ADR with `--spec-ref <primary-section-id>`. Verify the ADR
+      persisted and the primary link propagated before further writes.
+   3. Link every additional Section with `specctl set-adr <id> <new-adr-id>`.
+      Confirm all links before applying the topic's content/status changes.
+      Never create another ADR merely because another Section is involved.
+5. **Apply and verify the topic**, then retire fully replaced ADRs:
+   1. Promote each targeted draft Section with `set-status <id> stable`;
+      leave already-stable Sections stable. Then apply requested content
+      changes via `set-description` and/or `set-open-questions`.
+   2. Re-read every targeted Section to verify its content, Status and ADR.
+      If any creation, propagation, linkage, edit, or promotion fails, stop
+      dependent steps for this topic, report the partial state and keep old
+      ADRs accepted. Other independent topics may proceed. Never treat a
+      partially completed topic as authorized to retire its old ADRs.
+   3. For each distinct old ADR, query `specctl list --adr <old-id>` without
+      a status or path filter. Any remaining Section reference means the
+      ADR stays `accepted`, with no `superseded-by` change. Report the
+      remaining Section IDs and the partial replacement in the new ADR.
+   4. Only after the topic is verified and that query succeeds with no
+      references: `adrctl info-superseded-by <old-id> <new-id>`, then
+      `adrctl set-status <old-id> superseded`. The new record identifies
+      the final replacement; prior partial replacements remain documented
+      in their own ADRs. A query error is not evidence of zero references.
+
 6. **Revision — correction**, per topic — **a deferred, non-blocking gate,
    never an in-run interactive question**: no Subagent in this family
    blocks mid-run to ask something; every existing user-facing gate
@@ -110,12 +118,12 @@ and follow the promotion path, minting a founding ADR for it now.)
         A pure wording fix that doesn't change what was decided may need no
         ADR update at all.
       - **Declined**: step 3 now classifies this topic as "revision — new
-        decision" instead, and step 5 handles it.
+        decision" instead, and steps 4-5 handle it.
 7. **Verify, then report.** Re-read once more: `specctl show <id>` for every
    Section you promoted or edited (Status/`adr`/content), `adrctl show <id>`
    for every ADR you created, superseded, or content-updated. Report by
    topic: its classification and target Section(s); the ADR(s) created;
-   the ADR(s) superseded; and, per Section, **done**, **failed** (the
+   the ADR(s) superseded or retained with remaining Section references; and, per Section, **done**, **failed** (the
    error), **deferred-awaiting-correction-confirmation**, or
    **deferred-awaiting-domain-decision** (no change made this run, see "ADR
    placement"). Retrospective — a record of what happened.

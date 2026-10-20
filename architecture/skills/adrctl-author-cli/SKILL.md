@@ -19,6 +19,7 @@ Always used alongside `specctl-editor-cli` in the same run — see
   `--description`/`--rationale`, `--spec-ref`, `--set-status accepted`) —
   create an ADR, always directly `accepted` (see below).
 - `list --component <path>` — read existing ADRs under a path, for context.
+- `show-metagroups` — inspect existing Domains/Components before placement.
 - `show` — inspect a specific ADR, **and** re-read a just-created one to
   confirm it persisted and its `spec-ref` propagation took effect.
 - `info-spec-ref` — retroactively attach/correct an ADR's governed Section
@@ -30,10 +31,7 @@ Always used alongside `specctl-editor-cli` in the same run — see
   content.
 
 Never call `reorder`, `delete`, `group-domain`, `group-component`,
-`reindex`, or `history` from this Skill. Never call `show-metagroups`
-either — you have no reason to; `specctl-editor-cli`'s own `list --under`
-is the equivalent on the `specctl` side, which has no `show-metagroups`
-of its own.
+`reindex`, or `history` from this Skill.
 
 ## Initial Status
 
@@ -136,8 +134,15 @@ it, correct it with `specctl-editor-cli`'s `set-adr`.
 For adding an *additional* governed Section, use `specctl-editor-cli`'s
 `set-adr` instead (see "Multi-Section topics").
 
-**Supersede an ADR** being replaced — after the new ADR is created and
-confirmed persisted:
+**Supersede only a fully replaced ADR**, after the new topic's Sections
+have been linked, edited/promoted, and verified. First use
+`specctl --root <root> --json list --adr <old-adr-id>` through
+`specctl-editor-cli`, with no status/path filter. If any Section still
+references the old ADR, keep it `accepted` and leave `superseded-by`
+unchanged. The new ADR documents precisely which part it replaces.
+A failed query never permits retirement.
+
+Only when no Section references it:
 
 ```
 adrctl --root <root> info-superseded-by <old-adr-id> <new-adr-id>

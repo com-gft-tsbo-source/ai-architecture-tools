@@ -22,7 +22,8 @@ exists or is being created in the same run:
   pass `deprecated`, and never pass `--force` (a `stable`→`draft` rework) —
   both are manual, human-only, outside this workflow entirely.
 - `set-description`, `set-open-questions` (each with optional `--adr <id>`)
-  — change a `stable` Section's content once its governing ADR exists.
+  — change stable content after its topic's ADR is linked and any requested
+  promotion has succeeded.
 - `set-adr <id> <value>` — the manual linkage command, used for its
   documented purpose extended to one concrete case: attaching an
   already-minted ADR to an **additional** Section a topic touches, beyond
@@ -49,10 +50,13 @@ Before deciding promotion vs. revision:
 specctl --root <root> --json show <id>
 ```
 
-- `status: draft`, `adr` null → first-time promotion.
-- `status: stable`, `adr` present → revision (every `stable` Section this
-  workflow reaches already has an `adr` set, since promotion through this
-  same Skill is the only way one ever gets there).
+- `status: draft` → first-time promotion, even if an ADR is already linked
+  after an interrupted operation. Read that ADR before taking further action.
+- `status: stable`, `adr` present → revision.
+- `status: stable`, `adr` absent → create a founding ADR; do not change Status.
+- `status: deprecated` → outside this workflow; no write.
+
+The Agent groups all Sections by coherent topic before minting an ADR.
 
 ## Conventions
 
@@ -133,3 +137,15 @@ Creating, renaming, restructuring, or deleting Sections; `deprecated` and
 `stable`→`draft` rework; judging correction-vs-new-decision or topic
 boundaries or the confirmation gate — all workflow judgment in
 `design-specctl-adr-author.md`, not something this Skill prescribes.
+
+## Checking remaining governance before ADR retirement
+
+```
+specctl --root <root> --json list --adr <old-adr-id>
+```
+
+Do not add a status/path filter: every remaining reference counts.
+A nonempty result keeps the old ADR `accepted`; only an empty successful
+result after verified completion of the new topic permits superseding it.
+Topic grouping applies equally to promotion and revision: one ADR may
+link several draft/stable Sections before their content/status changes.

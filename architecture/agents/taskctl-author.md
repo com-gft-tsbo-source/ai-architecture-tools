@@ -231,3 +231,10 @@ Never pass `--set-status` — freshly planned work hasn't started.
 - Anything `taskctl-author-cli` doesn't cover — needing a `taskctl`
   operation it doesn't document is a gap in the Skill, not something to
   route around ad hoc.
+
+## Producer provenance
+
+Ordinary authored Tasks leave `origin` unset, including Tasks assigned to
+`agent` or `tool`. `origin=rulectl:<rule-id>` is reserved for `rulectl tasklist`
+exports and routes those Tasks to `rulectl-checker`. Never fabricate this
+marker while authoring or infer it from an assignment or source document.

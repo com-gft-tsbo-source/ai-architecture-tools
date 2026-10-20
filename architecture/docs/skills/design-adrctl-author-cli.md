@@ -174,16 +174,20 @@ The previously referenced Section keeps its `adr` pointing at this ADR —
 only the ADR side changes; correct that Section via `set-adr` if it should
 no longer be governed by it.
 
-**Superseding an ADR** being replaced by a new one (revision path, not a
-correction — `design-specctl-adr-author.md`, step 5):
+**Supersede only a fully replaced ADR**, after the new topic's Sections
+have been linked, edited/promoted, and verified. First use
+`specctl --root <root> --json list --adr <old-adr-id>` through
+`specctl-editor-cli`, with no status/path filter. If any Section still
+references the old ADR, keep it `accepted` and leave `superseded-by`
+unchanged. The new ADR documents precisely which part it replaces.
+A failed query never permits retirement.
+
+Only when no Section references it:
 
 ```
 adrctl --root <root> info-superseded-by <old-adr-id> <new-adr-id>
 adrctl --root <root> set-status <old-adr-id> superseded
 ```
-
-Do this *after* the new ADR has been created and confirmed persisted, using
-its now-known ID.
 
 **Updating an existing ADR's own content** (the intent-classified
 "correction" case — reusing an ADR rather than creating a new one, only

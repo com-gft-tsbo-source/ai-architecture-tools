@@ -163,3 +163,10 @@ taskctl --root <root> delete <id>
   "purely a CLI-contract reference" stance).
 - Working the Task list itself (deciding what "done" means for a given
   Task's described work) — `taskctl-worker-cli`'s job.
+
+## Producer provenance
+
+Ordinary authored Tasks leave `origin` unset, including Tasks assigned to
+`agent` or `tool`. `origin=rulectl:<rule-id>` is reserved for `rulectl tasklist`
+exports and routes those Tasks to `rulectl-checker`. Never fabricate this
+marker while authoring or infer it from an assignment or source document.

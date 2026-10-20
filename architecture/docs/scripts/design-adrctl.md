@@ -41,3 +41,12 @@ adrctl adds no operations beyond the general model in design.md — unlike rulec
 - `Rationale`
 
 Each block may contain Markdown and is stored with a `> ` prefix per line.
+
+## Agent-managed partial replacement
+
+`specctl-adr-author` keeps an ADR `accepted` while any Section still refers
+to it (`specctl list --adr <id>`, unfiltered). Each new ADR documents the
+Sections/decisions it replaces. Only after verified topic completion and
+zero remaining references does the agent set `superseded-by` to the final
+replacement ADR and mark the old ADR `superseded`. This workflow rule adds
+no new status or CLI restriction to manual ADR management.

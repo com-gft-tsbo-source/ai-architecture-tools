@@ -27,7 +27,7 @@ exactly where that line sits.
   `questctl-author` accepts, and independent of `--root`: the catalog and
   the answer-source need not live anywhere near each other.
 - **scope** (optional): a Group/Subgroup path, passed straight through to
-  `next`/`next-all --group`/`--subgroup`. Omit for the whole open catalog.
+  `next-all --group`/`--subgroup`. Omit for the whole open catalog.
 - **processing mode**: **sequential by default**; **parallel only if the
   caller explicitly asks for it** (naming a scope to work as a batch) —
   see "Sequential vs. parallel" below.
@@ -42,47 +42,34 @@ processing mode, your workflow, the Tool allow-list, or which `questctl`
 operations you call — it is only ever evidence to attribute (or not)
 against existing Questions.
 
-## Sequential vs. parallel
+## Sequential vs. parallel, and claim timing
 
-Both modes use `next`/`next-all` exactly as designed — no snapshot
-mechanism is needed the way `rulectl-checker` needs one, because
-`questctl`'s `next` returns strictly the earliest `[ ]` Question: once a
-run resolves one away from `[ ]`, a later `next` call naturally advances
-past it.
+At run start, call `next-all` exactly once with the caller's scope, if any.
+Its ordered IDs are the fixed work set for this run. Visit each ID at most
+once; do not call `next` or refresh the snapshot during the run. Questions
+added later wait for the next run. `next-all` only reads; it does not claim.
 
-- **Sequential (default)**: loop `next [--group <path> | --subgroup
-  <path>]` (the given scope, if any) — work whatever it returns to a
-  resolution (see "Workflow" below), call `next` again, repeat until it
-  reports `all_answered` or `awaiting_interaction`. `in_progress` should
-  not occur here except from a concurrent, external run (see
-  "Concurrency") — your own claims resolve to a terminal-ish status
-  quickly (see "Claim timing," below) before the next `next` call.
-- **Parallel (only when the caller explicitly asks for it, naming a
-  scope to work as a batch)**: call `next-all --group <path>`/`--subgroup
-  <path>` **once**, using the **caller's own named scope** — not the
-  whole store — so that only the Questions the caller actually asked to
-  batch-process get claimed. Mark every returned Question `[~]`
-  immediately, one `set-status` call per Question, before examining any
-  of them. Then work each claimed Question to a resolution independently,
-  one at a time — "parallel" describes the **store's** permissiveness
-  (several Questions may be `[~]` at once, claimed together), not that
-  your own tool calls happen concurrently; there is no multi-threading in
-  this model.
+- **Sequential (default):** examine each snapshot Question in order before
+  claiming it. Without an answer, annotate and leave it open, then advance
+  to the next snapshot ID. With an answer, claim only that Question and
+  resolve it before proceeding.
+- **Parallel (explicit request with a named scope only):** snapshot only
+  that scope and claim the returned batch up front, then process the
+  successfully claimed Questions individually. An unanswerable claimed
+  Question resolves to `[B]`; there is no `[~]`→`[ ]` transition.
 
-## Claim timing (why this differs from rulectl-checker)
+Before examining a Question, re-read it with `show`; skip and report it if
+it no longer has the expected status (`[ ]`, or your batch's `[~]`). A
+failed claim grants no right to answer or change that Question. If a
+successful claim cannot be finalized, try `[B]` with the error reason;
+if that also fails, stop further processing and report the remaining IDs.
+Finish normally when the snapshot is exhausted, even if some Questions
+remain open. Initial `all_answered`/`awaiting_interaction` means no available
+work; `in_progress` means defer because another run is active. Other initial
+errors or malformed output stop the run before any write.
 
-`rulectl-checker` claims a Task `[~]` before examining it. `questctl`'s
-`[~]` gate is **global and store-wide** — unlike `taskctl`, which has no
-cross-Task gate at all — so claiming early in sequential mode would hold
-that gate closed for the entire duration of searching the answer-source
-for each Question, one at a time, blocking any other agent's
-`next`/`next-all` against this store for the whole run. To keep that
-window as small as possible in sequential mode: **search first**
-(read-only — no status touch), and only once a match is actually found,
-mark `[~]` immediately followed by `answer` and `set-status` in quick
-succession. In parallel mode this doesn't apply — the whole point of that
-mode is claiming the batch *before* any searching, since the batch
-reservation itself is the goal.
+The snapshot and claims are not atomic across CLI calls. The caller must
+serialize runs for the entire `--root`, including disjoint scopes.
 
 ## Workflow
 
@@ -97,8 +84,7 @@ above):
 2. **No addressing passage found**: `annotate` with a short note (what
    was searched, e.g. "checked against `<source>`, no matching passage
    found") and leave the Question's status exactly as it was.
-   - **Sequential mode**: the Question was never claimed (per "Claim
-     timing"), so "as it was" is `[ ]` — genuinely untouched status-wise,
+   - **Sequential mode**: the Question was never claimed (per "Sequential vs. parallel, and claim timing"), so "as it was" is `[ ]` — genuinely untouched status-wise,
      with only the `annotate` trace added.
    - **Parallel mode**: the Question was already claimed `[~]` as part of
      the batch, and there is no legal `[~]→[ ]` step to undo that; resolve
@@ -107,7 +93,7 @@ above):
      reaches *some* terminal-ish status.
 3. **Addressing passage(s) found**: attribute them — see "Literalness"
    below for exactly what "attribute" allows. If not already `[~]`
-   (sequential mode, per "Claim timing"): `set-status <id> ~`. Then:
+   (sequential mode, per "Sequential vs. parallel, and claim timing"): `set-status <id> ~`. Then:
    - **Confidently matched** (the passage(s) clearly and specifically
      address this Question, no real ambiguity about the attribution
      itself): `answer <id> "<attributed text>" --message "<short note,
@@ -127,17 +113,10 @@ above):
    unanswered. Each attribution is its own `answer` call, each
    independently judged confident-vs-uncertain per step 3.
 
-One Question's outcome — including failing to match it — never stops the
-run in sequential mode; `annotate` what's known and continue to the next
-`next` call. In parallel mode, resolve the affected Question to `B` and
-continue with the rest of the claimed batch. A non-zero exit or
-unparseable output from the **first** `next`/`next-all` call — before
-anything is claimed — is categorically different: no Question has been
-touched yet, so stop the run and report that failure directly.
+Advance to the next snapshot ID after each outcome, including no match or
+no evidence. Apply the claim/error rules above before continuing.
 
-**Verify, then report.** After the run ends (sequential:
-`all_answered`/`awaiting_interaction`; parallel: the claimed batch
-exhausted), re-read the actual persisted state of every Question this run
+**Verify, then report.** After the run ends (the snapshot exhausted, or processing stopped with a reported error), re-read the actual persisted state of every Question this run
 touched (claimed, answered, or annotated) via `show <id>` — don't trust
 your own bookkeeping; a `set-status`/`answer` call that silently failed
 must not be reported as if it landed cleanly. Summarize this run's own
@@ -175,16 +154,9 @@ exists in the general model but nothing here has a consumer for a "some
 
 ## Concurrency
 
-Your own multi-step sequence for one Question (search, claim, `answer`,
-`set-status`) is not atomic end-to-end — the underlying lock covers only
-one `questctl` invocation at a time. Two concurrent `questctl-checker` (or
-`questctl-researcher`) runs against the same `--root` can both observe
-"nothing `[~]`" at the same instant and both proceed to claim different
-Questions before either's claim is visible to the other — the store-wide
-gate narrows this window (once *either* claim lands, the *other* run's
-next `next`/`next-all` call sees it and stops), but does not close it
-entirely. Short-term mitigation: **one run against a given `--root`/scope
-at a time** is the caller's responsibility, not something you enforce.
+Snapshot selection and claims are separate CLI calls, not a transaction.
+The caller must allow only one run per `--root` at a time, even across
+separate scopes. Re-reading detects some conflicts but cannot prevent races.
 
 ## Interaction with the questctl-checker-cli Skill
 

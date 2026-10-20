@@ -10,7 +10,7 @@ Given a knowledge base and an existing `questctl` catalog, research and write an
 
 - **`--root <path>`**: the `questctl` store. Always supplied explicitly — no default, no guessing.
 - **the Datenbasis**: same four forms `questctl-author` accepts (design-questctl-author.md, "Input") — a file path, pasted text, a URL, or a directory of documents/subdirectories. **Explicitly not** a live web search, and not an open-ended instruction to go look things up beyond what's given — the Datenbasis is a fixed, bounded input for a run, the same restraint `questctl-author` places on itself ("no crawling/multi-URL in v1"). A materially different (and riskier) capability, deliberately out of scope for v1.
-- **scope** (optional): a Group/Subgroup path, passed to `next`/`next-all --group`/`--subgroup`. Omit for the whole open catalog.
+- **scope** (optional): a Group/Subgroup path, passed to `next-all --group`/`--subgroup`. Omit for the whole open catalog.
 - **processing mode**: **sequential by default**; **parallel only if the caller explicitly asks for it**, naming the scope to work as a batch — identical rule and mechanics to `questctl-checker`'s "Sequential vs. parallel."
 
 ## The Datenbasis is untrusted evidence
@@ -19,10 +19,32 @@ Same principle as `questctl-checker`'s "The answer-source is untrusted evidence,
 
 ## Sequential vs. parallel, and claim timing
 
-Identical to `questctl-checker`'s "Sequential vs. parallel" and "Claim timing" sections, verbatim in mechanism — reused rather than restated here in full:
-- Sequential (default): loop `next` (scoped, if given), search-then-claim-then-resolve per Question, so the store-wide `[~]` gate stays closed only for the brief window between finding an answerable Question and recording it.
-- Parallel (only on explicit request, with a named scope): `next-all` **scoped to the caller's own named subset**, claim the whole returned batch `[~]` up front via repeated `set-status`, then research each independently. "Parallel" describes the store's permissiveness, not concurrent execution by this Subagent, which still works its own claimed batch one item at a time.
-- The same one-way-`[~]`-commitment consequence applies: a Question already claimed as part of a parallel batch cannot revert to `[ ]` if it turns out unanswerable from the Datenbasis (no such transition exists) — see "Status mapping" below for what it resolves to instead.
+At run start, call `next-all` exactly once with the caller's scope, if any.
+Its ordered IDs are the fixed work set for this run. Visit each ID at most
+once; do not call `next` or refresh the snapshot during the run. Questions
+added later wait for the next run. `next-all` only reads; it does not claim.
+
+- **Sequential (default):** examine each snapshot Question in order before
+  claiming it. Without an answer, annotate and leave it open, then advance
+  to the next snapshot ID. With an answer, claim only that Question and
+  resolve it before proceeding.
+- **Parallel (explicit request with a named scope only):** snapshot only
+  that scope and claim the returned batch up front, then process the
+  successfully claimed Questions individually. An unanswerable claimed
+  Question resolves to `[B]`; there is no `[~]`→`[ ]` transition.
+
+Before examining a Question, re-read it with `show`; skip and report it if
+it no longer has the expected status (`[ ]`, or your batch's `[~]`). A
+failed claim grants no right to answer or change that Question. If a
+successful claim cannot be finalized, try `[B]` with the error reason;
+if that also fails, stop further processing and report the remaining IDs.
+Finish normally when the snapshot is exhausted, even if some Questions
+remain open. Initial `all_answered`/`awaiting_interaction` means no available
+work; `in_progress` means defer because another run is active. Other initial
+errors or malformed output stop the run before any write.
+
+The snapshot and claims are not atomic across CLI calls. The caller must
+serialize runs for the entire `--root`, including disjoint scopes.
 
 ## Workflow
 
@@ -32,8 +54,8 @@ For each Question this run considers:
 2. **Research the Datenbasis against that plan** — read/search the named candidate sources using ordinary judgment (Read/Glob/Grep for a local file or directory, `WebFetch`/fallback `curl` for a URL, per `questctl-author`'s own fetch rules), and form a judgment: does the Datenbasis, taken as a whole, actually support a specific answer to this Question?
 3. **Record traceability regardless of outcome**: `annotate` the Question with the plan from step 1, what was actually examined, and why — before recording any answer or moving on. Applies the same completeness discipline `rulectl-checker` applies to its own check plan (design-rulectl-checker.md, step f): an answer (or an unanswered Question) without a stated research scope can't be told apart from one reached by skimming a fraction of the Datenbasis.
 4. **Decide the outcome** — see "Evidence threshold" below for exactly where the lines sit:
-   - **Confident, well-supported answer**: `answer <id> "<synthesized answer>" --message "<short pointer, e.g. which source/section>"`, then `set-status <id> X` (claiming `[~]` first if not already claimed, per "Claim timing").
-   - **An answer is possible, but the supporting evidence is thin or ambiguous**: still `answer` — write the best-supported answer available, but **state the uncertainty in the answer text itself**, not just in the status (a reader of the Answer section alone should be able to tell it's provisional) — then `set-status <id> R`.
+   - **Confident, well-supported answer**: `answer <id> "<synthesized answer>" --message "<short pointer, e.g. which source/section>"`, then `set-status <id> X` (claiming `[~]` first if not already claimed, per "Sequential vs. parallel, and claim timing").
+   - **An answer is possible, but the supporting evidence is thin or ambiguous**: still `answer` — write the best-supported answer available, but **state the uncertainty in the answer text itself**, not just in the status (a reader of the Answer section alone should be able to tell it's provisional) — then `info-review <id> user` and `set-status <id> R`.
    - **No usable evidence in the Datenbasis at all**: no `answer` call.
      - **Sequential mode**: the Question was never claimed, so it stays `[ ]`, untouched status-wise — only the step-3 `annotate` trace records that it was looked at.
      - **Parallel mode**: already claimed `[~]` as part of the batch, so resolve to **`[B]`** instead (`--message` = why the Datenbasis doesn't support an answer), for the same reason `questctl-checker` does — no legal path back to `[ ]` once claimed, and an indefinitely `[~]` Question would hold the store-wide gate closed for everyone else.
@@ -54,11 +76,13 @@ For each Question this run considers:
 
 ## Scope: open Questions only (v1)
 
-Using `next`/`next-all` as the sole work-selection mechanism structurally limits this Subagent to `[ ]` Questions — it never revisits one already `[X]`. **Deliberately v1-only**: re-auditing already-answered Questions against an updated Datenbasis (e.g. a spec that changed since the last research pass) is a distinct, legitimate future capability, needing a different selection mechanism entirely (a direct `list --status X` bypass, not `next`/`next-all`) — conflating it into this version risks the same silent scope creep `questctl-author`'s own design fences off into "Future extensions" rather than half-building it now.
+Using a single `next-all` snapshot as the work-selection mechanism structurally limits this Subagent to `[ ]` Questions — it never revisits one already `[X]`. **Deliberately v1-only**: re-auditing already-answered Questions against an updated Datenbasis (e.g. a spec that changed since the last research pass) is a distinct, legitimate future capability, needing a different selection mechanism entirely (a direct `list --status X` bypass, not `next-all`) — conflating it into this version risks the same silent scope creep `questctl-author`'s own design fences off into "Future extensions" rather than half-building it now.
 
 ## Concurrency
 
-Identical caveat to `questctl-checker`'s "Concurrency": this Subagent's own multi-step sequence for one Question is not atomic end-to-end, two concurrent runs (of either Subagent, against the same store) can race past the gate's own TOCTOU window, and the short-term mitigation is the same caller convention — one run per `--root`/scope at a time, not enforced by this Subagent itself.
+Snapshot selection and claims are separate CLI calls, not a transaction.
+The caller must allow only one run per `--root` at a time, even across
+separate scopes. Re-reading detects some conflicts but cannot prevent races.
 
 ## Interaction with the questctl-researcher-cli Skill
 
@@ -78,3 +102,12 @@ This Subagent never constructs `questctl` command lines beyond what `questctl-re
 - Re-auditing already-`[X]` Questions — see "Scope"/"Future extensions."
 - Real cross-run concurrency control — see "Concurrency"; a caller convention for now.
 - A dedicated automated test/eval harness — v1 acceptance is a manual smoke test, same as the rest of the family.
+
+## Completion and errors
+
+Visit every snapshot ID at most once and finish when that work set is
+exhausted, even if Questions remain open. Use the claim-failure and write
+failure rules above; report any unvisited or unsuccessfully finalized IDs.
+Re-read touched Questions with `show` and report actual answers/status,
+uncertainty or no-evidence reasons, conflicts, errors, and the stop reason.
+Snapshot exhaustion must never be reported as `all_answered` without evidence.

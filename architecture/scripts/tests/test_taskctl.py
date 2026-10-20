@@ -16,6 +16,34 @@ def run(argv):
 
 
 class TestEndToEnd(unittest.TestCase):
+    def test_origin_cli_round_trip_and_assignment_independence(self):
+        for store_name in ("tasks", "tasks.md"):
+            with self.subTest(store=store_name), tempfile.TemporaryDirectory() as tmp:
+                root = str(Path(tmp) / store_name)
+                code, out, err = run([
+                    "--root", root, "--json", "add", "--name", "Ordinary work",
+                    "--assignee-type", "agent", "--source", "design.md",
+                ])
+                self.assertEqual(code, 0, err)
+                ordinary = json.loads(out)
+                self.assertFalse(ordinary["metainfo"].get("origin"))
+                code, out, err = run([
+                    "--root", root, "--json", "add", "--name", "Exported check",
+                    "--assignee-type", "agent", "--origin", "rulectl:rule01",
+                ])
+                self.assertEqual(code, 0, err)
+                exported_id = json.loads(out)["id"]
+                code, out, err = run([
+                    "--root", root, "--json", "list", "--origin", "rulectl:rule01",
+                ])
+                self.assertEqual(code, 0, err)
+                self.assertEqual([record["id"] for record in json.loads(out)], [exported_id])
+                code, _, err = run(["--root", root, "info-origin", exported_id, "rulectl:rule02"])
+                self.assertEqual(code, 0, err)
+                code, out, err = run(["--root", root, "--json", "show", exported_id])
+                self.assertEqual(code, 0, err)
+                self.assertEqual(json.loads(out)["metainfo"]["origin"], "rulectl:rule02")
+
     def _fresh_root(self, tmp) -> str:
         root = str(Path(tmp) / "tasks")
         run(["--root", root, "add-phase", "001-Setup"])

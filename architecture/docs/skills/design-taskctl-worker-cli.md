@@ -31,7 +31,7 @@ is no upstream export step to run first.
 - `show` — read a Task's actual persisted state: to pick up context when
   resuming an already-`[~]` Task, and to verify the real outcome at the
   end of a run.
-- `info-review` — but **only** to escalate or de-escalate a Task's review
+- `info-review` — but **only** to escalate or, on explicit user instruction, de-escalate a Task's review
   requirement immediately before the matching `set-status` call (see
   "Recipes"), never to reassign a Task.
 
@@ -157,12 +157,15 @@ Task's effective forward path (the transition check reads `review` at the
 moment of `set-status`, not a value fixed at creation), making the
 escalating step normal, no `--force` needed.
 
-De-escalation is the same mechanism, symmetric: a Task authored with
-`--review user`/`--review subagent` that, once actually worked, turns out
-not to need it after all:
+*De-escalation — only on explicit user instruction for this Task:*
+Preserve existing `user`/`subagent` review requirements by default. The
+worker's judgment that review is unnecessary is insufficient. Never
+remove the review gate for a remote-action Task. Record the user instruction
+in `annotate` before changing the review requirement.
+
 ```
 taskctl --root <root> info-review <id> none
-taskctl --root <root> set-status <id> X --message "<why no review was needed after all>"
+taskctl --root <root> set-status <id> X --message "<user-authorized removal of review; evidence for completion>"
 ```
 
 *Blocked* — can't proceed (a missing dependency, external input needed,
@@ -238,3 +241,12 @@ successfully finalized.
   the future `taskctl-worker` Subagent's own judgment, not something this
   Skill prescribes (mirrors `rulectl-checker-cli`'s own "purely a
   CLI-contract reference" stance).
+
+## Producer provenance
+
+`next`/`show` return the optional `origin` Metainfo. The Agent routes
+`rulectl:<rule-id>` exports to `rulectl-checker` instead of executing them.
+`assignee-type=agent|tool` does not establish export provenance. The worker
+never sets `origin`; missing markers on legacy exports are repaired by
+re-export, outside this Skill. It may block the returned open/in-progress
+export directly with the reason, without claiming or annotating it.

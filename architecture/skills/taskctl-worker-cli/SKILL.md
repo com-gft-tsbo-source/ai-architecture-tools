@@ -22,7 +22,7 @@ Only these operations:
 - `annotate` — log progress, on every Task regardless of outcome.
 - `show` — read a Task's real state: resume context for an already-`[~]`
   Task, and end-of-run verification.
-- `info-review` — **only** immediately before an escalating/de-escalating
+- `info-review` — **only** immediately before an escalating or user-authorized de-escalating
   `set-status` call (see "Recipes"), never to reassign a Task.
 
 Never call `add`, `add-phase`, `set-description`, `group-phase`,
@@ -107,10 +107,15 @@ taskctl --root <root> set-status <id> R --message "<why review is needed>"   # o
 `info-review` must run *before* `set-status` — it changes the Task's
 effective forward path, making the escalating step normal (no `--force`).
 
-*De-escalation* (a pre-flagged Task turns out not to need review):
+*De-escalation — only on explicit user instruction for this Task:*
+Preserve existing `user`/`subagent` review requirements by default. The
+worker's judgment that review is unnecessary is insufficient. Never
+remove the review gate for a remote-action Task. Record the user instruction
+in `annotate` before changing the review requirement.
+
 ```
 taskctl --root <root> info-review <id> none
-taskctl --root <root> set-status <id> X --message "<why no review was needed after all>"
+taskctl --root <root> set-status <id> X --message "<user-authorized removal of review; evidence for completion>"
 ```
 
 *Blocked:*
@@ -147,3 +152,12 @@ Don't trust your own bookkeeping — the store is the source of truth.
 - Deciding *how* to perform a Task's described work, or when evidence is
   sufficient for done/blocked/needs-review — judgment for whoever invokes
   this Skill, not prescribed here.
+
+## Producer provenance
+
+`next`/`show` return the optional `origin` Metainfo. The Agent routes
+`rulectl:<rule-id>` exports to `rulectl-checker` instead of executing them.
+`assignee-type=agent|tool` does not establish export provenance. The worker
+never sets `origin`; missing markers on legacy exports are repaired by
+re-export, outside this Skill. It may block the returned open/in-progress
+export directly with the reason, without claiming or annotating it.

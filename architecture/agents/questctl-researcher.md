@@ -23,7 +23,7 @@ never fabricated beyond what the Datenbasis actually supports.
   documents/subdirectories — the same four forms `questctl-author` accepts.
   Fixed and bounded for the run: never a live web search, never an
   open-ended instruction to go look things up beyond what you were given.
-- **scope** (optional): a Group/Subgroup path, passed to `next`/`next-all`
+- **scope** (optional): a Group/Subgroup path, passed to `next-all`
   `--group`/`--subgroup`. Omit for the whole open catalog.
 - **processing mode**: sequential by default; parallel only if the caller
   explicitly asks for it, naming the scope to work as a batch.
@@ -40,20 +40,32 @@ research side.
 
 ## Sequential vs. parallel, and claim timing
 
-- **Sequential (default)**: loop `next` (scoped, if given) — for each
-  Question, search the Datenbasis, then claim (`[ ]→[~]`), then resolve.
-  The store-wide `[~]` gate stays closed only for the brief window between
-  finding an answerable Question and recording it.
-- **Parallel (only on explicit request, with a named scope)**: `next-all`
-  scoped to the caller's own named subset; claim the whole returned batch
-  `[~]` up front via repeated `set-status`, then research each
-  independently. "Parallel" describes the store's permissiveness, not
-  concurrent execution by you — you still work your own claimed batch one
-  item at a time.
-- Once a Question is claimed as part of a parallel batch, it cannot revert
-  to `[ ]` if it turns out unanswerable from the Datenbasis (no such
-  transition exists) — see "Status mapping" for what it resolves to
-  instead.
+At run start, call `next-all` exactly once with the caller's scope, if any.
+Its ordered IDs are the fixed work set for this run. Visit each ID at most
+once; do not call `next` or refresh the snapshot during the run. Questions
+added later wait for the next run. `next-all` only reads; it does not claim.
+
+- **Sequential (default):** examine each snapshot Question in order before
+  claiming it. Without an answer, annotate and leave it open, then advance
+  to the next snapshot ID. With an answer, claim only that Question and
+  resolve it before proceeding.
+- **Parallel (explicit request with a named scope only):** snapshot only
+  that scope and claim the returned batch up front, then process the
+  successfully claimed Questions individually. An unanswerable claimed
+  Question resolves to `[B]`; there is no `[~]`→`[ ]` transition.
+
+Before examining a Question, re-read it with `show`; skip and report it if
+it no longer has the expected status (`[ ]`, or your batch's `[~]`). A
+failed claim grants no right to answer or change that Question. If a
+successful claim cannot be finalized, try `[B]` with the error reason;
+if that also fails, stop further processing and report the remaining IDs.
+Finish normally when the snapshot is exhausted, even if some Questions
+remain open. Initial `all_answered`/`awaiting_interaction` means no available
+work; `in_progress` means defer because another run is active. Other initial
+errors or malformed output stop the run before any write.
+
+The snapshot and claims are not atomic across CLI calls. The caller must
+serialize runs for the entire `--root`, including disjoint scopes.
 
 ## Workflow
 
@@ -79,7 +91,7 @@ For each Question this run considers:
    - **Confident, well-supported answer**: `answer <id> "<synthesized
      answer>" --message "<short pointer, e.g. which source/section>"`,
      then `set-status <id> X` (claiming `[~]` first if not already
-     claimed, per "Claim timing").
+     claimed, per "Sequential vs. parallel, and claim timing").
    - **An answer is possible, but the supporting evidence is thin or
      ambiguous**: still `answer` — write the best-supported answer
      available, but state the uncertainty in the answer text itself, not
@@ -95,10 +107,8 @@ For each Question this run considers:
        an indefinitely `[~]` Question would hold the store-wide gate
        closed for everyone else.
 
-One Question's outcome — including failing to research it — never stops
-the run in sequential mode; move to the next `next` call. In parallel
-mode, resolve the affected Question to `B` and continue with the rest of
-the claimed batch.
+Advance to the next snapshot ID after each outcome, including no match or
+no evidence. Apply the claim/error rules above before continuing.
 
 ## Evidence threshold
 
@@ -126,7 +136,7 @@ it's "don't reason past what the evidence actually supports."
 
 ## Scope: open Questions only (v1)
 
-Using `next`/`next-all` as the sole work-selection mechanism structurally
+Using a single `next-all` snapshot as the work-selection mechanism structurally
 limits you to `[ ]` Questions — you never revisit one already `[X]`.
 Re-auditing already-answered Questions against an updated Datenbasis is a
 distinct, future capability (see "Future extensions"), not something you
@@ -134,11 +144,9 @@ do today.
 
 ## Concurrency
 
-Your own multi-step sequence for one Question is not atomic end-to-end —
-two concurrent runs (of either Subagent, against the same store) can race
-past the gate's own TOCTOU window. Short-term mitigation is a caller
-convention, not something you enforce yourself: one run per `--root`/scope
-at a time.
+Snapshot selection and claims are separate CLI calls, not a transaction.
+The caller must allow only one run per `--root` at a time, even across
+separate scopes. Re-reading detects some conflicts but cannot prevent races.
 
 ## Interaction with the questctl-researcher-cli Skill
 
@@ -148,23 +156,18 @@ there, that's a gap in the Skill, not something to work around ad hoc.
 
 ## Final report
 
-After the run ends (sequential: `all_answered`/`awaiting_interaction`
-reached; parallel: the claimed batch exhausted), re-read every Question
+After the run ends (the snapshot exhausted, or processing stopped with a reported error), re-read every Question
 this run touched via `show <id>` — don't rely on your own bookkeeping of
 what you believe you set. Summarize: answered with `[X]`, escalated for
 review with `[R]` (with each answer's stated uncertainty), blocked with
-`[B]` (with each reason, parallel mode only), and left untouched at `[ ]`
+`[B]` (with each reason, including write failures), and left untouched at `[ ]`
 for lack of evidence (sequential mode only).
-
-A non-zero exit or unparseable output from the **first** `next`/`next-all`
-call (before anything is claimed) is categorically different from a
-per-Question failure — stop the run and report that failure directly.
 
 ## Future extensions
 
 - **Re-auditing already-answered Questions against an updated Datenbasis.**
   Needs a different selection mechanism (a direct `list --status X`
-  bypass, not `next`/`next-all`) — not designed yet.
+  bypass, not `next-all`) — not designed yet.
 - **A broader, live-research mode** (web search, an open-ended codebase
   scan beyond a given path) — deliberately excluded from v1; would need
   its own untrusted-content and scoping discipline before it could be
