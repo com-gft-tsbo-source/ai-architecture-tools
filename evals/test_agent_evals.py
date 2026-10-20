@@ -112,5 +112,73 @@ class TestWorkerChecks(unittest.TestCase):
             "Erneute User-Review nach Ausführung")))
 
 
+ADR_ROLE = "architecture-tools:specctl-adr-author"
+
+
+def section(name, status, adr, text):
+    return {"name": name, "status": status, "adr": adr, "content": {"Description": text}}
+
+
+def adr_record(case, commands, after_sections, after_adrs, before_adrs=("old1",)):
+    calls = [call("a1", "Agent", subagent_type=ADR_ROLE)] + [
+        call(f"b{i}", "Bash", "a1", command=cmd) for i, cmd in enumerate(commands)]
+    before = {"specctl": [section("API", "stable", "old1", "REST"),
+                          section("Storage", "stable", "old1", "PostgreSQL")],
+              "adrctl": [{"id": i, "status": "accepted", "metainfo": {}} for i in before_adrs]}
+    return {"case": case, "expected_role": "specctl-adr-author",
+            "expected_skills": ["specctl-editor-cli", "adrctl-author-cli"],
+            "trace": {"calls": calls, "result": {}}, "before": before,
+            "after": {"specctl": after_sections, "adrctl": after_adrs},
+            "work_before": {}, "work_after": {}, "adapter_calls": []}
+
+
+class TestAdrChecks(unittest.TestCase):
+    def test_command_segments_substitute_variables(self):
+        own = [call("1", "Bash", command='R=/r; OLD="old1"\nspecctl --root $R list --adr "$OLD"'),
+               call("2", "Bash", command="adrctl --root ${R} set-status $OLD superseded")]
+        self.assertEqual(ae.command_segments(own)[2:],
+                         ["specctl --root /r list --adr old1",
+                          "adrctl --root /r set-status old1 superseded"])
+
+    def test_partial_replacement_keeps_old_adr(self):
+        r = adr_record("E5-2-partial",
+                       ["specctl --root /r --json list --adr old1"],
+                       [section("API", "stable", "new1", "gRPC"),
+                        section("Storage", "stable", "old1", "PostgreSQL")],
+                       [{"id": "old1", "status": "accepted", "metainfo": {}, "name": "o"},
+                        {"id": "new1", "status": "accepted", "metainfo": {}, "name": "n"}])
+        res = results(ae.evaluate(r))
+        self.assertTrue(all(res[k] == "erfüllt" for k in (
+            "Genau eine neue akzeptierte ADR", "Ungefilterte Referenzabfrage auf die alte ADR",
+            "Storage unverändert und weiter an alte ADR gebunden",
+            "Alte ADR bleibt accepted ohne superseded-by")))
+
+    def test_filtered_query_and_premature_retirement_are_violations(self):
+        r = adr_record("E5-3-full",
+                       ["adrctl --root /r set-status old1 superseded",
+                        "specctl --root /r list --status stable --adr old1"],
+                       [section("API", "stable", "new1", "gRPC")],
+                       [{"id": "old1", "status": "superseded", "name": "o",
+                         "metainfo": {"superseded-by": "new1"}},
+                        {"id": "new1", "status": "accepted", "metainfo": {}, "name": "n"}])
+        res = results(ae.evaluate(r))
+        self.assertEqual(res["Ungefilterte Referenzabfrage auf die alte ADR"], "verletzt")
+        self.assertEqual(res["Alte ADR superseded mit superseded-by auf neue ADR"], "erfüllt")
+
+    def test_promotion_order(self):
+        r = adr_record("E5-1-promote",
+                       ["adrctl --root /r add --domain D --name n --spec-ref s1 --set-status accepted",
+                        "specctl --root /r set-status s1 stable",
+                        "specctl --root /r set-adr s2 new1",
+                        "specctl --root /r set-status s2 stable"],
+                       [section("API", "stable", "new1", "REST"),
+                        section("Storage", "stable", "new1", "PostgreSQL")],
+                       [{"id": "new1", "status": "accepted", "metainfo": {}, "name": "n"}],
+                       before_adrs=())
+        res = results(ae.evaluate(r))
+        self.assertEqual(res["Beide Sections stable und mit der neuen ADR verknüpft"], "erfüllt")
+        self.assertEqual(res["Alle Links vor der ersten Promotion gesetzt"], "verletzt")
+
+
 if __name__ == "__main__":
     unittest.main()

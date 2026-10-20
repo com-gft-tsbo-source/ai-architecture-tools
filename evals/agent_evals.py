@@ -257,6 +257,133 @@ def fx_e4_approved(cli, root, work):
     return _explicit("taskctl-worker", f"Bearbeite den nächsten Task in {root} unter {work}.")
 
 
+SPEC_TEXT = {"API": "Die API ist REST mit JSON-Payloads.",
+             "Storage": "Persistenz erfolgt in PostgreSQL 16."}
+NEW_API_DECISION = "Die API verwendet gRPC mit Protocol Buffers statt REST mit JSON."
+
+
+def _spec(cli, *, stable: tuple[str, ...] = (), governed_by_one: bool = True) -> dict:
+    """Spec with API/Storage Sections; `stable` ones are promoted through one founding ADR."""
+    cli("specctl", "init", "Design")
+    ids = {}
+    for name, text in SPEC_TEXT.items():
+        ids[name] = cli("specctl", "add-part", name)["id"]
+        cli("specctl", "set-description", ids[name], text)
+    cli("adrctl", "add-domain", "Design")
+    if stable:
+        founding = cli("adrctl", "add", "--domain", "Design", "--name", "Grundentwurf",
+                       "--description", "Akzeptiert " + " und ".join(stable),
+                       "--spec-ref", ids[stable[0]], "--set-status", "accepted")["id"]
+        for name in stable[1:] if governed_by_one else ():
+            cli("specctl", "set-adr", ids[name], founding)
+        for name in stable:
+            cli("specctl", "set-status", ids[name], "stable")
+    return ids
+
+
+def fx_e5_promote(cli, root, work):
+    _spec(cli)
+    return _explicit("specctl-adr-author",
+                     f"Akzeptiere API und Storage im Dokument unter {root} als ein gemeinsames Thema.")
+
+
+def fx_e5_partial(cli, root, work):
+    _spec(cli, stable=("API", "Storage"))
+    return _explicit("specctl-adr-author",
+                     f"Ändere im Dokument unter {root} nur die stabile API-Section auf die neue "
+                     f"Entscheidung: {NEW_API_DECISION}")
+
+
+def fx_e5_full(cli, root, work):
+    _spec(cli, stable=("API",))
+    return _explicit("specctl-adr-author",
+                     f"Ändere im Dokument unter {root} die stabile API-Section auf die neue "
+                     f"Entscheidung: {NEW_API_DECISION}")
+
+
+# E6: ambiguous routing — the request does not name the tool, and a
+# neighbouring role is plausible. Expected role in the case table.
+
+def fx_e6_customer_answers(cli, root, work):
+    _two_questions(cli)
+    src = _write(work / "mail-kunde.md",
+                 "Von: Kunde\nBetreff: Ihre Fragen\n\nWir verwenden PostgreSQL.\n")
+    return f"Der Kunde hat geantwortet, siehe {src}. Bring die offenen Fragen in {root} auf den aktuellen Stand."
+
+
+def fx_e6_clarify_from_docs(cli, root, work):
+    _two_questions(cli)
+    docs = work / "projektdoku"
+    _write(docs / "architektur.md", "# Architektur\n\nPersistenz: PostgreSQL 16 im Cluster.\n")
+    _write(docs / "betrieb.md", "# Betrieb\n\nBackups täglich.\n")
+    return f"Kläre die offenen Fragen in {root} mithilfe der Projektdokumentation unter {docs}."
+
+
+def fx_e6_stable_edit(cli, root, work):
+    _spec(cli, stable=("API",))
+    return f"Im Dokument unter {root} soll in der Section API künftig stehen: {NEW_API_DECISION}"
+
+
+def fx_e6_new_section(cli, root, work):
+    _spec(cli, stable=("API",))
+    return (f"Nimm im Dokument unter {root} eine neue Section Security auf: "
+            "Alle Endpunkte erfordern OAuth2.")
+
+
+def fx_e6_review_checklist(cli, root, work):
+    _rules(cli)
+    src = _write(work / "review-kommentare.md", """
+        # Wiederkehrende Review-Kommentare (Python)
+        - Bitte keine print()-Aufrufe im Produktivcode, nutzt logging.
+        - Exceptions nie leer mit `except: pass` abfangen.
+        """)
+    return (f"Mach aus den Review-Kommentaren in {src} etwas, das wir künftig bei jedem "
+            f"Code-Review prüfen können, und lege es unter {root} ab.")
+
+
+def fx_e6_open_points(cli, root, work):
+    src = _write(work / "workshop-notizen.md", """
+        # Workshop Kundenportal, 15.10.
+        - Login über das bestehende SSO.
+        - Offen: Wer betreibt das Monitoring?
+        - Offen: Muss die DSGVO-Löschung automatisiert erfolgen?
+        """)
+    return (f"Aus den Workshop-Notizen {src} ergeben sich Punkte, die wir mit dem Kunden "
+            f"klären müssen. Halte sie unter {root} fest.")
+
+
+def fx_e6_work_packages(cli, root, work):
+    src = _write(work / "konzept.md", """
+        # Konzept Export-Service
+        Ein Dienst exportiert nächtlich Bestellungen als CSV nach S3. Er braucht
+        eine Konfiguration, den Export-Job, Monitoring und Tests.
+        """)
+    return f"Setze das Konzept {src} unter {root} in konkrete Arbeitspakete um."
+
+
+def fx_e6_export_tasks(cli, root, work):
+    _rules(cli)
+    cli("rulectl", "add", "--category", "Python/General/Style", "--name", "Docstrings",
+        "--checkable", "llm", "--description", "Jede öffentliche Funktion hat einen Docstring.")
+    cli("rulectl", "tasklist")
+    code = work / "code"
+    _write(code / "app.py", "def add(a, b):\n    return a + b\n")
+    return f"Arbeite die offenen Tasks in {root} ab; der Code liegt unter {code}."
+
+
+E6 = [
+    ("E6-customer-answers", fx_e6_customer_answers, "questctl-checker"),
+    ("E6-clarify-from-docs", fx_e6_clarify_from_docs, "questctl-researcher"),
+    ("E6-stable-edit", fx_e6_stable_edit, "specctl-adr-author"),
+    ("E6-new-section", fx_e6_new_section, "specctl-author"),
+    ("E6-review-checklist", fx_e6_review_checklist, "rulectl-author"),
+    ("E6-open-points", fx_e6_open_points, "questctl-author"),
+    ("E6-work-packages", fx_e6_work_packages, "taskctl-author"),
+    ("E6-export-tasks", fx_e6_export_tasks, "rulectl-checker"),
+]
+
+ADR_SKILLS = ("specctl-editor-cli", "adrctl-author-cli")
+
 SCENARIO_CASES = {
     "E1": [(f"E1-{role}", fx, role, skills, False) for role, (fx, skills) in E1.items()],
     "E3": [("E3-A-ordinary", fx_e3a, "taskctl-worker", ("taskctl-worker-cli",), True),
@@ -264,6 +391,10 @@ SCENARIO_CASES = {
     "E4": [("E4-1-no-pending", fx_e4_none, "taskctl-worker", ("taskctl-worker-cli",), True),
            ("E4-2-rework", fx_e4_rework, "taskctl-worker", ("taskctl-worker-cli",), True),
            ("E4-3-approved", fx_e4_approved, "taskctl-worker", ("taskctl-worker-cli",), True)],
+    "E5": [("E5-1-promote", fx_e5_promote, "specctl-adr-author", ADR_SKILLS, True),
+           ("E5-2-partial", fx_e5_partial, "specctl-adr-author", ADR_SKILLS, True),
+           ("E5-3-full", fx_e5_full, "specctl-adr-author", ADR_SKILLS, True)],
+    "E6": [(cid, fx, role, E1[role][1], False) for cid, fx, role in E6],
 }
 
 
@@ -447,6 +578,100 @@ def evaluate(r: dict) -> list[dict]:
         ]
     if case.startswith(("E3", "E4")):
         checks += evaluate_worker(r, [c for c in calls if sub and c["parent"] == sub["id"]])
+    if case.startswith("E5"):
+        checks += evaluate_adr(r, [c for c in calls if sub and c["parent"] == sub["id"]])
+    return checks
+
+
+def command_segments(own: list[dict]) -> list[str]:
+    """Shell commands of a call list, split into single steps in execution order.
+
+    Simple variable assignments (`OLD=abc123`) are tracked across calls and
+    substituted, so `--adr "$OLD"` matches like a literal ID.
+    """
+    segments, variables = [], {}
+    for c in own:
+        if c["name"] != "Bash":
+            continue
+        for raw in re.split(r"\n|;|&&|\|\|", c["input"].get("command", "")):
+            step = raw.strip()
+            if not step:
+                continue
+            for name, value in re.findall(r"(?:^|\s)(?:export\s+)?([A-Za-z_]\w*)=(\"[^\"]*\"|'[^']*'|\S*)",
+                                          step):
+                variables[name] = value.strip("\"'")
+            step = re.sub(r"\$\{?([A-Za-z_]\w*)\}?",
+                          lambda m: variables.get(m.group(1), m.group(0)), step)
+            segments.append(step.replace('"', "").replace("'", ""))
+    return segments
+
+
+def _first(segments: list[str], pattern: str) -> int | None:
+    return next((i for i, s in enumerate(segments) if re.search(pattern, s)), None)
+
+
+def _last(segments: list[str], pattern: str) -> int | None:
+    return max((i for i, s in enumerate(segments) if re.search(pattern, s)), default=None)
+
+
+def evaluate_adr(r: dict, own: list[dict]) -> list[dict]:
+    case = r["case"]
+    sections = {s["name"]: s for s in r["after"].get("specctl", [])}
+    before_sections = {s["name"]: s for s in r["before"].get("specctl", [])}
+    old_ids = {a["id"] for a in r["before"].get("adrctl", [])}
+    adrs = {a["id"]: a for a in r["after"].get("adrctl", [])}
+    new = [a for i, a in adrs.items() if i not in old_ids]
+    seg = command_segments(own)
+    api, storage = sections.get("API", {}), sections.get("Storage", {})
+    new_id = new[0]["id"] if len(new) == 1 else None
+    checks = [_check("Genau eine neue akzeptierte ADR",
+                     len(new) == 1 and new[0]["status"] == "accepted",
+                     f"{len(new)} neue ADR(s): " + ", ".join(f"{a['name']} [{a['status']}]" for a in new))]
+
+    if case.startswith("E5-1"):
+        stable_at = _first(seg, r"specctl\b.*\bset-status\b.*\bstable\b")
+        linked_at = _last(seg, r"specctl\b.*\bset-adr\b|adrctl\b.*\badd\b.*--spec-ref")
+        checks += [
+            _check("Beide Sections stable und mit der neuen ADR verknüpft",
+                   new_id is not None and all(s.get("status") == "stable" and s.get("adr") == new_id
+                                              for s in (api, storage))),
+            _check("Alle Links vor der ersten Promotion gesetzt",
+                   None if stable_at is None or linked_at is None else linked_at < stable_at,
+                   f"letzter Link-Schritt {linked_at}, erste Promotion {stable_at}"),
+        ]
+        return checks
+
+    founding = next(iter(old_ids))
+    old = adrs.get(founding, {})
+    ref_query = (rf"specctl\b(?!.*--status)(?!.*--under).*\blist\b(?!.*--status)(?!.*--under)"
+                 rf".*--adr[ =]{founding}\b")
+    queried_at = _first(seg, ref_query)
+    checks += [
+        _check("API mit neuer ADR verknüpft und inhaltlich geändert",
+               new_id is not None and api.get("adr") == new_id and "gRPC" in json.dumps(api.get("content"))
+               and api.get("status") == "stable"),
+        _check("Ungefilterte Referenzabfrage auf die alte ADR", queried_at is not None),
+    ]
+    if case.startswith("E5-2"):
+        checks += [
+            _check("Storage unverändert und weiter an alte ADR gebunden",
+                   storage.get("adr") == founding and storage.get("status") == "stable"
+                   and storage.get("content") == before_sections["Storage"].get("content")),
+            _check("Alte ADR bleibt accepted ohne superseded-by",
+                   old.get("status") == "accepted" and not old.get("metainfo", {}).get("superseded-by"),
+                   f"{old.get('status')}, {old.get('metainfo')}"),
+        ]
+    else:
+        retired_at = _first(seg, rf"adrctl\b.*\bset-status\b.*{founding}\b.*\bsuperseded\b")
+        checks += [
+            _check("Alte ADR superseded mit superseded-by auf neue ADR",
+                   old.get("status") == "superseded"
+                   and old.get("metainfo", {}).get("superseded-by") == new_id,
+                   f"{old.get('status')}, {old.get('metainfo')}"),
+            _check("Referenzabfrage vor der Ablösung",
+                   None if retired_at is None or queried_at is None else queried_at < retired_at,
+                   f"Abfrage {queried_at}, Ablösung {retired_at}"),
+        ]
     return checks
 
 
