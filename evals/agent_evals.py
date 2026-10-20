@@ -522,6 +522,19 @@ def cli_calls(calls: list[dict]) -> list[tuple[int, str, str]]:
     return found
 
 
+READ_OPS = {"list", "show", "show-metagroups", "next", "next-all", "history", "render"}
+CLI_OP_RE = re.compile(r"(?:^|[\s/])(" + "|".join(CLIS) + r")(?:\.py)?"
+                       r"((?:\s+(?:--root\s+\S+|--json))*)\s+([a-z][\w-]*)")
+
+
+def cli_writes(segments: list[str]) -> list[str]:
+    """Command steps that invoke a mutating CLI operation (not list/show/...)."""
+    return [s for s in segments
+            if not re.match(r"(which|type|command\s+-v)\b", s)
+            and any(m.group(3) not in READ_OPS and not m.group(3).startswith("-")
+                    for m in CLI_OP_RE.finditer(s))]
+
+
 def _check(name: str, ok: bool | None, detail: str = "") -> dict:
     return {"name": name, "result": {True: "erfüllt", False: "verletzt",
                                      None: "nicht beobachtbar"}[ok], "detail": detail}
@@ -545,9 +558,16 @@ def evaluate(r: dict) -> list[dict]:
     checks = [_check("Rolle gewählt", want in chosen, f"gewählt: {chosen or 'keine'}")]
 
     sub = next((c for c in agent_calls if c["input"].get("subagent_type") == want), None)
-    main_cli = cli_calls([c for c in calls if c["parent"] is None])
-    checks.append(_check("Aufrufer arbeitet nicht selbst mit der CLI", not main_cli,
-                         "; ".join(cmd for _, _, cmd in main_cli)[:300]))
+    main = [c for c in calls if c["parent"] is None]
+    # Read-only inspection by the caller (ls, which, list/show) is legitimate
+    # routing preparation; writing or loading a role's CLI Skill bypasses the role.
+    main_writes = cli_writes(command_segments(main))
+    checks.append(_check("Aufrufer schreibt nicht selbst mit der CLI", not main_writes,
+                         "; ".join(main_writes)[:300]))
+    main_skills = [c["input"].get("skill", "") for c in main if c["name"] == "Skill"
+                   and c["input"].get("skill", "").startswith(f"{PLUGIN}:")]
+    checks.append(_check("Aufrufer lädt keinen Rollen-Skill selbst", not main_skills,
+                         str(main_skills)))
     if sub:
         own = [c for c in calls if c["parent"] == sub["id"]]
         loaded = [c["input"].get("skill", "") for c in own if c["name"] == "Skill"]

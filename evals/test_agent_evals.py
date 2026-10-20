@@ -79,11 +79,19 @@ class TestRoutingChecks(unittest.TestCase):
         self.assertEqual(res["Rolle gewählt"], "verletzt")
         self.assertEqual(res["Benannte Skills geladen"], "nicht beobachtbar")
 
-    def test_main_thread_cli_use_is_a_violation(self):
-        calls = GOOD_START + [call("m1", "Bash", command="taskctl --root /r list")]
-        r = record("E1-taskctl-worker", calls, [], " ", [])
-        self.assertEqual(results(ae.evaluate(r))["Aufrufer arbeitet nicht selbst mit der CLI"],
-                         "verletzt")
+    def test_main_thread_reads_are_allowed_but_writes_and_skills_are_not(self):
+        reads = [call("m0", "Bash", command="which specctl adrctl; ls root"),
+                 call("m1", "Bash", command="R=/r; taskctl --root $R --json list | head")]
+        r = record("E1-taskctl-worker", reads + GOOD_START, [], " ", [])
+        res = results(ae.evaluate(r))
+        self.assertEqual(res["Aufrufer schreibt nicht selbst mit der CLI"], "erfüllt")
+        self.assertEqual(res["Aufrufer lädt keinen Rollen-Skill selbst"], "erfüllt")
+        writes = [call("m2", "Skill", skill="architecture-tools:taskctl-worker-cli"),
+                  call("m3", "Bash", command="taskctl --root /r --json set-status t1 X")]
+        r = record("E1-taskctl-worker", writes + GOOD_START, [], " ", [])
+        res = results(ae.evaluate(r))
+        self.assertEqual(res["Aufrufer schreibt nicht selbst mit der CLI"], "verletzt")
+        self.assertEqual(res["Aufrufer lädt keinen Rollen-Skill selbst"], "verletzt")
 
 
 class TestWorkerChecks(unittest.TestCase):

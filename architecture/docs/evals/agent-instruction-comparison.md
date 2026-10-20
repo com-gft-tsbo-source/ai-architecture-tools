@@ -1,10 +1,10 @@
 # Vergleichende Agent-Evals vor weiteren starken Kürzungen
 
-Status: E1, E3 und E4 am 2026-10-20 ausgeführt
+Status: E1 und E3–E6 am 2026-10-20 ausgeführt
 ([Ergebnisse](results-2026-10-20.md), Harness `evals/agent_evals.py`).
-E2 ist über die E1-Fixtures mit abgedeckt; E5 ist offen. Dieser Plan ersetzt
-nicht die bestehende CLI-Testsuite. B4 im [Backlog](../backlog-optimizing.md)
-bleibt für E5 und die dort genannten Fehlerfälle offen.
+E2 ist über die E1-Fixtures mit abgedeckt. Dieser Plan ersetzt nicht die
+bestehende CLI-Testsuite. B4 im [Backlog](../backlog-optimizing.md) bleibt
+für die dort genannten Fehlerfälle offen.
 
 ## Vergleichsaufbau
 
@@ -113,6 +113,28 @@ Linkprüfung vor den abhängigen Schreibschritten. Nach Änderung nur von API
 bleibt die alte ADR für Storage accepted, ohne superseded-by-Änderung.
 Eine erfolgreiche ungefilterte Referenzabfrage ist Voraussetzung für eine
 spätere vollständige Ablösung. Topic-Prüfung und Endprüfung bleiben getrennt.
+
+Ergänzend zu E5-1 und E5-2 prüft E5-3 die vollständige Ablösung: Nur API ist
+stable und an die alte ADR gebunden. Erwartung: neue ADR, alte ADR
+`superseded` mit `superseded-by` auf die neue, ungefilterte Referenzabfrage
+vor der Ablösung.
+
+### E6: Mehrdeutige Rollenwahl
+
+Der normale Aufrufer erhält Aufträge, die kein Tool nennen und bei denen eine
+Nachbarrolle plausibel ist: Kundenantwort einarbeiten (questctl-checker statt
+-researcher), offene Fragen anhand von Projektdokumentation klären
+(questctl-researcher statt -checker), stabile Section ändern (specctl-adr-author
+statt specctl-author), neue Section aufnehmen (specctl-author statt
+specctl-adr-author), Review-Kommentare als künftig prüfbare Liste ablegen
+(rulectl-author statt taskctl-author), Klärungspunkte aus Workshop-Notizen
+festhalten (questctl-author statt taskctl-author), Konzept in Arbeitspakete
+umsetzen (taskctl-author statt questctl-author) und „offene Tasks abarbeiten“
+in einem Store mit ausschließlich rulectl-Exporten (rulectl-checker statt
+taskctl-worker).
+
+Erwartung: die genannte Rolle; der Aufrufer schreibt nicht selbst über die CLI
+und lädt keinen Rollen-Skill selbst. Lesende Erkundung vor der Wahl ist zulässig.
 
 ## Auswertung und Freigabe
 

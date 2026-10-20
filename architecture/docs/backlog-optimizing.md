@@ -51,9 +51,8 @@ wenn sie ausdrücklich aufgeschoben werden.
 - Vor weiteren starken Kürzungen erforderlich: vergleichende echte Agent-Läufe.
   [Der vorbereitete Eval-Plan](evals/agent-instruction-comparison.md) enthält
   feste Eingaben, getrennte Routing-/Workflow-Prüfungen und Auswertungskriterien.
-  E1, E3 und E4 sind ausgeführt, ohne beobachtete Regression
-  ([Ergebnisse](evals/results-2026-10-20.md)). Offen: E5, die Fehlerfälle
-  unten sowie mehrdeutige Routing-Aufträge.
+  E1 und E3–E6 sind ausgeführt, ohne beobachtete Regression
+  ([Ergebnisse](evals/results-2026-10-20.md)). Offen: die Fehlerfälle unten.
 - Aktuelle Validierung: dokumentierter Abgleich der bisherigen Regeln gegen
   die kompakten Definitionen sowie die bestehende Testsuite. Das belegt keine
   unveränderte Befolgung der Anweisungen durch ein Modell.
@@ -97,3 +96,15 @@ wenn sie ausdrücklich aufgeschoben werden.
 - Später Fehlerfälle vor und nach einer genehmigten externen Aktion
   unterscheiden und Regeln für Wiederaufnahme ohne doppelte Ausführung
   definieren. Im aktuellen Lauf werden keine neuen Retries eingeführt.
+
+### B8: Rollenwahl bei Stores mit rulectl-Exporten
+
+- Eval E6: Bei „Arbeite die offenen Tasks in <root> ab“ wählt der Aufrufer
+  in beiden Fassungen meist `taskctl-worker` (je 2/3 Läufe). Der Worker
+  blockiert den Export korrekt, aber der eigentliche Prüflauf unterbleibt.
+- Der Auftrag verrät nicht, dass der Store Prüf-Tasks enthält; die Rolle ist
+  nur durch Inspektion des Stores erkennbar.
+- Später entscheiden, ob die Description von `rulectl-checker` Auslöser wie
+  „exportierte Prüf-Tasks abarbeiten“ nennen soll oder ob der Worker-Bericht
+  den Aufrufer ausdrücklich zum Start von `rulectl-checker` auffordert.
+  Danach E6 wiederholen.
