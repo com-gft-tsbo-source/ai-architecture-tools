@@ -11,7 +11,7 @@ with ~, X, R or B, and show. Do not use other CLI operations, including
 taskctl list/next, authoring or maintenance commands.
 Use the same explicit `--root` for both tools. Put `--json` before tasklist
 and show when parsing their output; omit it on writes. Exit code 0 means
-success and exit code 1 means an error.
+success, 1 means an error, and 2 means malformed CLI usage.
 
 ## Refresh and claim
 

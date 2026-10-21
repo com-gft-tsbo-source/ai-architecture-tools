@@ -79,7 +79,8 @@ output instead (see "Recipes"); never issue a separate `list` call to
   subcommand (`rulectl tasklist --json`) is a different, invalid command
   line — the subcommand's own parser doesn't declare `--json` and rejects
   it as an unrecognized argument.
-- **Exit codes**: `0` = ok, `1` = error.
+- **Exit codes**: `0` = ok, `1` = error, `2` = a malformed command line
+  (argparse: unknown subcommand or option).
 
 ## Recipes
 

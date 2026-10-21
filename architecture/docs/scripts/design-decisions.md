@@ -36,6 +36,7 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-10-20, readability review of compact instructions | "eval plan not executed" → E1, E3–E6 executed, see `../evals/results-2026-10-20.md` |
 | 2026-10-21, CI and plugin versioning |  |
 | 2026-10-21, cross-tool CLI contract tests |  |
+| 2026-10-21, exit code 2 in all Skills |  |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -958,3 +959,12 @@ replace the manual consistency rule, not the separate implementation.
 `scripts/CLAUDE.md` now describes only the current implementation state,
 conventions and open points; the change history it had accumulated lives
 here. It no longer records test counts, which went stale with every change.
+
+## Amendments (2026-10-21, exit code 2 in all Skills)
+
+Only the specctl and adrctl Skills named exit code `2` (argparse usage
+error); the taskctl, questctl and rulectl Skills and their design documents
+listed `0`/`1` only, although every tool behaves identically
+(`scripts/tests/test_cli_contract.py`). All Skills and Skill design documents
+now name `2` as a malformed command line. Wording only, no behavior change;
+plugin version `0.2.1`.

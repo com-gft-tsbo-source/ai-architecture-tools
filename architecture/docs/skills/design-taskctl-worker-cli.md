@@ -50,7 +50,8 @@ Task to work, so there is no browsing/snapshot need the way
 - **`--json`**: pass it on `next` and `show`, whose output you parse. Omit
   it on `set-status`/`annotate`/`info-review` — pure write calls whose
   outcome is the exit code, nothing in their output is ever read.
-- **Exit codes**: `0` = ok, `1` = error.
+- **Exit codes**: `0` = ok, `1` = error, `2` = a malformed command line
+  (argparse: unknown subcommand or option).
 - **`--force` is never used** in normal operation. Every transition this
   Skill's recipes use is already on a Task's normal forward path (or, for
   `[B]`, reachable from any non-terminal status with a `--message`) —

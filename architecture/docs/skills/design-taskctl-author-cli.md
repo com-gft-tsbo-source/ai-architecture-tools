@@ -50,7 +50,8 @@ neither authoring nor working a Task list.
 - **`--json`**: always pass this flag when the output needs to be parsed
   programmatically (`list`, `show`, `show-metagroups`) — do not scrape the
   human-readable format.
-- **Exit codes**: `0` = ok, `1` = error. Error text goes to stderr.
+- **Exit codes**: `0` = ok, `1` = error. Error text goes to stderr. `2` =
+  a malformed command line (argparse: unknown subcommand or option).
 - Every operation is a single, independent `taskctl` invocation — there is
   no batch/transaction mode. A multi-step change (e.g. "create a Phase,
   then add several Tasks under it") is several sequential CLI calls; if one

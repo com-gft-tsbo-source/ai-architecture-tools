@@ -43,7 +43,8 @@ this Skill never calls `set-status`.
 - `--json`: always pass this flag when the output needs to be parsed
   programmatically (`list`, `show`, `show-metagroups`) — do not scrape the
   human-readable format.
-- Exit codes: `0` = ok, `1` = error. Error text goes to stderr. Check the
+- Exit codes: `0` = ok, `1` = error. Error text goes to stderr. `2` =
+  a malformed command line (argparse: unknown subcommand or option). Check the
   exit code, not the presence of stderr output, to decide whether an
   operation succeeded.
 - Every operation is a single, independent `rulectl` invocation — there is no
