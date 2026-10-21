@@ -885,3 +885,22 @@ The backlog now lives at `architecture/docs/backlog-optimizing.md`.
 routing, skill-loading, unanswered-Question, review/provenance and ADR scenarios.
 It has not been executed; CLI tests and static review do not establish unchanged
 model behavior. Further substantial compaction waits for those comparisons.
+
+## Amendments (2026-10-21, CI and plugin versioning)
+
+GitHub Actions runs both test suites on every push and pull request
+(`.github/workflows/tests.yml`), on GitHub-hosted `ubuntu-latest` runners only
+(free for this public repository, no self-hosted runner). The matrix covers
+Python 3.10 — the guaranteed minimum of every target environment, so the
+3.10-only-stdlib constraint is now checked rather than assumed — and 3.13, the
+development version. The CLI wrappers in `architecture/bin/` deliberately do
+not check the interpreter version at runtime: an older Python is out of scope
+and failing there is accepted.
+
+The plugin version had stayed at `0.1.0` since distribution began despite
+substantial Agent and Skill changes; it is now `0.2.0`. To keep the existing
+"bump `version` before a release" rule from being forgotten again, the
+`plugin-version` job fails a pull request that changes `architecture/agents`,
+`architecture/skills` or `architecture/bin` without changing `version`.
+Changes under `scripts/` alone are not covered, as they are frequently
+internal refactorings without user-visible effect.

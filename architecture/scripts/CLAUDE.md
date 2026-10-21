@@ -523,8 +523,18 @@ distribution)"). Daraus folgen Pflichten bei Änderungen:
 - Skills rufen CLIs nur über den nackten Namen auf (`rulectl ...`), nie über
   einen Pfad in dieses Repository.
 - `tests/test_plugin.py` prüft diese Punkte; zusätzlich vor einem Release
-  `claude plugin validate .` (Repo-Root) und `version` in `plugin.json`
-  erhöhen.
+  `claude plugin validate .` (Repo-Root) ausführen.
+- Jede Änderung unter `agents/`, `skills/` oder `bin/` braucht eine neue
+  `version` in `plugin.json` — der CI-Job `plugin-version` lässt einen PR
+  sonst scheitern.
+
+## CI
+
+`.github/workflows/tests.yml` (GitHub-gehostete Runner, kostenlos für das
+öffentliche Repo) führt bei jedem Push/PR beide Testsuites
+(`architecture/scripts/tests`, `evals`) unter Python 3.10 (garantiertes
+Minimum der Zielumgebungen) und 3.13 aus. Kein Laufzeit-Versionscheck in
+`bin/` — ältere Pythons werden nicht unterstützt, Fehler dort sind akzeptiert.
 - Lokal testen: `claude --plugin-dir ./architecture` (in diesem Repo ist das
   installierte Plugin per `.claude/settings.json` deaktiviert).
 
