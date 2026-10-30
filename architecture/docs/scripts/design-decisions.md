@@ -32,12 +32,13 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-10-19, local-first: one gated path for remote actions |  |
 | 2026-10-19, specctl/adrctl fixes from integrating the specctl Subagents |  |
 | 2026-10-20, agent workflow consistency |  |
-| 2026-10-20, compact runtime instructions |  |
-| 2026-10-20, readability review of compact instructions | "eval plan not executed" → E1, E3–E6 executed, see `../evals/results-2026-10-20.md` |
+| 2026-10-20, compact runtime instructions | backlog renamed to `backlog-optimization.md` (2026-10-30, optimization backlog in entry format) |
+| 2026-10-20, readability review of compact instructions | "eval plan not executed" → E1, E3–E6 executed, see `../evals/results-2026-10-20.md`; backlog renamed to `backlog-optimization.md` (2026-10-30, optimization backlog in entry format) |
 | 2026-10-21, CI and plugin versioning |  |
 | 2026-10-21, cross-tool CLI contract tests |  |
 | 2026-10-21, exit code 2 in all Skills |  |
-| 2026-10-30, trigger-based backlogs |  |
+| 2026-10-30, optimization backlog in entry format |  |
+| 2026-10-30, trigger-based backlogs | backlog renamed to `backlog-optimization.md` (2026-10-30, optimization backlog in entry format) |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -994,3 +995,22 @@ need shows what a rename must do (notably whether Object Types change).
 The Agent-eval failure scenarios stay B4 in `backlog-optimizing.md`, which is
 to be converted to the same entry format (and renamed `backlog-optimization.md`)
 in a follow-up step.
+
+## Amendments (2026-10-30, optimization backlog in entry format)
+
+`architecture/docs/backlog-optimizing.md` is renamed to
+`backlog-optimization.md` (matching `backlog-features.md`) and converted to
+the entry format of `architecture/docs/CLAUDE.md`, "Backlogs". Earlier
+amendments keep the old file name; the index above records the rename.
+
+- Every entry B1–B8 now has an explicit trigger, so the ask-first rules apply
+  to it; the IDs are unchanged. The triggers follow the same principle as the
+  feature backlog: a concrete change to the affected Agent/Skill, or a
+  dependent entry (B4 before B1, B6, B7 and before the next substantial
+  compaction).
+- Former "decide later" points are now open design questions, each with a
+  recommendation that is explicitly not a decision.
+- B4 is narrowed to its remaining scope (the failure scenarios), since E1 and
+  E3–E6 have run; the original content is kept as context.
+- B2 stays a standing entry that is never deleted: a concrete finding becomes
+  its own new entry instead of being implemented directly.

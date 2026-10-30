@@ -123,7 +123,7 @@ Namen und Tool-Berechtigungen aller 19 Definitionen, vorhandene Rollen-Skills,
 Full-spec-Verweise und Dokumentlinks wurden zusätzlich statisch geprüft. Das ist
 keine Modell-Evaluation: unveränderte Befolgung kompakterer Anweisungen lässt
 sich daraus nicht beweisen. Weitere Architektur-/Regeländerungen und echte
-Agent-Evals stehen im [Backlog](backlog-optimizing.md).
+Agent-Evals stehen im [Backlog](backlog-optimization.md).
 
 ## Nachprüfung der Verständlichkeit auf optimization
 

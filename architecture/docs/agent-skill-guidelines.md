@@ -53,5 +53,5 @@ Traces protokolliert. Wortzahlen bleiben eine Größenangabe; sie sind weder ein
 Tokenmessung noch ein Qualitätsnachweis.
 
 Aufgeschobene Regeländerungen und offene Validierung stehen im
-[Backlog](backlog-optimizing.md). Zusätzliche gemeinsame Runtime-Referenzen sind
+[Backlog](backlog-optimization.md). Zusätzliche gemeinsame Runtime-Referenzen sind
 weiterhin aufgeschoben; diese Seite führt keinen neuen Lademechanismus ein.

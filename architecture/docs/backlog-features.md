@@ -7,7 +7,7 @@ Wann und wie ein Eintrag angegangen wird, regelt
 Freigabe zur Umsetzung.
 
 Agent-/Skill-Optimierungen und Agent-Evals stehen in
-[`backlog-optimizing.md`](backlog-optimizing.md).
+[`backlog-optimization.md`](backlog-optimization.md).
 
 ## F1: Metagroup-Rename für taskctl, questctl, rulectl, adrctl
 

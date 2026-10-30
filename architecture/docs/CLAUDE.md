@@ -8,8 +8,8 @@ Root-`CLAUDE.md`). Dieser Abschnitt regelt zusätzlich die Backlogs.
 Gilt für jede Datei `architecture/docs/backlog-*.md`, derzeit:
 
 - `backlog-features.md` — Weiterentwicklung der CLI-Tools (`F<n>`).
-- `backlog-optimizing.md` — Agent-/Skill-Optimierungen und Agent-Evals
-  (`B<n>`); noch nicht auf das Eintragsformat unten umgestellt.
+- `backlog-optimization.md` — Agent-/Skill-Optimierungen und Agent-Evals
+  (`B<n>`).
 
 Ein Backlog-Eintrag ist **keine Freigabe zur Umsetzung**.
 
@@ -79,6 +79,9 @@ Greift ein Auslöser, **zuerst fragen, dann erst handeln**:
 - **Fertig, wenn**: prüfbare Abnahmekriterien
 - **Abschluss**: was nach der Umsetzung zusätzlich nachzuziehen ist
 ```
+
+Ein Dauer-Eintrag ohne Abschluss (z. B. B2, ein Sammelauftrag für künftige
+Funde) wird nie gelöscht; "Fertig, wenn" und "Abschluss" sagen das ausdrücklich.
 
 IDs werden nie wiederverwendet; das Präfix ist je Backlog fest
 (`F` = Features, `B` = Optimierung).
