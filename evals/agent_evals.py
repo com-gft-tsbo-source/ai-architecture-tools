@@ -7,7 +7,7 @@ stream-json traces and evaluates every expectation individually.
 
 Usage:
     python3 evals/agent_evals.py run --versions e476614 cf2b863 \
-        --scenarios E1 E3 E4 --reps 1 --out <dir>
+        --scenarios E1 E3 E4 --reps 1 --out <dir outside the repo>
     python3 evals/agent_evals.py report <dir>
 """
 from __future__ import annotations
@@ -796,6 +796,17 @@ def report(out: Path) -> str:
     return "\n".join(lines)
 
 
+def check_out_dir(out: Path) -> Path:
+    """Absolute run directory; rejected inside the repository, where every
+    eval session would load the repo's developer CLAUDE.md and bypass the
+    plugin roles (docs/evals/results-2026-10-30.md)."""
+    out = out.resolve()
+    if out.is_relative_to(REPO.resolve()):
+        raise ValueError(f"--out must lie outside the repository {REPO}; "
+                         "copy report.md and runs.tar.gz into evals/results/ afterwards")
+    return out
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -816,6 +827,10 @@ def main(argv=None) -> int:
     if args.cmd == "report":
         print(report(args.out))
         return 0
+    try:
+        args.out = check_out_dir(args.out)
+    except ValueError as exc:
+        p.error(str(exc))
     specs = [s for sc in args.scenarios for s in SCENARIO_CASES[sc]
              if not args.cases or s[0] in args.cases]
     for v in args.versions:  # extract once, before the parallel runs start

@@ -2,6 +2,7 @@
 import json
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import agent_evals as ae
@@ -212,3 +213,20 @@ class TestAdrChecks(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOutDir(unittest.TestCase):
+    def test_out_dir_inside_repo_is_rejected(self):
+        for inside in (ae.REPO, ae.REPO / "evals" / "results" / "x", Path("evals/results/x")):
+            with self.subTest(inside=inside), self.assertRaises(ValueError):
+                ae.check_out_dir(inside)
+
+    def test_out_dir_outside_repo_is_made_absolute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(ae.check_out_dir(Path(tmp) / "run"), (Path(tmp) / "run").resolve())
+
+    def test_run_command_rejects_out_dir_inside_repo(self):
+        with self.assertRaises(SystemExit) as cm, \
+             unittest.mock.patch("sys.stderr"):
+            ae.main(["run", "--versions", "HEAD", "--out", str(ae.REPO / "evals" / "results" / "x")])
+        self.assertEqual(cm.exception.code, 2)
