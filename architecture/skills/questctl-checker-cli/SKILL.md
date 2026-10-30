@@ -14,7 +14,8 @@ The calling Agent decides passage attribution and confidence.
 - Use exactly the supplied `--root`. Put `--json` before `next-all` and
   `show` when parsing their output. Invoke questctl from PATH through Bash;
   no operations beyond the allow-list are permitted.
-- Exit `0` means success, `1` means error or no work. On initial
+- Exit `0` means success, `1` means error or no work, `2` means malformed
+  CLI usage. On initial
   `next-all`, `all_answered`/`awaiting_interaction` means no available work;
   `in_progress` means another run is active: defer without writes.
 - Never use `--force`, `next`, authoring, deletion, or regrouping commands.

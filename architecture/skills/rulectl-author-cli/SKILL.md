@@ -13,7 +13,7 @@ content, grouping and duplicate judgments belong to the calling Agent.
 Use exactly the supplied `--root`; a missing store is created on first use.
 Put `--json` BEFORE read commands whose output you parse; never scrape
 human output. Exit code 0 means success; exit code 1 means an error reported
-on stderr. Judge success by the exit code rather than stderr presence.
+on stderr; exit code 2 means malformed CLI usage. Judge success by the exit code rather than stderr presence.
 Each call is independent; earlier writes are not rolled back if a later call fails.
 
 ## Commands

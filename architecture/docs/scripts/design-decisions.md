@@ -1,6 +1,45 @@
-# Design Decisions — taskctl / rulectl / adrctl / specctl
+# Design Decisions — taskctl / questctl / rulectl / adrctl / specctl
 
-Status: **Finalized**, 2026-08-17; amended 2026-08-19 (twice). This is the rationale trail behind `design.md`, `design-taskctl.md`, `design-rulectl.md`, `design-adrctl.md` and `design-specctl.md` — those documents are the authoritative spec; this log records *what* was decided and *why*, for anyone reviewing or later revisiting a choice. Superseded intermediate proposals and resolved open questions from earlier drafts are omitted; only what actually landed is listed.
+Status: **Finalized**, 2026-08-17; amended since — see the Amendment index below. This is the rationale trail behind `design.md`, `design-taskctl.md`, `design-rulectl.md`, `design-adrctl.md` and `design-specctl.md` — those documents are the authoritative spec; this log records *what* was decided and *why*, for anyone reviewing or later revisiting a choice. Superseded intermediate proposals and resolved open questions from earlier drafts are omitted; only what actually landed is listed.
+
+## Amendment index
+
+Amendments are appended in date order; earlier text is never rewritten, only
+marked inline as *(Superseded …)*. The second column lists only later changes an amendment itself names; when an amendment is superseded in part, the superseded passage is also marked inline. The current rules are always those in `design.md` and the tool-specific design documents.
+
+| Amendment | Later changed by |
+|---|---|
+| 2026-08-17, during implementation | `--root` repeatable → revisited by 2026-08-19, shared-root resolution (multi-root merge dropped) |
+| 2026-08-19, shared-root resolution |  |
+| 2026-08-19, spec-ref single-valued |  |
+| 2026-08-19, closing spec/implementation gaps |  |
+| 2026-08-19, three-verb command namespace + Change metagroup |  |
+| 2026-08-20, correctness review: ID uniqueness, atomic writes, ADR validation |  |
+| 2026-08-20, adr_lookup follow-up fixes |  |
+| 2026-08-20, specctl `init` lifecycle |  |
+| 2026-08-21, rulectl `tasklist` | refined by 2026-08-21, rulectl `tasklist` review-reset + tool-task context |
+| 2026-08-21, rulectl `tasklist` review-reset + tool-task context |  |
+| 2026-08-22, questctl introduction + taskctl sequential-blocking clarification | `ungroup`, `list --ungrouped`, `answer`-as-annotate → superseded by 2026-08-22, grilling |
+| 2026-08-22, grilling: uniform per-store depth, bespoke Answer section, `[~]` gating | "taskctl needs no three-way split" → reversed by 2026-08-25, taskctl `NoWorkAvailable` |
+| 2026-08-22, questctl-author/-checker/-researcher design |  |
+| 2026-08-22, questctl/taskctl implementation |  |
+| 2026-08-25, taskctl `NoWorkAvailable` + taskctl-author-cli/taskctl-worker-cli design |  |
+| 2026-08-25, taskctl-author/taskctl-worker Subagent design |  |
+| 2026-08-27, specctl-author/specctl-adr-author design | files created by 2026-08-27, specctl-author/specctl-adr-author implementation |
+| 2026-08-27, specctl-author/specctl-adr-author implementation |  |
+| 2026-10-19, plugin distribution |  |
+| 2026-10-19, taskctl-author/taskctl-worker implementation |  |
+| 2026-10-19, local-first: one gated path for remote actions |  |
+| 2026-10-19, specctl/adrctl fixes from integrating the specctl Subagents |  |
+| 2026-10-20, agent workflow consistency |  |
+| 2026-10-20, compact runtime instructions | backlog renamed to `backlog-optimization.md` (2026-10-30, optimization backlog in entry format) |
+| 2026-10-20, readability review of compact instructions | "eval plan not executed" → E1, E3–E6 executed, see `../evals/results-2026-10-20.md`; backlog renamed to `backlog-optimization.md` (2026-10-30, optimization backlog in entry format) |
+| 2026-10-21, CI and plugin versioning |  |
+| 2026-10-21, cross-tool CLI contract tests |  |
+| 2026-10-21, exit code 2 in all Skills |  |
+| 2026-10-30, taskctl guards + `--user-approved` |  |
+| 2026-10-30, trigger-based backlogs | backlog renamed to `backlog-optimization.md` (2026-10-30, optimization backlog in entry format) |
+| 2026-10-30, optimization backlog in entry format |  |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -73,7 +112,7 @@ Three refinements surfaced while implementing against this "finalized" design (`
 
 - **`add-<metagroup-type>` auto-numbers by default.** The original text already specified `max + 1` numbering "at creation" for metagroups, same as objects, but the CLI Contract's own examples (`add-domain backend`) left it ambiguous whether a `<nr>-` prefix was still mandatory input. Clarified: the prefix is optional on `add-<metagroup-type>` — omitted, it's auto-assigned; supplied, it's used verbatim. Applies uniformly to **all three tools**, not just taskctl's Phase, per the general "keep CLI structure uniform" rule in `architecture/scripts/CLAUDE.md` — a tool-specific carve-out here would have been a needless asymmetry.
 - **Flexible `--<metagroup-type>` reference.** Referencing an *existing* metagroup path (on `add`, or wherever else a path is given) now resolves each `/`-separated segment against its siblings as either the exact `<nr>-<name>` form, a bare number, or a bare name — instead of requiring the exact stored string. Chosen to apply **per segment**, uniformly across single- and multi-level tools, rather than special-casing taskctl's one-level Phase; an agent or user citing "Setup" or "1" is far more natural than requiring the exact zero-padded form it doesn't necessarily know ahead of time. Ambiguous matches (e.g. two siblings sharing a stripped name) abort with an error — silently picking one would make the resolution unpredictable and hide a naming collision the user should probably fix.
-- **`--root` is repeatable**, directly implementing the read-only multi-root merge already described under "File and Directory Parameters" (which specified the *behavior* but not the CLI mechanism to trigger it). Chosen over positional trailing path arguments — despite the CLI Contract's separate "positional parameters: only file or directory names, always last" line inviting that reading — because a repeated flag keeps every root uniformly explicit and avoids ambiguity between "the primary root" and "additional merge roots" that two different syntaxes (`--root` plus bare positionals) would have introduced. **Superseded 2026-08-19, see "Amendments (2026-08-19, shared-root resolution)" below.**
+- **`--root` is repeatable**, directly implementing the read-only multi-root merge already described under "File and Directory Parameters" (which specified the *behavior* but not the CLI mechanism to trigger it). Chosen over positional trailing path arguments — despite the CLI Contract's separate "positional parameters: only file or directory names, always last" line inviting that reading — because a repeated flag keeps every root uniformly explicit and avoids ambiguity between "the primary root" and "additional merge roots" that two different syntaxes (`--root` plus bare positionals) would have introduced. **Superseded 2026-08-19, see "Amendments (2026-08-19, shared-root resolution)" below.** *(Superseded — see "Amendments (2026-08-19, shared-root resolution)": `--root` is a single shared path, multi-root merge was dropped.)*
 
 ## Amendments (2026-08-19, shared-root resolution)
 
@@ -884,7 +923,54 @@ The backlog now lives at `architecture/docs/backlog-optimizing.md`.
 [The comparative eval plan](../evals/agent-instruction-comparison.md) defines
 routing, skill-loading, unanswered-Question, review/provenance and ADR scenarios.
 It has not been executed; CLI tests and static review do not establish unchanged
-model behavior. Further substantial compaction waits for those comparisons.
+model behavior. *(Since executed for E1 and E3–E6 without observed regression —
+see [the results](../evals/results-2026-10-20.md); the failure scenarios remain open in
+`architecture/docs/backlog-optimizing.md`, B4.)* Further substantial compaction waits for those comparisons.
+
+## Amendments (2026-10-21, CI and plugin versioning)
+
+GitHub Actions runs both test suites on every push and pull request
+(`.github/workflows/tests.yml`), on GitHub-hosted `ubuntu-latest` runners only
+(free for this public repository, no self-hosted runner). The matrix covers
+Python 3.10 — the guaranteed minimum of every target environment, so the
+3.10-only-stdlib constraint is now checked rather than assumed — and 3.13, the
+development version. The CLI wrappers in `architecture/bin/` deliberately do
+not check the interpreter version at runtime: an older Python is out of scope
+and failing there is accepted.
+
+The plugin version had stayed at `0.1.0` since distribution began despite
+substantial Agent and Skill changes; it is now `0.2.0`. To keep the existing
+"bump `version` before a release" rule from being forgotten again, the
+`plugin-version` job fails a pull request that changes `architecture/agents`,
+`architecture/skills` or `architecture/bin` without changing `version`.
+Changes under `scripts/` alone are not covered, as they are frequently
+internal refactorings without user-visible effect.
+
+## Amendments (2026-10-21, cross-tool CLI contract tests)
+
+specctl's own CLI sits beside `lib/cliapp.py` by design, so the shared CLI
+contract was only kept consistent by hand. `scripts/tests/test_cli_contract.py`
+now checks it once for all five tools: `--help` exits `0` and names `--root`
+and `--json`; a missing `--root` or an unknown subcommand is an argparse usage
+error (exit `2`, already accepted in "Amendments (2026-10-19, specctl/adrctl
+fixes ...)"); a runtime error exits `1` with the message on stderr and nothing
+on stdout, with or without `--json`; `--json` output is valid JSON, human
+output is not; all tools share one `--root` without seeing each other's
+objects. Merging specctl into the generic engine remains rejected — the tests
+replace the manual consistency rule, not the separate implementation.
+
+`scripts/CLAUDE.md` now describes only the current implementation state,
+conventions and open points; the change history it had accumulated lives
+here. It no longer records test counts, which went stale with every change.
+
+## Amendments (2026-10-21, exit code 2 in all Skills)
+
+Only the specctl and adrctl Skills named exit code `2` (argparse usage
+error); the taskctl, questctl and rulectl Skills and their design documents
+listed `0`/`1` only, although every tool behaves identically
+(`scripts/tests/test_cli_contract.py`). All Skills and Skill design documents
+now name `2` as a malformed command line. Wording only, no behavior change;
+plugin version `0.2.1`.
 
 ## Amendments (2026-10-30, taskctl guards + `--user-approved`)
 
@@ -955,3 +1041,55 @@ Decided in a grilling round with the user:
   that Task, de-escalation from `user` and the `[R]`→`[X]` user verdict carry
   it; `taskctl-author-cli` (+ design) — guarded corrections and imports
   reported, `gate` never set. `rulectl-checker-cli` needed no change.
+- **Plugin version `0.3.0`**: these Agent/Skill changes alter behavior, so
+  they do not ship as `0.2.1` ("wording only", Amendments (2026-10-21, exit
+  code 2 in all Skills)), which they met when merged into the branch with
+  the CI and backlog work.
+- **CLI contract**: a guard rejection under `--json` is, like
+  `NoWorkAvailable`, the one kind of error printed as JSON on stdout
+  (still exit `1`); every other error stays stderr-only, as Amendments
+  (2026-10-21, cross-tool CLI contract tests) describe.
+
+## Amendments (2026-10-30, trigger-based backlogs)
+
+Deferred work on the CLI tools now lives in `architecture/docs/backlog-features.md`
+(entries `F<n>`): F1 metagroup rename, F2 table-driven parser/dispatch. The
+rules for every `architecture/docs/backlog-*.md` are kept once in
+`architecture/docs/CLAUDE.md`, with a pointer from the root `CLAUDE.md` because
+a subdirectory `CLAUDE.md` is only loaded once a file below it is read.
+
+- An entry is raised only when its explicit trigger applies to the work at
+  hand; entries without a trigger are never raised proactively.
+- Before any planning or implementation the user is asked about that one
+  entry (benefit and effort in one sentence each); an explicit request counts
+  as consent.
+- A refusal holds per entry for the current session only and is not
+  persisted anywhere; it must survive context compaction.
+- A completed entry is deleted from its backlog and documented here as an
+  amendment, keeping the history in one place.
+
+F1 deliberately records its open design questions with recommendations
+instead of decisions: the contract is written into `design.md` once a concrete
+need shows what a rename must do (notably whether Object Types change).
+The Agent-eval failure scenarios stay B4 in `backlog-optimizing.md`, which is
+to be converted to the same entry format (and renamed `backlog-optimization.md`)
+in a follow-up step.
+
+## Amendments (2026-10-30, optimization backlog in entry format)
+
+`architecture/docs/backlog-optimizing.md` is renamed to
+`backlog-optimization.md` (matching `backlog-features.md`) and converted to
+the entry format of `architecture/docs/CLAUDE.md`, "Backlogs". Earlier
+amendments keep the old file name; the index above records the rename.
+
+- Every entry B1–B8 now has an explicit trigger, so the ask-first rules apply
+  to it; the IDs are unchanged. The triggers follow the same principle as the
+  feature backlog: a concrete change to the affected Agent/Skill, or a
+  dependent entry (B4 before B1, B6, B7 and before the next substantial
+  compaction).
+- Former "decide later" points are now open design questions, each with a
+  recommendation that is explicitly not a decision.
+- B4 is narrowed to its remaining scope (the failure scenarios), since E1 and
+  E3–E6 have run; the original content is kept as context.
+- B2 stays a standing entry that is never deleted: a concrete finding becomes
+  its own new entry instead of being implemented directly.

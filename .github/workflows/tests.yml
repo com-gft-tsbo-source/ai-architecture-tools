@@ -1,0 +1,52 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 = guaranteed minimum of the target environments, 3.13 = development version
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: CLI and plugin tests
+        run: python -m unittest discover -s architecture/scripts/tests -t architecture/scripts
+      - name: Agent eval harness tests
+        run: python -m unittest discover -s evals -t evals
+
+  plugin-version:
+    # Distributed Agent/Skill/CLI changes must ship with a new plugin version
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require version bump for distributed changes
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          paths="architecture/agents architecture/skills architecture/bin"
+          if git diff --quiet "$BASE"...HEAD -- $paths; then
+            echo "No distributed Agent/Skill/CLI wrapper changes."
+            exit 0
+          fi
+          version() { python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])'; }
+          old=$(git show "$BASE":architecture/.claude-plugin/plugin.json | version)
+          new=$(version < architecture/.claude-plugin/plugin.json)
+          echo "plugin version: $old -> $new"
+          if [ "$old" = "$new" ]; then
+            echo "::error file=architecture/.claude-plugin/plugin.json::$paths changed, but version is still $old"
+            exit 1
+          fi

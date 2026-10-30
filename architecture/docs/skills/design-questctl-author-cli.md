@@ -17,7 +17,7 @@ Not in scope (not used by this workflow, so not documented here): `answer`, `ann
 
 ## Invocation conventions
 
-Same as `rulectl-author-cli`: `--root <path>` always supplied by the caller; `--json` on every call whose output is parsed programmatically (`list`, `show`, `show-metagroups`); exit codes `0`/`1`, check the code not stderr's presence; every operation is a single, independent `questctl` invocation, no batch/transaction mode.
+Same as `rulectl-author-cli`: `--root <path>` always supplied by the caller; `--json` on every call whose output is parsed programmatically (`list`, `show`, `show-metagroups`); exit codes `0`/`1`/`2` (`2` = malformed command line), check the code not stderr's presence; every operation is a single, independent `questctl` invocation, no batch/transaction mode.
 
 ## Detecting the established depth
 

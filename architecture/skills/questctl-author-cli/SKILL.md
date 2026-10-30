@@ -13,7 +13,8 @@ the calling Agent decides extraction, taxonomy confirmation and duplicates.
 Use exactly the supplied `--root`; an absent store initializes on first use.
 Put `--json` before read commands whose output you parse, and do not scrape
 human-readable output. Exit code 0 means success; exit code 1 means an
-error reported on stderr. Judge success by exit code, not stderr presence.
+error reported on stderr; exit code 2 means malformed CLI usage. Judge
+success by exit code, not stderr presence.
 Calls are independent; earlier writes survive a later failure.
 
 Before taxonomy proposal, combine these reads:

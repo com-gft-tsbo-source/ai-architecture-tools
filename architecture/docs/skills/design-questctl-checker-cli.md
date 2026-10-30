@@ -10,7 +10,8 @@ The calling Agent decides passage attribution and confidence.
 - Allowed: `next-all`, `show`, `annotate`, `set-status`, `answer`, `info-review`.
 - Use the explicitly supplied `--root` for every call. Use `--json` before
   `next-all` and `show`; parse JSON rather than human-readable output.
-- Exit `0` means success, `1` means error or no work. On initial
+- Exit `0` means success, `1` means error or no work, `2` means malformed
+  CLI usage. On initial
   `next-all`, `all_answered`/`awaiting_interaction` means no available work;
   `in_progress` means another run is active: defer without writes.
 - Never use `--force`, `next`, authoring, deletion, or regrouping commands.

@@ -1,6 +1,6 @@
 {
   "name": "architecture-tools",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "taskctl, questctl, rulectl, adrctl and specctl CLIs plus the Skills and Subagents built on them.",
   "author": {
     "name": "Thomas Brunko"

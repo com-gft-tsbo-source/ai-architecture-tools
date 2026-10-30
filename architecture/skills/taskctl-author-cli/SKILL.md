@@ -13,7 +13,7 @@ Agent controls planning, deletion confirmation and ordering judgments.
 Use exactly the supplied `--root`; absent stores initialize on first use.
 Put `--json` before read commands whose output you parse, rather than scraping
 human-readable output. Exit code 0 means success; exit code 1 reports an error
-on stderr. Calls are independent; earlier writes are not rolled back.
+on stderr; exit code 2 means malformed CLI usage. Calls are independent; earlier writes are not rolled back.
 A store uses Phases or stays flat, never both. Segments may be bare
 (auto-numbered) or explicit `<nr>-<name>`.
 

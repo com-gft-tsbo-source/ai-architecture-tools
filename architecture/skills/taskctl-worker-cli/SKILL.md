@@ -11,7 +11,8 @@ transition. Do not author, restructure, delete or reassign Tasks, set origin,
 browse with list/show-metagroups, or call reindex/history. Mutate only the ID
 most recently returned by next, and never use --force. Use exactly the
 supplied --root. Put --json before next/show and omit it on writes.
-Exit code 0 means success; exit code 1 means an error.
+Exit code 0 means success; exit code 1 means an error; exit code 2 means
+malformed CLI usage.
 
 taskctl guards reject skipping past unresolved earlier Tasks and deciding a
 user review yourself (`[R]`→X, review changes while in R/C, lowering review
