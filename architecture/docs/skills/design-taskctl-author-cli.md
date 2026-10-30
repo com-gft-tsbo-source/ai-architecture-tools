@@ -17,8 +17,8 @@ creating and restructuring Tasks, never working them:
 
 - `add-phase` — create a Phase metagroup path.
 - `add` (with inline `--phase`, `--description`, `--review`,
-  `--assignee-type`, `--assignee-name`, `--source`, and optionally
-  `--set-status`) — create a Task.
+  `--assignee-type`, `--assignee-name`, `--source`) — create a Task, always
+  in the initial open Status.
 - `list` — browse existing Tasks (by `--phase`/`--status`/metainfo) before
   adding more, e.g. to avoid duplicating or overlapping an already-covered
   piece of work.
@@ -79,8 +79,7 @@ taskctl --root <root> add --name "<short name>" --description "<description text
   [--phase <name>] \
   [--review none|user|subagent] \
   [--assignee-type <value>] [--assignee-name <value>] \
-  [--source <value>] \
-  [--set-status <code>]
+  [--source <value>]
 ```
 
 `--phase` is required in a Phase-using store, omitted entirely in a
@@ -90,11 +89,7 @@ leaves it unset, which `taskctl`'s status machine treats the same as
 `none` (design-taskctl.md, "Status"). `--source` traces the Task back to
 the document (and section/passage, where identifiable) it was derived
 from — set it whenever the Task actually came from a source document;
-leave it unset for a Task with no such origin. `--set-status` is rarely
-needed — it sets the Task's *initial* Status to any value, even one a
-normal transition couldn't reach (e.g. importing a Task that's already
-done or already in progress); this is an initial-value choice, not a
-transition, so it never needs `--force` (design.md, "Object Status").
+leave it unset for a Task with no such origin.
 
 **Browsing before extending**, to see what already exists — e.g. to avoid
 adding a Task that duplicates or overlaps one already on the list:
@@ -126,9 +121,7 @@ taskctl --root <root> info-source <id> <value>
 
 Guards (design-taskctl.md, "Guards") apply to these corrections too:
 lowering `review` from `user`, changing `review` on a Task in `[R]`/`[C]`,
-and `info-gate` are rejected with `approval_required`, and `add
---set-status` with a working status (`~`/`R`/`C`/`X`) behind an unfinished
-earlier Task is rejected with `sequence_blocked`. The Author reports the
+and `info-gate` are rejected with `approval_required`. The Author reports the
 rejection; it adds `--user-approved "<the user's instruction>"` only when
 the user explicitly asked for exactly that change. `gate` is never set by
 the Author — it exists for `rulectl tasklist`'s independent compliance
@@ -167,6 +160,12 @@ taskctl --root <root> delete <id>
   `taskctl-worker-cli`'s job entirely.
 - `reindex`, `history` — maintenance/reporting, neither authoring nor
   working a Task list.
+- `add --set-status` (an initial Status other than open, e.g. for importing
+  Tasks that are already in progress or done; design.md, "Object Status") —
+  a `taskctl` capability outside this role: authored Tasks always start
+  open. There is deliberately no import contract until a real import use
+  case exists (design-decisions.md, "Amendments (2026-10-30, role-specific
+  Skill surface)").
 - Judging whether a candidate Task duplicates or overlaps an existing one,
   how to break a larger goal into Tasks, or how to structure a Phase
   breakdown — workflow judgment for the `taskctl-author` Subagent,

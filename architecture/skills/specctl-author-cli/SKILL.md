@@ -43,10 +43,10 @@ specctl --root <root> set-description <id> "<text>"
 specctl --root <root> set-open-questions <id> "<text>"
 ```
 
-Add also accepts --abbrev/--id/--set-status; never pass --set-status in this
-draft-authoring workflow. Every ancestor must exist. Only Parts may
-sit at root. Intermediate levels may be skipped (e.g. add-point Part/Chapter/Point),
-but deeper siblings must precede shallower ones under the same parent.
+Add --id <value> or --abbrev <code> only when the user specified that ID or
+type abbreviation; otherwise specctl generates both. Every ancestor must
+exist. Only Parts may sit at root. Intermediate levels may be skipped
+(e.g. add-point Part/Chapter/Point), but deeper siblings must precede shallower ones under the same parent.
 Add and move append as last child and reject invalid ordering; reorder
 also enforces it. Every new Section stays draft.
 
@@ -77,5 +77,6 @@ If ancestors are missing, create the permitted ones and retry. Initialize
 and retry only on the specific uninitialized-store error above. Retry an
 ID collision on add once. If deletion is rejected because descendants exist
 and the user did not request subtree deletion, report the failure rather
-than forcing it. For other errors, report item stderr unchanged, avoid blind
-retries and continue remaining operations.
+than forcing it. Report an unresolvable type-abbreviation collision so the
+user can supply --abbrev; never invent one. For other errors, report item
+stderr unchanged, avoid blind retries and continue remaining operations.

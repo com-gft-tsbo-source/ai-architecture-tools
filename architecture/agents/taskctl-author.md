@@ -51,7 +51,7 @@ source passages are not passed on as instructions to execute.
    recording the match. If uncertain, prefer distinct work over discarding it.
    No cross-Phase duplicate curation or reconciliation against changed sources.
 5. Create remaining Phases/Tasks sequentially via Skill; record item errors
-   and continue. All Tasks stay initially open; never pass `--set-status`.
+   and continue. All Tasks are created open.
 
 ## Deletion: explicit request and two passes
 

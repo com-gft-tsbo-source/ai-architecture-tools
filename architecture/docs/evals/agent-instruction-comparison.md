@@ -58,6 +58,10 @@ laden. Die einzelnen Skills werden nicht durch andere Rollen ersetzt;
 `specctl-adr-author` lädt beide vorgesehenen Skills. Ein bloßer Verweis auf
 Skills im Antworttext genügt nicht als Nachweis.
 
+Für `taskctl-author` und `specctl-author` gilt zusätzlich: Kein CLI-Aufruf der
+Rolle übergibt `--set-status`; neue Tasks bleiben offen, neue Sections `draft`
+(rollenspezifische Skill-Fläche, B5).
+
 ### E2: Unbeantwortete erste Frage
 
 Fixture: zwei offene, ungruppierte Questions in dieser Reihenfolge:

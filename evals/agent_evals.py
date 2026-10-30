@@ -522,6 +522,7 @@ def cli_calls(calls: list[dict]) -> list[tuple[int, str, str]]:
     return found
 
 
+AUTHOR_CASES = {"E1-taskctl-author", "E1-specctl-author"}
 READ_OPS = {"list", "show", "show-metagroups", "next", "next-all", "history", "render"}
 CLI_OP_RE = re.compile(r"(?:^|[\s/])(" + "|".join(CLIS) + r")(?:\.py)?"
                        r"((?:\s+(?:--root\s+\S+|--json))*)\s+([a-z][\w-]*)")
@@ -596,6 +597,13 @@ def evaluate(r: dict) -> list[dict]:
                    len(adrs) == 1 and all(s.get("status") == "stable" and s.get("adr") == adrs[0]["id"]
                                           for s in sections)),
         ]
+    if case in AUTHOR_CASES:
+        # Role-specific Skill surface (B5): authors always create open/draft objects.
+        own = [c for c in calls if sub and c["parent"] == sub["id"]]
+        initial = [seg for seg in command_segments(own)
+                   if CLI_OP_RE.search(seg) and re.search(r"(?:^|\s)--set-status\b", seg)]
+        checks.append(_check("Kein --set-status beim Anlegen", None if not sub else not initial,
+                             "; ".join(initial)[:300] if sub else "Rolle nicht gestartet"))
     if case.startswith(("E3", "E4")):
         checks += evaluate_worker(r, [c for c in calls if sub and c["parent"] == sub["id"]])
     if case.startswith("E5"):

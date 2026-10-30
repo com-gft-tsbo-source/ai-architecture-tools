@@ -94,6 +94,28 @@ class TestRoutingChecks(unittest.TestCase):
         self.assertEqual(res["Aufrufer lädt keinen Rollen-Skill selbst"], "verletzt")
 
 
+class TestAuthorChecks(unittest.TestCase):
+    AUTHOR = "architecture-tools:taskctl-author"
+
+    def author_record(self, command):
+        calls = [call("a1", "Agent", subagent_type=self.AUTHOR),
+                 call("s1", "Skill", "a1", skill="architecture-tools:taskctl-author-cli"),
+                 call("b1", "Bash", "a1", command=command)]
+        return {"case": "E1-taskctl-author", "expected_role": "taskctl-author",
+                "expected_skills": ["taskctl-author-cli"], "trace": {"calls": calls, "result": {}},
+                "before": {}, "after": {}}
+
+    def test_initial_status_on_add_is_a_violation(self):
+        ok = self.author_record('taskctl --root /r add --name "A" --description "a"')
+        self.assertEqual(results(ae.evaluate(ok))["Kein --set-status beim Anlegen"], "erfüllt")
+        bad = self.author_record('taskctl --root /r add --name "A" --description "a" --set-status X')
+        self.assertEqual(results(ae.evaluate(bad))["Kein --set-status beim Anlegen"], "verletzt")
+
+    def test_check_only_applies_to_author_cases(self):
+        r = record("E1-taskctl-worker", GOOD_START, [], " ", [])
+        self.assertNotIn("Kein --set-status beim Anlegen", results(ae.evaluate(r)))
+
+
 class TestWorkerChecks(unittest.TestCase):
     def test_export_claimed_before_block_is_a_violation(self):
         r = record("E3-B-export", GOOD_START, hist(("M", None, "created")), "B",
