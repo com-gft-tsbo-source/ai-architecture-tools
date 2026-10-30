@@ -23,8 +23,7 @@ A store uses Phases or stays flat, never both. Segments may be bare
 taskctl --root <root> add-phase <name>
 taskctl --root <root> add --name "<name>" --description "<work>" \
   [--phase <path>] [--review none|user|subagent] \
-  [--assignee-type <value>] [--assignee-name <value>] [--source "<origin>"] \
-  [--set-status <code>]
+  [--assignee-type <value>] [--assignee-name <value>] [--source "<origin>"]
 taskctl --root <root> --json list [--phase <path>] [--status <value>]
 taskctl --root <root> --json show <id> [--history]
 taskctl --root <root> --json show-metagroups
@@ -32,10 +31,7 @@ taskctl --root <root> --json show-metagroups
 
 Phase is required in Phase stores and omitted in flat stores. Inspect
 Tasks/Phases before extension and show every believed creation at run end.
-`--set-status` is an initial-value override for imports, not an execution
-transition; taskctl-author never uses it for newly planned work. A working
-status (`~`, R, C, X) behind an unfinished earlier Task is rejected with
-`sequence_blocked`.
+Every new Task starts open.
 
 Correct newly created Task fields within the run:
 

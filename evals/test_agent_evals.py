@@ -2,6 +2,7 @@
 import json
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import agent_evals as ae
@@ -92,6 +93,28 @@ class TestRoutingChecks(unittest.TestCase):
         res = results(ae.evaluate(r))
         self.assertEqual(res["Aufrufer schreibt nicht selbst mit der CLI"], "verletzt")
         self.assertEqual(res["Aufrufer lädt keinen Rollen-Skill selbst"], "verletzt")
+
+
+class TestAuthorChecks(unittest.TestCase):
+    AUTHOR = "architecture-tools:taskctl-author"
+
+    def author_record(self, command):
+        calls = [call("a1", "Agent", subagent_type=self.AUTHOR),
+                 call("s1", "Skill", "a1", skill="architecture-tools:taskctl-author-cli"),
+                 call("b1", "Bash", "a1", command=command)]
+        return {"case": "E1-taskctl-author", "expected_role": "taskctl-author",
+                "expected_skills": ["taskctl-author-cli"], "trace": {"calls": calls, "result": {}},
+                "before": {}, "after": {}}
+
+    def test_initial_status_on_add_is_a_violation(self):
+        ok = self.author_record('taskctl --root /r add --name "A" --description "a"')
+        self.assertEqual(results(ae.evaluate(ok))["Kein --set-status beim Anlegen"], "erfüllt")
+        bad = self.author_record('taskctl --root /r add --name "A" --description "a" --set-status X')
+        self.assertEqual(results(ae.evaluate(bad))["Kein --set-status beim Anlegen"], "verletzt")
+
+    def test_check_only_applies_to_author_cases(self):
+        r = record("E1-taskctl-worker", GOOD_START, [], " ", [])
+        self.assertNotIn("Kein --set-status beim Anlegen", results(ae.evaluate(r)))
 
 
 class TestWorkerChecks(unittest.TestCase):
@@ -190,3 +213,20 @@ class TestAdrChecks(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOutDir(unittest.TestCase):
+    def test_out_dir_inside_repo_is_rejected(self):
+        for inside in (ae.REPO, ae.REPO / "evals" / "results" / "x", Path("evals/results/x")):
+            with self.subTest(inside=inside), self.assertRaises(ValueError):
+                ae.check_out_dir(inside)
+
+    def test_out_dir_outside_repo_is_made_absolute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(ae.check_out_dir(Path(tmp) / "run"), (Path(tmp) / "run").resolve())
+
+    def test_run_command_rejects_out_dir_inside_repo(self):
+        with self.assertRaises(SystemExit) as cm, \
+             unittest.mock.patch("sys.stderr"):
+            ae.main(["run", "--versions", "HEAD", "--out", str(ae.REPO / "evals" / "results" / "x")])
+        self.assertEqual(cm.exception.code, 2)

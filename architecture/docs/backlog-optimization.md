@@ -147,36 +147,6 @@ Weiterentwicklungen der CLI-Tools stehen in
 
 ## Konkrete Funde aus dem Regelabgleich
 
-### B5: Allgemeine CLI-Fläche und Rollenvertrag deutlicher abgrenzen
-
-- **Auslöser**: `taskctl-author-cli` oder `specctl-author-cli` werden im
-  Bereich `add`/`--set-status` geändert, oder ein Import-Anwendungsfall
-  (Objekte mit initialem Status anlegen) entsteht.
-- **Nutzen**: Skills beschreiben keine CLI-Varianten, die ihre Rolle nicht
-  nutzen darf — weniger Widerspruch zwischen Skill und Agent.
-- **Aufwand**: klein bis mittel — je nach Entscheidung Textänderung oder
-  eigener Import-Vertrag.
-- **Kontext und Quellen**:
-  - `taskctl-author-cli` beschreibt initiales `--set-status` für Imports,
-    während `taskctl-author` neu geplante Tasks immer offen lässt.
-  - `specctl-author-cli` nennt den verfügbaren Add-Parameter ebenfalls,
-    verlangt im Draft-Workflow aber ausdrücklich, ihn nicht zu verwenden.
-  - Beide Einschränkungen wurden im bisherigen Lauf erhalten.
-- **Offene Designfragen**:
-  1. Sollen rollenspezifische Skills ungenutzte CLI-Varianten überhaupt
-     beschreiben, oder brauchen Imports einen eigenen Vertrag? —
-     Empfehlung: ungenutzte Varianten aus den Rollen-Skills entfernen; einen
-     Import-Vertrag erst anlegen, wenn ein echter Import-Anwendungsfall
-     auftritt.
-- **Vorgehen**:
-  1. Designfrage mit dem User klären.
-  2. Design-Dokumente unter `docs/skills/` anpassen, dann die SKILL.md.
-  3. E1 für die betroffenen Rollen erneut laufen lassen.
-- **Fertig, wenn**: Skill und Agent widersprechen sich nicht mehr, E1 zeigt
-  keine Regression, die Testsuite ist grün.
-- **Abschluss**: siehe [`CLAUDE.md`](CLAUDE.md), "Backlogs"; Plugin-Version
-  erhöhen.
-
 ### B6: Ergebniszuordnung nach fehlgeschlagenem Duplikat-Repräsentanten
 
 - **Auslöser**: Die Duplikatbehandlung von `rulectl-author` oder

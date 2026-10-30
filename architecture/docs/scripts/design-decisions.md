@@ -40,6 +40,7 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-10-30, taskctl guards + `--user-approved` |  |
 | 2026-10-30, trigger-based backlogs | backlog renamed to `backlog-optimization.md` (2026-10-30, optimization backlog in entry format) |
 | 2026-10-30, optimization backlog in entry format |  |
+| 2026-10-30, role-specific Skill surface |  |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -1093,3 +1094,32 @@ amendments keep the old file name; the index above records the rename.
   E3–E6 have run; the original content is kept as context.
 - B2 stays a standing entry that is never deleted: a concrete finding becomes
   its own new entry instead of being implemented directly.
+
+## Amendments (2026-10-30, role-specific Skill surface)
+
+Completes backlog entry B5 (`backlog-optimization.md`). `taskctl-author-cli`
+described `add --set-status` for imports while `taskctl-author` never passes
+it; `specctl-author-cli` named it only to forbid it. Decided in a grilling
+round with the user:
+
+- **A role's Skill describes only the operations and options that role may
+  use** (rule added to `agent-skill-guidelines.md`). A CLI capability the
+  role does not use is omitted rather than named and forbidden; the Skill's
+  design document records the boundary under "Out of scope". Short boundary
+  sentences about obvious neighbouring operations ("Never use `--force`",
+  "Do not call reorder, …") stay allowed — they describe no syntax.
+- **No import contract.** `add --set-status` remains a CLI capability
+  (design.md, "Object Status") outside both author roles; a real import use
+  case becomes its own backlog entry.
+- `taskctl-author-cli`, its design and `taskctl-author`: `--set-status` and
+  its `sequence_blocked` note removed; the Agent says "All Tasks are created
+  open." without naming the flag.
+- `specctl-author-cli` and its design: `--set-status` removed; `--id`/
+  `--abbrev` only when the user specified them. An unresolvable
+  type-abbreviation collision is reported so the user can supply `--abbrev`,
+  never invented.
+- The other eight Skills were checked: none describes a forbidden option in
+  its command syntax.
+- E1 for both author roles, `c856d19` vs `253c2cd`, 3 runs each, with a new
+  "no `--set-status`" check: no regression
+  ([results](../evals/results-2026-10-30.md)). Plugin version `0.3.1`.

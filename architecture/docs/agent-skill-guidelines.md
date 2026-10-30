@@ -12,6 +12,12 @@ Ein Agent enthält seine Eingaben, Vertrauensgrenzen, fachliche Reihenfolge,
 Entscheidungen, Freigaben und Berichtsanforderungen. Der zugehörige Skill
 enthält den vollständigen CLI-Vertrag: erlaubte Operationen, Syntax, technische
 Statusübergänge, Fehlerbehandlung und Store-Verifikation.
+Ein Skill beschreibt nur die Operationen und Optionen, die seine Rolle
+verwenden darf. Eine CLI-Fähigkeit, die die Rolle nicht nutzt, wird
+weggelassen, statt genannt und verboten zu werden; das zugehörige
+Design-Dokument hält die Abgrenzung unter „Out of scope“ fest. Kurze
+Grenzsätze zu naheliegenden Nachbaroperationen (z. B. „Never use `--force`“)
+bleiben erlaubt.
 
 Jede Rolle lädt zu Laufbeginn ihre ausdrücklich benannten Skills, bevor sie
 eine CLI aufruft. Author und Worker werden separat eingesetzt und benötigen

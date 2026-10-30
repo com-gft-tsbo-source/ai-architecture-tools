@@ -23,8 +23,9 @@ combination:
   setup, including the mandatory one-time initialization
   (`design-specctl.md`, "Store").
 - `add-part`, `add-chapter`, `add-section`, `add-subsection`, `add-point`
-  (with inline `--description`, `--open-questions`, `--set-status`,
-  `--abbrev`, `--id`) — create a Section at any of the 5 heading depths.
+  (with inline `--description`, `--open-questions`, and `--id`/`--abbrev`
+  only as the user specifies) — create a Section at any of the 5 heading
+  depths, always as `draft`.
 - `set-description`, `set-open-questions` — change a Section's content.
   Always called here with **no** `--adr` — every Section this Skill touches
   is still `draft` by construction (`specctl-adr-author` owns everything
@@ -129,9 +130,14 @@ shallower siblings — `add`/`move-to-<level>` append as last child, so they
 reject a Point after an existing Section under the same Chapter (in
 Markdown it would nest under that Section), and `reorder` rejects an order
 that breaks this. Every newly created Section starts at `draft`
-(`specctl`'s default initial Status) unless `--set-status` is given — this
-Skill never passes `--set-status` (see `design-specctl-author.md`,
+(`specctl`'s default initial Status; see `design-specctl-author.md`,
 "Status").
+
+`--id` and `--abbrev` are passed only when the user explicitly specified
+that ID or type abbreviation; otherwise `specctl` generates both. An
+abbreviation collision that `specctl` cannot resolve itself
+(design-specctl.md, "Object Type") is reported as a failed item, so the
+user can supply an `--abbrev` — the Skill never invents one.
 
 **Editing a Section's content**:
 
@@ -215,4 +221,8 @@ evidence.
 This Skill does not cover Status changes or ADR linkage (`set-status`,
 `set-adr`, or `set-description`/`set-open-questions` with `--adr`) — that is
 `specctl-editor-cli`'s job entirely, used by the separate `specctl-adr-author`
-Subagent once a Section leaves `draft`.
+Subagent once a Section leaves `draft`. This includes `add-<level>
+--set-status` (an initial Status other than `draft`): a `specctl` capability
+outside this role, with deliberately no import contract until a real import
+use case exists (design-decisions.md, "Amendments (2026-10-30,
+role-specific Skill surface)").

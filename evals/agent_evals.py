@@ -7,7 +7,7 @@ stream-json traces and evaluates every expectation individually.
 
 Usage:
     python3 evals/agent_evals.py run --versions e476614 cf2b863 \
-        --scenarios E1 E3 E4 --reps 1 --out <dir>
+        --scenarios E1 E3 E4 --reps 1 --out <dir outside the repo>
     python3 evals/agent_evals.py report <dir>
 """
 from __future__ import annotations
@@ -522,6 +522,7 @@ def cli_calls(calls: list[dict]) -> list[tuple[int, str, str]]:
     return found
 
 
+AUTHOR_CASES = {"E1-taskctl-author", "E1-specctl-author"}
 READ_OPS = {"list", "show", "show-metagroups", "next", "next-all", "history", "render"}
 CLI_OP_RE = re.compile(r"(?:^|[\s/])(" + "|".join(CLIS) + r")(?:\.py)?"
                        r"((?:\s+(?:--root\s+\S+|--json))*)\s+([a-z][\w-]*)")
@@ -596,6 +597,13 @@ def evaluate(r: dict) -> list[dict]:
                    len(adrs) == 1 and all(s.get("status") == "stable" and s.get("adr") == adrs[0]["id"]
                                           for s in sections)),
         ]
+    if case in AUTHOR_CASES:
+        # Role-specific Skill surface (B5): authors always create open/draft objects.
+        own = [c for c in calls if sub and c["parent"] == sub["id"]]
+        initial = [seg for seg in command_segments(own)
+                   if CLI_OP_RE.search(seg) and re.search(r"(?:^|\s)--set-status\b", seg)]
+        checks.append(_check("Kein --set-status beim Anlegen", None if not sub else not initial,
+                             "; ".join(initial)[:300] if sub else "Rolle nicht gestartet"))
     if case.startswith(("E3", "E4")):
         checks += evaluate_worker(r, [c for c in calls if sub and c["parent"] == sub["id"]])
     if case.startswith("E5"):
@@ -788,6 +796,17 @@ def report(out: Path) -> str:
     return "\n".join(lines)
 
 
+def check_out_dir(out: Path) -> Path:
+    """Absolute run directory; rejected inside the repository, where every
+    eval session would load the repo's developer CLAUDE.md and bypass the
+    plugin roles (docs/evals/results-2026-10-30.md)."""
+    out = out.resolve()
+    if out.is_relative_to(REPO.resolve()):
+        raise ValueError(f"--out must lie outside the repository {REPO}; "
+                         "copy report.md and runs.tar.gz into evals/results/ afterwards")
+    return out
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -808,6 +827,10 @@ def main(argv=None) -> int:
     if args.cmd == "report":
         print(report(args.out))
         return 0
+    try:
+        args.out = check_out_dir(args.out)
+    except ValueError as exc:
+        p.error(str(exc))
     specs = [s for sc in args.scenarios for s in SCENARIO_CASES[sc]
              if not args.cases or s[0] in args.cases]
     for v in args.versions:  # extract once, before the parallel runs start
