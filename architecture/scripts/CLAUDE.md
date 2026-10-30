@@ -118,7 +118,9 @@ Single-File-Mode.
 ## Konsistenz zwischen den Tools
 
 - Exit-Codes: `0` = ok, `1` = Fehler, `2` = Aufruffehler (argparse).
-- Fehlermeldungen → stderr, reguläre Ausgabe → stdout.
+- Fehlermeldungen → stderr, reguläre Ausgabe → stdout. Einzige Ausnahme:
+  `NoWorkAvailable` und `GuardViolation` geben bei `--json` ein Objekt mit
+  `reason` auf stdout aus (weiterhin Exit `1`).
 - CLI-Struktur (Subcommands, `--json`-Flag, `--root` als einzelner,
   projektweit gemeinsamer Pfad, Positionsargumente ans Ende) einheitlich über
   alle fünf Tools halten, auch wenn ein Tool das jeweilige Feature (noch)

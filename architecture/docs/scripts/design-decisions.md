@@ -972,8 +972,6 @@ listed `0`/`1` only, although every tool behaves identically
 now name `2` as a malformed command line. Wording only, no behavior change;
 plugin version `0.2.1`.
 
-model behavior. Further substantial compaction waits for those comparisons.
-
 ## Amendments (2026-10-30, taskctl guards + `--user-approved`)
 
 Trigger: an agent started a later Task while an earlier one waited in `[R]`.
@@ -1043,6 +1041,14 @@ Decided in a grilling round with the user:
   that Task, de-escalation from `user` and the `[R]`→`[X]` user verdict carry
   it; `taskctl-author-cli` (+ design) — guarded corrections and imports
   reported, `gate` never set. `rulectl-checker-cli` needed no change.
+- **Plugin version `0.3.0`**: these Agent/Skill changes alter behavior, so
+  they do not ship as `0.2.1` ("wording only", Amendments (2026-10-21, exit
+  code 2 in all Skills)), which they met when merged into the branch with
+  the CI and backlog work.
+- **CLI contract**: a guard rejection under `--json` is, like
+  `NoWorkAvailable`, the one kind of error printed as JSON on stdout
+  (still exit `1`); every other error stays stderr-only, as Amendments
+  (2026-10-21, cross-tool CLI contract tests) describe.
 
 ## Amendments (2026-10-30, trigger-based backlogs)
 

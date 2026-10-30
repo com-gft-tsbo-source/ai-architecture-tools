@@ -94,7 +94,7 @@ Agent-/Skill-Optimierungen und Agent-Evals stehen in
 - **Aufwand**: mittel — rein strukturell, aber zwei Implementierungen und
   breite Verhaltensoberfläche.
 - **Kontext und Quellen**:
-  - `lib/cliapp.py`: `build_parser` (~95 Zeilen), `dispatch` (~92 Zeilen);
+  - `lib/cliapp.py`: `build_parser` (~98 Zeilen), `dispatch` (~99 Zeilen);
     `dispatch` hat mit `extra_handlers` bereits einen Tabellen-Ansatz für
     tool-eigene Kommandos.
   - `specctl.py`: `build_parser` (~114 Zeilen), `dispatch` (~84 Zeilen).
@@ -116,7 +116,7 @@ Agent-/Skill-Optimierungen und Agent-Evals stehen in
   `tests/test_cli_contract.py` läuft unverändert grün (keine Tests
   angepasst), die `--help`-Ausgaben sind identisch, keine Funktion in den
   beiden Parser-/Dispatch-Pfaden ist länger als ~50 Zeilen.
-- **Nicht Teil von F2**: `Store.add` (`lib/store.py`, ~95 Zeilen) und
+- **Nicht Teil von F2**: `Store.add` (`lib/store.py`, ~108 Zeilen) und
   `SpecStore.move` (`lib/spec_store.py`, ~83 Zeilen) nur zerlegen, wenn sie
   ohnehin fachlich geändert werden.
 - **Abschluss**: siehe [`CLAUDE.md`](CLAUDE.md), "Backlogs".

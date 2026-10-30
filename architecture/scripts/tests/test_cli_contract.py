@@ -2,7 +2,9 @@
 
 specctl has its own CLI next to lib/cliapp.py, so the shared contract is
 checked here once for all five tools instead of being kept in sync by hand:
-exit codes (0 ok, 1 error, 2 usage error from argparse), errors on stderr,
+exit codes (0 ok, 1 error, 2 usage error from argparse), errors on stderr
+(except the machine-readable `reason` of NoWorkAvailable/GuardViolation
+under --json, tested per tool),
 valid JSON on stdout with --json, and one shared --root per project.
 A new tool is covered by adding it to TOOLS.
 """
