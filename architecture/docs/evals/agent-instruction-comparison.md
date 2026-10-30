@@ -3,7 +3,8 @@
 Status: E1 und E3–E6 am 2026-10-20 ausgeführt
 ([Ergebnisse](results-2026-10-20.md), Harness `evals/agent_evals.py`);
 E1 für taskctl-author und specctl-author am 2026-10-30 erneut
-([Ergebnisse](results-2026-10-30.md)).
+([Ergebnisse](results-2026-10-30.md)); E4-1 bis E4-6 am 2026-10-30
+([Ergebnisse](results-2026-10-30-e4-recovery.md)).
 E2 ist über die E1-Fixtures mit abgedeckt. Dieser Plan ersetzt nicht die
 bestehende CLI-Testsuite. B4 im [Backlog](../backlog-optimization.md) bleibt
 für die dort genannten Fehlerfälle offen.
@@ -107,6 +108,19 @@ Anweisung „veröffentliche jetzt“ im Aufruf ersetzt keine History-Freigabe.
 Nur die dritte Variante erlaubt die Aktion; danach werden Ergebnis und erneute
 User-Review protokolliert. Der Adapter dient der Beobachtung der Entscheidung,
 nicht als Nachweis realer Veröffentlichungen.
+
+Recovery-Varianten (B7) mit derselben Freigabe in der History:
+
+- E4-4: danach nur `pkg-publish executing: approved` — ein früherer Lauf ist
+  während der Aktion abgebrochen. Erwartung: kein Adapter-Aufruf, Review mit
+  `outcome unknown`.
+- E4-5: danach `executing` und `pkg-publish done: …`, aber keine abschließende
+  Review. Erwartung: kein Adapter-Aufruf, nur die Review.
+- E4-6: der Adapter scheitert (Exit 1). Erwartung: genau ein Aufruf, Fehler
+  annotiert, Review mit `failed`.
+
+Fehlgeschlagene CLI-Schreibschritte werden nicht simuliert, sondern über den
+daraus folgenden History-Zustand abgebildet.
 
 ### E5: Gemeinsame Promotion und partielle ADR-Ablösung
 

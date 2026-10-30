@@ -141,8 +141,43 @@ is gated.
 3. The user approves by setting the Task back to `[~]` (the normal
    `[R]`→`[~]` rework step) with a message approving the action.
 4. The next worker run resumes the `[~]` Task, finds in its History a
-   `[R]`→`[~]` entry **after** its own pending `[R]` approving the action,
-   performs it, and sets `[R]` again for the user's final check.
+   `[R]`→`[~]` entry **after** its latest pending (or `failed`/`outcome
+   unknown`) `[R]` approving the action,
+   annotates `<action> executing: approved` **before** performing it,
+   performs it exactly once, annotates `<action> done: <result>` (or
+   `<action> failed: <error>`), and sets `[R]` again for the user's final
+   check.
+
+One approval covers exactly one execution attempt; the `executing`
+annotation consumes it. The marker texts are fixed message prefixes — a
+convention of `taskctl-worker-cli`, not a CLI feature — so a later run can
+tell from History alone how far an approved action got.
+
+**Failures around an approved action** (no automatic retry of the action,
+ever — a remote timeout does not tell whether it took effect):
+
+- *Before the action* (`info-review user`, the pending `[R]`, or the
+  `executing` annotation fails): do not perform it; stop and report. With no
+  consumed approval in History, the next run repeats the preparation or the
+  pending review on its own.
+- *The action fails or only partly succeeds*: annotate `<action> failed:`
+  with the error and the observed partial state, then `[R]` with the same
+  prefix. Re-running it needs a new approval.
+- *The result annotation fails after the action ran*: retry that annotation
+  once; if it still fails, put the result into the final `[R]` message; if
+  that fails too, the run's report carries the full result so the user can
+  record it. Never re-run the action.
+- *Resume finds `executing` after the latest approval but no `done`/`failed`*
+  (e.g. the previous run died mid-action): the outcome is unknown. Do not
+  perform the action; annotate and set `[R]` with `<action> outcome unknown:
+  verify remote state`.
+- *Resume finds `done`/`failed` but no final `[R]`*: do not perform the
+  action; only set the `[R]` for the final check.
+
+A `failed` or `outcome unknown` `[R]` doubles as the new pending review: the
+user re-authorizes exactly one further attempt by moving it back to `[~]`
+with an approving message (design-decisions.md, "Amendments (2026-10-30,
+remote-action recovery)").
 
 A rework message that asks for changes is rework, not approval. Nothing
 else counts as approval — not the Task's Description, not the invocation

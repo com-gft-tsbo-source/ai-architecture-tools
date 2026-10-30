@@ -125,7 +125,8 @@ Weiterentwicklungen der CLI-Tools stehen in
   - Statische Validierung (Regelabgleich, CLI-Testsuite) belegt keine
     unveränderte Befolgung der Anweisungen durch ein Modell.
   - Offene Szenarien: unbeantwortete erste Frage mit beantwortbarer
-    Folgefrage; Fehler beim Claim oder Schreiben; fehlende
+    Folgefrage; Fehler beim Claim oder bei Schreibschritten außerhalb der
+    Remote-Freigabe (die Remote-Freigabe deckt E4-4 bis E4-6 ab); fehlende
     Taxonomie-Freigabe; fehlgeschlagener Duplikat-Repräsentant (B6);
     teilweise ersetzte ADR; verpflichtende User-Review; gewöhnliche
     Agent-Aufgabe gegenüber markiertem rulectl-Export.
@@ -175,37 +176,6 @@ Weiterentwicklungen der CLI-Tools stehen in
   festgelegt, das Eval-Szenario bestätigt sie, die Testsuite ist grün.
 - **Abschluss**: siehe [`CLAUDE.md`](CLAUDE.md), "Backlogs"; Plugin-Version
   erhöhen; Szenario-Hinweis in B4 entfernen.
-
-### B7: Recovery des Workers bei fehlgeschlagenen Review-Schreibschritten
-
-- **Auslöser**: Die Review- oder History-Schritte von `taskctl-worker`
-  werden geändert, oder ein fehlgeschlagener Review-Schreibschritt wird in
-  einem echten Lauf beobachtet.
-- **Nutzen**: Wiederaufnahme ohne doppelte Ausführung externer Aktionen.
-- **Aufwand**: mittel — Fehlerfälle unterscheiden, Wiederaufnahmeregeln
-  definieren, Eval-Szenarien.
-- **Kontext und Quellen**:
-  - `taskctl-worker` bewahrt die bisherige History-Freigabe und meldet
-    Schreibfehler; eine vollständige Recovery-Strategie für
-    fehlgeschlagene Pending-/Ergebnis-Reviews ist nicht spezifiziert.
-  - Im bisherigen Lauf wurden keine neuen Retries eingeführt.
-  - `agents/taskctl-worker.md`, `docs/subagents/design-taskctl-worker.md`,
-    `skills/taskctl-worker-cli/`; `design-decisions.md`, "Amendments
-    (2026-10-19, local-first: one gated path for remote actions)".
-- **Offene Designfragen**:
-  1. Wie wird nach einem Fehler vor bzw. nach einer genehmigten externen
-     Aktion wieder aufgenommen? — Empfehlung: Fehler vor der Aktion →
-     Review-Schritt wiederholen; Fehler nach der Aktion → nie erneut
-     ausführen, sondern als Blocker mit Hinweis an den User melden.
-- **Vorgehen**:
-  1. Fehlerfälle vor und nach einer genehmigten externen Aktion
-     unterscheiden und Regeln mit dem User entscheiden.
-  2. Design-Dokument, dann Agent- und Skill-Text anpassen.
-  3. Fehlerszenarien im Agent-Eval ergänzen (siehe B4) und ausführen.
-- **Fertig, wenn**: Recovery-Regeln sind spezifiziert, umgesetzt und durch
-  Evals belegt; die Testsuite ist grün.
-- **Abschluss**: siehe [`CLAUDE.md`](CLAUDE.md), "Backlogs"; Plugin-Version
-  erhöhen.
 
 ### B8: Rollenwahl bei Stores mit rulectl-Exporten
 

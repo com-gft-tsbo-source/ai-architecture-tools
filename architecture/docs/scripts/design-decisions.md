@@ -41,6 +41,7 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-10-30, trigger-based backlogs | backlog renamed to `backlog-optimization.md` (2026-10-30, optimization backlog in entry format) |
 | 2026-10-30, optimization backlog in entry format |  |
 | 2026-10-30, role-specific Skill surface |  |
+| 2026-10-30, remote-action recovery |  |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -1123,3 +1124,39 @@ round with the user:
 - E1 for both author roles, `c856d19` vs `253c2cd`, 3 runs each, with a new
   "no `--set-status`" check: no regression
   ([results](../evals/results-2026-10-30.md)). Plugin version `0.3.1`.
+
+## Amendments (2026-10-30, remote-action recovery)
+
+Completes backlog entry B7 (`backlog-optimization.md`). The remote-action
+gate (Amendments (2026-10-19, local-first: one gated path for remote
+actions)) left open what a resumed `taskctl-worker` does after a failed
+write around an approved action. An approval stayed visible in History with
+no sign that it had been used, so a run that died between the action and its
+result annotation was re-run by the next one. Decided in a grilling round
+with the user:
+
+- **Write-ahead marker.** `<action> executing: approved` is annotated before
+  the action; it consumes the approval. If that write fails, the action is
+  not performed. Then `<action> done: <result>` or `<action> failed: <error,
+  partial state>`, then `[R]` for the final check.
+- **One approval, one attempt.** The action is never repeated automatically —
+  a timeout does not tell whether it took effect. A `failed` or `<action>
+  outcome unknown: verify remote state` `[R]` doubles as the new pending
+  review: moving it back to `[~]` with an approving message authorizes
+  exactly one further attempt.
+- **Resume rules.** `executing` after the latest approval without a result →
+  no action, `[R]` with `outcome unknown`. A result without the final `[R]` →
+  no action, only that `[R]`.
+- **Failed writes.** Before the action (`info-review`, pending `[R]`,
+  `executing`): no retry in the same run; the next run repeats the
+  preparation. A failed result annotation is retried once, then carried in
+  the `[R]` message, then in the report; the action is never re-run.
+- **Markers are a convention**, fixed message prefixes in
+  `taskctl-worker-cli`, not a CLI feature — a History entry type was
+  rejected as a design.md-wide change, as in the guards amendment.
+- Eval E4-4 to E4-6 (`9fc4e9f` vs `febfb01`, 3 runs each): the old version
+  re-ran the consumed action in all three E4-4 runs; the new one passes every
+  E4 criterion with no regression in E4-1 to E4-3
+  ([results](../evals/results-2026-10-30-e4-recovery.md)). B4's remaining
+  write-failure scenarios are narrowed to writes outside the remote gate.
+  Plugin version `0.3.2`.

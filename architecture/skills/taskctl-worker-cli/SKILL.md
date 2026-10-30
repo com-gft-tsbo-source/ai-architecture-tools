@@ -97,6 +97,29 @@ and executed remote actions both return R, never X. Resume does not itself
 prove approval. Review→in-progress is user rework/approval, not a worker-
 initiated bypass; read History as required above.
 
+## Remote-action markers
+
+Use these fixed prefixes; `<action>` is the same short name in every entry:
+
+```
+taskctl --root <root> set-status <id> R --message "<action> pending: needs user approval"
+taskctl --root <root> annotate <id> --message "<action> executing: approved"
+taskctl --root <root> annotate <id> --message "<action> done: <result>"
+taskctl --root <root> annotate <id> --message "<action> failed: <error, partial state>"
+taskctl --root <root> set-status <id> R --message "<action> done: <result>"
+taskctl --root <root> set-status <id> R --message "<action> outcome unknown: verify remote state"
+```
+
+Annotate `executing` immediately before the approved action; it consumes the
+approval. If it fails, do not perform the action. Then annotate `done` or
+`failed` and set R with the same prefix. If the result annotation fails,
+retry it once; if it still fails, put the result into the R message; if that
+fails, report it. Never re-run the action. On resume, `executing` after the
+latest approval without `done`/`failed` → R `outcome unknown`, no action;
+`done`/`failed` without the final R → only that R. If info-review, the
+pending R or `executing` fails before the action, stop and report; do not
+retry in this run.
+
 ## Verification and errors
 
 At the end of the run, re-read every touched ID with --json show and report

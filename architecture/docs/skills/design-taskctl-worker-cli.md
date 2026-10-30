@@ -197,6 +197,25 @@ taskctl --root <root> set-status <id> B --message "<reason>"
 No `info-review` needed first — `[~]→[B]` is reachable regardless of the
 current `review` value, provided `--message` is given.
 
+*Remote-action markers* — the Agent decides approval from History
+(`design-taskctl-worker.md`, "Exactly one path for a remote action"); this
+Skill fixes the message prefixes so a later run can read how far an approved
+action got. `<action>` is the same short action name in every entry:
+```
+taskctl --root <root> set-status <id> R --message "<action> pending: needs user approval"
+taskctl --root <root> annotate <id> --message "<action> executing: approved"      # before the action
+taskctl --root <root> annotate <id> --message "<action> done: <result>"           # or:
+taskctl --root <root> annotate <id> --message "<action> failed: <error, partial state>"
+taskctl --root <root> set-status <id> R --message "<action> done: <result>"       # or failed: ...
+taskctl --root <root> set-status <id> R --message "<action> outcome unknown: verify remote state"
+```
+The `executing` annotation consumes the approval; if it fails, the action is
+not performed. A failed result annotation is retried once, then the result
+goes into the `[R]` message, then into the report — the action itself is
+never re-run. On resume: `executing` after the latest approval without
+`done`/`failed` → `outcome unknown` `[R]`; `done`/`failed` without the final
+`[R]` → only that `[R]`.
+
 **End-of-run verification** — after the loop ends (loop mode) or after the
 one Task's final `set-status` (single-Task mode), re-read the actual
 persisted state for every Task ID this run touched:
@@ -241,6 +260,9 @@ successfully finalized.
   itself justify calling `next` again to move on — the Task is still the
   one `next` will return, so the next iteration naturally revisits it
   rather than silently skipping it.
+- **A failed write around an approved remote action**: see "Remote-action
+  markers" — the only case with a retry (one, of the result annotation);
+  the action itself is never repeated.
 - **A guard rejection** (`sequence_blocked`/`approval_required`): stop the
   run and report it with the stderr text; never retry with `--user-approved`
   unless the user has explicitly instructed that operation.
