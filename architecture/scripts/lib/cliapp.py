@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from lib import render
+from lib.guards import APPROVAL_REQUIRED, GuardViolation
 from lib.model import ObjectRecord
 from lib.store import NoWorkAvailable, ReindexReport, Store, StoreError
 from lib.toolspec import ToolSpec
@@ -29,6 +30,25 @@ class CliError(Exception):
 
 def _flag_name(type_name: str) -> str:
     return type_name.lower().replace(" ", "-")
+
+
+_USER_APPROVED_HELP = (
+    "The user's own instruction authorizing an operation a guard would reject "
+    "(design-taskctl.md, 'Guards') -- recorded in the History. Never supply it on your own."
+)
+
+
+def _add_user_approved(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--user-approved", dest="user_approved", default=None, help=_USER_APPROVED_HELP)
+
+
+def _approval(args: argparse.Namespace) -> Optional[str]:
+    value = getattr(args, "user_approved", None)
+    if value is None:
+        return None
+    if not value.strip():
+        raise CliError("--user-approved requires the user's instruction as text")
+    return value
 
 
 def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._SubParsersAction"]:
@@ -47,6 +67,7 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
     add_parser.add_argument("--description", default="")
     add_parser.add_argument("--id", dest="object_id", default=None, help="Explicit free-form Object ID")
     add_parser.add_argument("--set-status", dest="set_status", default=None)
+    _add_user_approved(add_parser)
     for level in spec.metagroup_levels:
         add_parser.add_argument(
             f"--{_flag_name(level.type)}", dest=f"metagroup__{level.type}", default=None,
@@ -70,7 +91,8 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
     status_parser.add_argument("id")
     status_parser.add_argument("status")
     status_parser.add_argument("--message", default="")
-    status_parser.add_argument("--force", action="store_true")
+    status_parser.add_argument("--force", action="store_true", help="Leave the status path; requires --user-approved")
+    _add_user_approved(status_parser)
 
     for metainfo in spec.metainfo:
         metainfo_parser = subparsers.add_parser(
@@ -78,6 +100,7 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
         )
         metainfo_parser.add_argument("id")
         metainfo_parser.add_argument("value")
+        _add_user_approved(metainfo_parser)
 
     for level in spec.metagroup_levels:
         group_parser = subparsers.add_parser(
@@ -166,7 +189,7 @@ def dispatch(spec: ToolSpec, store: Store, args: argparse.Namespace, extra_handl
         return store.add(
             metagroup_path=metagroup_path, name=args.name, description=args.description,
             content=content, metainfo=metainfo, object_id=args.object_id,
-            initial_status=args.set_status,
+            initial_status=args.set_status, approval=_approval(args),
         )
 
     for depth, level in enumerate(spec.metagroup_levels, start=1):
@@ -181,11 +204,18 @@ def dispatch(spec: ToolSpec, store: Store, args: argparse.Namespace, extra_handl
             return f"{level.type} {args.name}: {object_type}"
 
     if command == "set-status":
-        return store.set_status(args.id, args.status, message=args.message, force=args.force)
+        approval = _approval(args)
+        if args.force and not approval:
+            # design-taskctl.md, "Guards": --force lifts every rule, so it is
+            # only ever the user's call.
+            raise GuardViolation(APPROVAL_REQUIRED, "--force requires --user-approved \"<the user's instruction>\"")
+        return store.set_status(
+            args.id, args.status, message=args.message, force=args.force, approval=approval,
+        )
 
     for metainfo in spec.metainfo:
         if command == f"info-{_flag_name(metainfo.type)}":
-            return store.set_metainfo(args.id, metainfo.type, args.value)
+            return store.set_metainfo(args.id, metainfo.type, args.value, approval=_approval(args))
 
     for level in spec.metagroup_levels:
         if command == f"group-{_flag_name(level.type)}":
@@ -336,6 +366,14 @@ def main(
         # machine-readable `reason` a plain stderr message can't.
         if args.json:
             print(json.dumps({"reason": exc.reason, "message": str(exc)}))
+        else:
+            print(str(exc), file=sys.stderr)
+        return 1
+    except GuardViolation as exc:
+        # Same shape as NoWorkAvailable: a looping agent must tell "only the
+        # user may do this" apart from a genuine error without parsing text.
+        if args.json:
+            print(json.dumps(exc.to_dict()))
         else:
             print(str(exc), file=sys.stderr)
         return 1

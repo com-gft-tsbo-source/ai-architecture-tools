@@ -11,7 +11,8 @@ plain import and not a third, more general module.
 from __future__ import annotations
 
 from lib.taskctl_spec import (
-    BLOCKED, DONE, IN_PROGRESS, OPEN, REVIEW_SUBAGENT, REVIEW_USER, validate_transition,
+    BLOCKED, DONE, IN_PROGRESS, OPEN, REVIEW_SUBAGENT, REVIEW_USER, review_metainfo_guard,
+    validate_transition,
 )
 from lib.toolspec import MetagroupLevelSpec, MetainfoSpec, StatusSpec, ToolSpec
 
@@ -52,4 +53,8 @@ def build_spec() -> ToolSpec:
         default_mode="directory",
         variable_depth=True,
         no_generic_setter=("Answer",),
+        # design-questctl.md, "Guards": taskctl's review protection applies
+        # verbatim; its sequence guard does not -- Questions are worked in
+        # parallel by design.
+        metainfo_guard=review_metainfo_guard,
     )

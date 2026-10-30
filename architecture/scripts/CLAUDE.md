@@ -64,6 +64,19 @@ Single-File-Mode.
     `active`-Regeln als Tasks (eine Phase je Language/Context/Category-Pfad,
     Task-ID = Regel-ID, `origin=rulectl:<rule-id>`). Re-Export aktualisiert
     nur geänderte Felder und setzt Status und `review` zurück.
+- **Guards** (taskctl, Review-Guards auch questctl; `design-taskctl.md`,
+  "Guards"): `lib/guards.py` (`GuardViolation`, `reason`
+  `sequence_blocked`/`approval_required`, bei `--json` als JSON auf stdout),
+  `ToolSpec.sequence_guard`/`metainfo_guard`, geprüft in `Store.set_status`/
+  `add`/`set_metainfo` unter dem Lock; `[R]`→`[X]` gesperrt im gemeinsamen
+  `validate_transition`. `--user-approved <text>` (generisch in
+  `lib/cliapp.py` für `add`, `set-status`, `info-*`) hebt die Guards auf und
+  landet als `USER-APPROVED: <text>` in der History; `--force` verlangt ihn
+  bei allen Engine-Tools. Store-internes `force` umgeht alle Guards ohne
+  Marker (nur `lib/tasklist.py`). taskctl-Metainfo `gate`
+  (`sequential`|`none`): `rulectl tasklist` setzt `none`, damit
+  `rulectl-checker` nach `[R]`/`[B]` weiterprüft; `next` überspringt solche
+  Tasks in `[B]`/`[R]`/`[C]`.
 - **questctl** `answer` schreibt `### Answer` per `Store.annotate_content`
   (History `T`); `ToolSpec.no_generic_setter` unterdrückt `set-answer`.
 - Schreibvorgänge sind atomar (`.tmp` + `os.replace`); neue Datei vor dem
@@ -168,7 +181,7 @@ architecture/scripts/
 └── lib/
     ├── locking, atomicio, clock, numbering, history, text, abbrev, metagroup
     │                      # geteilt zwischen allen fünf Tools
-    ├── model, objectfile, singlefile, store, toolspec, index, render, cliapp
+    ├── model, objectfile, singlefile, store, toolspec, index, render, cliapp, guards
     │                      # generisches Objektformat: taskctl/questctl/rulectl/adrctl
     ├── taskctl_spec, questctl_spec, adrctl_spec
     │                      # ToolSpecs; questctl nutzt taskctls Status-Maschine

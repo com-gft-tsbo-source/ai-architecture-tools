@@ -188,6 +188,38 @@ class TestTasklist(unittest.TestCase):
             code, _out, err = run_taskctl(["--root", root, "set-status", rule_id, "X"])
             self.assertEqual(code, 0, err)
 
+    def test_tasklist_tasks_do_not_gate_the_queue(self):
+        """design-taskctl.md, "Metainfo"/"Guards": exported checks carry
+        gate=none, so rulectl-checker moves past a violation ([R]) or an
+        uncheckable rule ([B]) to the next check."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "project")
+            first = self._add_rule(root, name="Rule one")
+            second = self._add_rule(root, name="Rule two")
+            third = self._add_rule(root, name="Rule three")
+            run(["--root", root, "tasklist"])
+            self.assertEqual(json.loads(run_taskctl(["--root", root, "--json", "show", first])[1])
+                             ["metainfo"]["gate"], "none")
+            run_taskctl(["--root", root, "set-status", first, "~"])
+            run_taskctl(["--root", root, "info-review", first, "user"])
+            run_taskctl(["--root", root, "set-status", first, "R", "--message", "violation"])
+            code, _out, err = run_taskctl(["--root", root, "set-status", second, "~"])
+            self.assertEqual(code, 0, err)
+            run_taskctl(["--root", root, "set-status", second, "B", "--message", "cannot check"])
+            code, _out, err = run_taskctl(["--root", root, "set-status", third, "~"])
+            self.assertEqual(code, 0, err)
+
+    def test_tasklist_rerun_adds_gate_to_older_exports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "project")
+            rule_id = self._add_rule(root)
+            run(["--root", root, "tasklist"])
+            # an export made before gate existed carries the default
+            run_taskctl(["--root", root, "info-gate", rule_id, "sequential", "--user-approved", "legacy"])
+            self.assertEqual(run(["--root", root, "tasklist"])[0], 0)
+            data = json.loads(run_taskctl(["--root", root, "--json", "show", rule_id])[1])
+            self.assertEqual(data["metainfo"]["gate"], "none")
+
     def test_tasklist_language_scoping_flag(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "project")

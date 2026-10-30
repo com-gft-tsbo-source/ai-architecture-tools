@@ -37,8 +37,9 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-10-21, CI and plugin versioning |  |
 | 2026-10-21, cross-tool CLI contract tests |  |
 | 2026-10-21, exit code 2 in all Skills |  |
-| 2026-10-30, optimization backlog in entry format |  |
+| 2026-10-30, taskctl guards + `--user-approved` |  |
 | 2026-10-30, trigger-based backlogs | backlog renamed to `backlog-optimization.md` (2026-10-30, optimization backlog in entry format) |
+| 2026-10-30, optimization backlog in entry format |  |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -970,6 +971,78 @@ listed `0`/`1` only, although every tool behaves identically
 (`scripts/tests/test_cli_contract.py`). All Skills and Skill design documents
 now name `2` as a malformed command line. Wording only, no behavior change;
 plugin version `0.2.1`.
+
+model behavior. Further substantial compaction waits for those comparisons.
+
+## Amendments (2026-10-30, taskctl guards + `--user-approved`)
+
+Trigger: an agent started a later Task while an earlier one waited in `[R]`.
+Sequential Processing (design-taskctl.md) was only reflected in what `next`
+returns; `set-status` checked a single Task's state machine and nothing
+across Tasks, `[R]`→`[X]` was an ordinary forward step for anyone, and the
+only protection against `--force` and review de-escalation was Skill text.
+Decided in a grilling round with the user:
+
+- **Threat model: accidental, not adversarial.** taskctl cannot tell the
+  user from an agent — a user's instruction in a chat (CLI or web interface)
+  reaches the tool only through the agent, so whatever an agent may do on
+  instruction it can technically do without. The guards make an illegal
+  operation impossible to perform *by accident* and every authorized
+  exception explicit and auditable. A TTY/confirmation check was considered
+  and rejected: the agent must be able to set `[X]` and change other Tasks
+  on the user's instruction. A real human-in-the-loop check is left to an
+  optional Claude Code `ask` permission rule on `--user-approved`
+  (documented in design-taskctl.md, "Guards"; not activated in this repo,
+  which does not use taskctl for its own work).
+- **One explicit override, `--user-approved "<text>"`**, on `add`,
+  `set-status` and `info-<metainfo-type>`, rather than redefining `--force`:
+  `--force` keeps meaning "leave the status path", `--user-approved` means
+  "the user authorized this". `--force` now requires `--user-approved` in
+  every engine-based tool (`lib/cliapp.py`) — uniform CLI behavior;
+  rulectl/adrctl have no status path, so their `--force` was already a no-op
+  apart from this. specctl's own `--force` is unchanged (separate CLI and
+  specification). An empty text is rejected; an unnecessary one is accepted
+  and still recorded.
+- **Guarded operations** (design-taskctl.md, "Guards"): sequence (moving a
+  later Task into `[~]`/`[R]`/`[C]`/`[X]` while an earlier one is not `[X]`,
+  including `add --set-status`; `[B]`/`[ ]` stay free), `[R]`→`[X]`,
+  `info-review` in `[R]`/`[C]`, lowering `review` from `user` (in any status
+  — the worker's previously permitted de-escalation path was the obvious
+  bypass), every `--force`, and changing `gate`.
+- **History marker** `USER-APPROVED: <text>` as the first message line of the
+  `M` entry, `--message` following. The originally proposed header suffix is
+  not expressible in `lib/history.py`'s grammar (nothing may follow the
+  transition but the message); a new entry type was rejected as a
+  design.md-wide change for one tool's need.
+- **`--json` errors** `{"reason": "sequence_blocked" | "approval_required",
+  "message", "blocking_task"}` via `lib/guards.py`'s `GuardViolation`
+  (a `ValueError`), the same pattern as `NoWorkAvailable`.
+- **Where checked:** new optional `ToolSpec.sequence_guard` and
+  `ToolSpec.metainfo_guard`, run by `lib/store.py` (`set_status`, `add`,
+  `set_metainfo`) under the store lock; the `[R]`→`[X]` rule lives in the
+  shared transition validator (which gains an `approval` keyword). The
+  `--force`⇒`--user-approved` rule is CLI-only: `Store`'s `force` stays an
+  internal API and bypasses all guards without a marker — used only by
+  `lib/tasklist.py`, whose re-export reset is itself the user-triggered
+  operation (an approval literal in library code would be ceremony).
+- **questctl** gets the review guards (shared status machine, "unchanged from
+  taskctl"; self-approval is the same problem there) but not the sequence
+  guard or `gate` — Questions are worked in parallel by design.
+- **`gate: sequential | none` Metainfo** — found while checking the plan
+  against the Skills: `rulectl-checker` deliberately records a violation as
+  `[R]` (or an uncheckable Rule as `[B]`) and claims the next check, which
+  the sequence guard would have stopped at the first finding. Alternatives
+  rejected: stopping the checker at each finding (one user review per
+  violation before checking on), a hidden `origin=rulectl:*` special case
+  in the guard, and letting only `[R]`/`[C]` block (the checker uses `[R]`).
+  `rulectl tasklist` creates and re-exports its Tasks with `gate=none`;
+  `gate` is fixed after creation (guarded), and `next` passes over a
+  `gate=none` Task in `[B]`/`[R]`/`[C]` so it does not hold up ordinary work.
+- Skill/Agent updates: `taskctl-worker-cli` (+ design, Agent) — report
+  rejections, `--user-approved` only with the user's explicit instruction for
+  that Task, de-escalation from `user` and the `[R]`→`[X]` user verdict carry
+  it; `taskctl-author-cli` (+ design) — guarded corrections and imports
+  reported, `gate` never set. `rulectl-checker-cli` needed no change.
 
 ## Amendments (2026-10-30, trigger-based backlogs)
 

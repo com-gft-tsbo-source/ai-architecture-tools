@@ -201,7 +201,12 @@ class TestStatusTransitions(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("invalid status transition", err)
             self.assertEqual(run(["--root", root, "set-status", task_id, "R"])[0], 0)
-            self.assertEqual(run(["--root", root, "set-status", task_id, "X"])[0], 0)
+            code, _out, err = run(["--root", root, "set-status", task_id, "X"])
+            self.assertEqual(code, 1)
+            self.assertIn("completes a user review", err)
+            self.assertEqual(run([
+                "--root", root, "set-status", task_id, "X", "--user-approved", "user accepted it",
+            ])[0], 0)
 
     def test_rework_from_review_back_to_in_progress(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -249,8 +254,13 @@ class TestStatusTransitions(unittest.TestCase):
             root = str(Path(tmp) / "tasks")
             run(["--root", root, "add-phase", "001-Setup"])
             task_id = self._new_task(root, review="none")
-            code, _out, _err = run(["--root", root, "set-status", task_id, "X", "--force"])
-            self.assertEqual(code, 0)
+            code, _out, err = run(["--root", root, "set-status", task_id, "X", "--force"])
+            self.assertEqual(code, 1)
+            self.assertIn("--force requires --user-approved", err)
+            code, _out, err = run([
+                "--root", root, "set-status", task_id, "X", "--force", "--user-approved", "skip it",
+            ])
+            self.assertEqual(code, 0, err)
 
 
 class TestPhaselessMode(unittest.TestCase):
@@ -311,3 +321,202 @@ class TestPhaselessMode(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGuards(unittest.TestCase):
+    """design-taskctl.md, "Guards": sequence and review guards, each lifted
+    only by --user-approved (recorded in the History)."""
+
+    def _store(self, tmp, store_name="tasks"):
+        root = str(Path(tmp) / store_name)
+        run(["--root", root, "add-phase", "001-Setup"])
+        run(["--root", root, "add-phase", "002-Build"])
+        return root
+
+    def _add(self, root, name, phase="001-Setup", *extra):
+        code, out, err = run(["--root", root, "--json", "add", "--name", name, "--phase", phase, *extra])
+        self.assertEqual(code, 0, err)
+        return json.loads(out)["id"]
+
+    def _show(self, root, task_id):
+        _c, out, _e = run(["--root", root, "--json", "show", task_id])
+        return json.loads(out)
+
+    def _to_review(self, root, task_id):
+        run(["--root", root, "set-status", task_id, "~"])
+        self.assertEqual(run(["--root", root, "set-status", task_id, "R"])[0], 0)
+
+    def test_later_task_cannot_start_while_earlier_in_review(self):
+        for store_name in ("tasks", "tasks.md"):
+            with self.subTest(store=store_name), tempfile.TemporaryDirectory() as tmp:
+                root = self._store(tmp, store_name)
+                first = self._add(root, "First", "001-Setup", "--review", "user")
+                second = self._add(root, "Second", "002-Build")
+                self._to_review(root, first)
+
+                code, out, _err = run(["--root", root, "--json", "set-status", second, "~"])
+                self.assertEqual(code, 1)
+                data = json.loads(out)
+                self.assertEqual(data["reason"], "sequence_blocked")
+                self.assertEqual(data["blocking_task"], first)
+                code, _out, err = run(["--root", root, "set-status", second, "~"])
+                self.assertIn(first, err)
+                self.assertIn("review by user", err)
+                self.assertEqual(self._show(root, second)["status"], " ")
+
+    def test_every_unresolved_status_blocks_and_done_releases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            first = self._add(root, "First")
+            second = self._add(root, "Second")
+            # open, in progress and blocked all hold the queue
+            self.assertEqual(run(["--root", root, "set-status", second, "~"])[0], 1)
+            run(["--root", root, "set-status", first, "~"])
+            self.assertEqual(run(["--root", root, "set-status", second, "~"])[0], 1)
+            run(["--root", root, "set-status", first, "B", "--message", "waiting"])
+            self.assertEqual(run(["--root", root, "set-status", second, "~"])[0], 1)
+            run(["--root", root, "set-status", first, "~"])
+            run(["--root", root, "set-status", first, "X"])
+            code, _out, err = run(["--root", root, "set-status", second, "~"])
+            self.assertEqual(code, 0, err)
+
+    def test_blocking_a_later_task_stays_free(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            self._add(root, "First")
+            second = self._add(root, "Second")
+            code, _out, err = run(["--root", root, "set-status", second, "B", "--message", "needs input"])
+            self.assertEqual(code, 0, err)
+
+    def test_user_approved_lifts_sequence_guard_and_is_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            self._add(root, "First")
+            second = self._add(root, "Second")
+            code, _out, err = run([
+                "--root", root, "set-status", second, "~", "--message", "starting",
+                "--user-approved", "User: start Second now",
+            ])
+            self.assertEqual(code, 0, err)
+            _c, out, _e = run(["--root", root, "show", second, "--history"])
+            self.assertIn("USER-APPROVED: User: start Second now", out)
+            self.assertIn("starting", out)
+
+    def test_empty_user_approved_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            self._add(root, "First")
+            second = self._add(root, "Second")
+            code, _out, err = run(["--root", root, "set-status", second, "~", "--user-approved", " "])
+            self.assertEqual(code, 1)
+            self.assertIn("--user-approved requires", err)
+
+    def test_self_approval_of_user_review_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            task = self._add(root, "Only", "001-Setup", "--review", "user")
+            self._to_review(root, task)
+            code, out, _err = run(["--root", root, "--json", "set-status", task, "X"])
+            self.assertEqual(code, 1)
+            self.assertEqual(json.loads(out)["reason"], "approval_required")
+            code, _out, err = run(["--root", root, "set-status", task, "X", "--user-approved", "LGTM"])
+            self.assertEqual(code, 0, err)
+
+    def test_subagent_review_completion_stays_free(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            task = self._add(root, "Only", "001-Setup", "--review", "subagent")
+            run(["--root", root, "set-status", task, "~"])
+            run(["--root", root, "set-status", task, "C"])
+            code, _out, err = run(["--root", root, "set-status", task, "X"])
+            self.assertEqual(code, 0, err)
+
+    def test_review_cannot_change_while_in_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            task = self._add(root, "Only", "001-Setup", "--review", "subagent")
+            run(["--root", root, "set-status", task, "~"])
+            run(["--root", root, "set-status", task, "C"])
+            code, _out, err = run(["--root", root, "info-review", task, "none"])
+            self.assertEqual(code, 1)
+            self.assertIn("while in [C]", err)
+            code, _out, err = run(["--root", root, "info-review", task, "none", "--user-approved", "drop it"])
+            self.assertEqual(code, 0, err)
+
+    def test_lowering_user_review_requires_approval(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            task = self._add(root, "Only", "001-Setup", "--review", "user")
+            run(["--root", root, "set-status", task, "~"])
+            for value in ("none", "subagent"):
+                code, out, _err = run(["--root", root, "--json", "info-review", task, value])
+                self.assertEqual(code, 1, value)
+                self.assertEqual(json.loads(out)["reason"], "approval_required")
+            self.assertEqual(self._show(root, task)["metainfo"]["review"], "user")
+
+    def test_raising_or_lowering_subagent_review_stays_free(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            task = self._add(root, "Only")
+            run(["--root", root, "set-status", task, "~"])
+            self.assertEqual(run(["--root", root, "info-review", task, "subagent"])[0], 0)
+            self.assertEqual(run(["--root", root, "info-review", task, "none"])[0], 0)
+            self.assertEqual(run(["--root", root, "info-review", task, "user"])[0], 0)
+
+    def test_add_with_working_status_respects_sequence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            self._add(root, "First")
+            code, out, _err = run([
+                "--root", root, "--json", "add", "--name", "Second", "--phase", "001-Setup", "--set-status", "~",
+            ])
+            self.assertEqual(code, 1)
+            self.assertEqual(json.loads(out)["reason"], "sequence_blocked")
+            self._add(root, "Parked", "001-Setup", "--set-status", "B")
+            code, _out, err = run([
+                "--root", root, "add", "--name", "Third", "--phase", "001-Setup", "--set-status", "X",
+                "--user-approved", "already done by hand",
+            ])
+            self.assertEqual(code, 0, err)
+
+    def test_gate_none_task_neither_blocks_nor_is_blocked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            check = self._add(root, "Check", "001-Setup", "--gate", "none", "--review", "user")
+            later_check = self._add(root, "Later check", "001-Setup", "--gate", "none")
+            work = self._add(root, "Work", "002-Build")
+            self._to_review(root, check)
+            code, _out, err = run(["--root", root, "set-status", later_check, "~"])
+            self.assertEqual(code, 0, err)
+            run(["--root", root, "set-status", later_check, "B", "--message", "cannot check"])
+            # next skips the non-gating Tasks waiting on interaction
+            _c, out, _e = run(["--root", root, "--json", "next"])
+            self.assertEqual(json.loads(out)["id"], work)
+            code, _out, err = run(["--root", root, "set-status", work, "~"])
+            self.assertEqual(code, 0, err)
+
+    def test_gate_is_fixed_after_creation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            task = self._add(root, "Only")
+            code, _out, err = run(["--root", root, "info-gate", task, "none"])
+            self.assertEqual(code, 1)
+            self.assertIn("gate is fixed", err)
+            code, _out, err = run(["--root", root, "info-gate", task, "none", "--user-approved", "independent"])
+            self.assertEqual(code, 0, err)
+
+    def test_unrelated_operations_need_no_approval(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._store(tmp)
+            first = self._add(root, "First", "001-Setup", "--review", "user")
+            second = self._add(root, "Second")
+            self._to_review(root, first)
+            for argv in (
+                ["set-description", second, "updated"],
+                ["info-assignee-name", second, "someone"],
+                ["group-phase", second, "002-Build"],
+                ["annotate", second, "--message", "note"],
+                ["set-status", first, "~", "--message", "rework"],
+            ):
+                code, _out, err = run(["--root", root, *argv])
+                self.assertEqual(code, 0, (argv, err))

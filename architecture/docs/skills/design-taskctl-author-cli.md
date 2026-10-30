@@ -124,6 +124,16 @@ taskctl --root <root> info-assignee-name <id> <value>
 taskctl --root <root> info-source <id> <value>
 ```
 
+Guards (design-taskctl.md, "Guards") apply to these corrections too:
+lowering `review` from `user`, changing `review` on a Task in `[R]`/`[C]`,
+and `info-gate` are rejected with `approval_required`, and `add
+--set-status` with a working status (`~`/`R`/`C`/`X`) behind an unfinished
+earlier Task is rejected with `sequence_blocked`. The Author reports the
+rejection; it adds `--user-approved "<the user's instruction>"` only when
+the user explicitly asked for exactly that change. `gate` is never set by
+the Author — it exists for `rulectl tasklist`'s independent compliance
+checks.
+
 **Restructuring an existing Task**:
 
 ```

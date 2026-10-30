@@ -16,6 +16,7 @@ from typing import Optional
 
 from lib import abbrev, atomicio, index, locking, metagroup, numbering, objectfile, singlefile
 from lib.clock import now_iso
+from lib.guards import approval_message
 from lib.history import HistoryEntry
 from lib.metagroup import MetagroupDeclaration
 from lib.model import MetainfoEntry, ObjectRecord, derive_id, validate_free_form_id
@@ -286,6 +287,7 @@ class Store:
         metainfo: Optional[dict[str, str]] = None,
         object_id: Optional[str] = None,
         initial_status: Optional[str] = None,
+        approval: Optional[str] = None,
     ) -> ObjectRecord:
         content = dict(content or {})
         content.setdefault("Description", description)
@@ -360,8 +362,20 @@ class Store:
                 metagroup_levels=tuple(metagroup_path),
                 metainfo=[MetainfoEntry(type=k, value=v) for k, v in metainfo.items()],
                 content=content,
-                history=[HistoryEntry(timestamp=now_iso(), prefix="M", message="Object created")],
+                history=[HistoryEntry(
+                    timestamp=now_iso(), prefix="M", message=approval_message(approval, "Object created"),
+                )],
             )
+
+            guard = self.spec.sequence_guard
+            if guard is not None and initial_status is not None and not approval:
+                # design-taskctl.md, "Guards": an explicit initial status is
+                # not a transition (design.md, "Object Status"), but still
+                # must not start a Task ahead of unresolved earlier work.
+                existing = (
+                    [r for r, _p in self._load_all()] if self.mode == "directory" else sf_records
+                )
+                guard(existing, record, status)
 
             if self.mode == "directory":
                 file_path = directory / object_file_name(record)
@@ -410,15 +424,24 @@ class Store:
     # -- status / content mutation ------------------------------------------
 
     def set_status(
-        self, object_id: str, new_status: str, *, message: str = "", force: bool = False
+        self, object_id: str, new_status: str, *, message: str = "", force: bool = False,
+        approval: Optional[str] = None,
     ) -> ObjectRecord:
+        """`force` is the internal override (lib/tasklist.py's re-export
+        reset): it lifts the transition rules *and* the guards without a
+        History marker. The CLI only ever passes it together with
+        `approval` (--force requires --user-approved, lib/cliapp.py)."""
         if new_status not in self.spec.status.codes:
             raise StoreError(f"invalid status {new_status!r} for {self.spec.name}")
         with self.lock():
             record, ctx = self._locate(object_id)
             validator = self.spec.status.transition_validator
             if validator is not None:
-                validator(record, new_status, message=message, force=force)
+                validator(record, new_status, message=message, force=force, approval=approval)
+            guard = self.spec.sequence_guard
+            if guard is not None and new_status != record.status and not (approval or force):
+                guard(self._records_in(ctx), record, new_status)
+            message = approval_message(approval, message)
             old_status = record.status
             record.status = new_status
             if old_status != new_status:
@@ -433,14 +456,26 @@ class Store:
             self._persist(record, ctx)
             return record
 
-    def set_metainfo(self, object_id: str, metainfo_type: str, value: str) -> ObjectRecord:
+    def set_metainfo(
+        self, object_id: str, metainfo_type: str, value: str, *, force: bool = False,
+        approval: Optional[str] = None,
+    ) -> ObjectRecord:
+        """`force` lifts ToolSpec.metainfo_guard for internal callers only
+        (lib/tasklist.py's review/gate reset on re-export) -- the CLI's
+        info-<type> never sets it, only `approval` (--user-approved)."""
         _validate_metainfo_choice(self.spec, metainfo_type, value)
         with self.lock():
             record, ctx = self._locate(object_id)
+            guard = self.spec.metainfo_guard
+            if guard is not None and not (approval or force):
+                guard(record, metainfo_type, value)
             record.metainfo = [e for e in record.metainfo if e.type != metainfo_type]
             record.metainfo.append(MetainfoEntry(type=metainfo_type, value=value))
             record.history.append(
-                HistoryEntry(timestamp=now_iso(), prefix="M", message=f"{metainfo_type} set to {value}")
+                HistoryEntry(
+                    timestamp=now_iso(), prefix="M",
+                    message=approval_message(approval, f"{metainfo_type} set to {value}"),
+                )
             )
             self._persist(record, ctx)
             return record
@@ -712,6 +747,15 @@ class Store:
             return record, path
         record, declarations, records = self._sf_find(object_id)
         return record, (declarations, records)
+
+    def _records_in(self, ctx) -> list[ObjectRecord]:
+        """Every record of the store, given a `_locate` context -- single-file
+        mode already holds them all; directory mode reads them (under the
+        caller's lock)."""
+        if self.mode == "directory":
+            return [record for record, _path in self._load_all()]
+        _declarations, records = ctx
+        return records
 
     def _persist(self, record: ObjectRecord, ctx) -> None:
         if self.mode == "directory":
