@@ -33,7 +33,9 @@ taskctl --root <root> --json show-metagroups
 Phase is required in Phase stores and omitted in flat stores. Inspect
 Tasks/Phases before extension and show every believed creation at run end.
 `--set-status` is an initial-value override for imports, not an execution
-transition; taskctl-author never uses it for newly planned work.
+transition; taskctl-author never uses it for newly planned work. A working
+status (`~`, R, C, X) behind an unfinished earlier Task is rejected with
+`sequence_blocked`.
 
 Correct newly created Task fields within the run:
 
@@ -52,6 +54,11 @@ taskctl --root <root> group-phase <id> <phase-path>
 taskctl --root <root> reorder <id> --after <sibling-number>
 taskctl --root <root> delete <id>
 ```
+
+Lowering review from `user`, changing review on a Task in R/C, and changing
+`gate` are rejected with `approval_required`. Report it; add
+`--user-approved "<user's instruction>"` only when the user explicitly asked
+for that change. Never set `gate`; it belongs to rulectl exports.
 
 Leave `origin` unset, including for agent/tool assignments. Never fabricate
 reserved `origin=rulectl:<rule-id>` export provenance.

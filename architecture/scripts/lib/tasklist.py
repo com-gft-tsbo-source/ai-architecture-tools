@@ -14,7 +14,7 @@ from typing import Optional
 from lib import abbrev
 from lib.model import ObjectRecord
 from lib.store import Store, StoreError
-from lib.taskctl_spec import OPEN, build_spec as build_taskctl_spec
+from lib.taskctl_spec import GATE_NONE, OPEN, build_spec as build_taskctl_spec
 
 PHASE_SEPARATOR = "::"
 ASSIGNEE_TYPE_AGENT = "agent"
@@ -139,6 +139,10 @@ def _export_rule(taskctl_store: Store, rule: ObjectRecord, phase_path: list[str]
     metainfo = {
         "assignee-type": assignee_type, "assignee-name": assignee_name,
         "origin": f"rulectl:{rule.object_id}",
+        # design-taskctl.md, "Metainfo": compliance checks are independent of
+        # each other -- rulectl-checker records a violation as [R] and moves
+        # on, so these Tasks must not hold up (or be held up by) the queue.
+        "gate": GATE_NONE,
     }
 
     try:
@@ -162,7 +166,8 @@ def _export_rule(taskctl_store: Store, rule: ObjectRecord, phase_path: list[str]
         taskctl_store.set_content(rule.object_id, "Description", description)
     for metainfo_type, value in metainfo.items():
         if existing.metainfo_value(metainfo_type) != value:
-            taskctl_store.set_metainfo(rule.object_id, metainfo_type, value)
+            # force: the re-export owns these fields (gate is guarded once set).
+            taskctl_store.set_metainfo(rule.object_id, metainfo_type, value, force=True)
     if existing.status != OPEN:
         taskctl_store.set_status(
             rule.object_id, OPEN, force=True,
@@ -174,7 +179,9 @@ def _export_rule(taskctl_store: Store, rule: ObjectRecord, phase_path: list[str]
     # without this reset a fresh compliant verdict ([~]->[X]) would still be
     # forced through [R] first, or rejected outright without --force.
     if (existing.metainfo_value("review") or REVIEW_NONE) != REVIEW_NONE:
-        taskctl_store.set_metainfo(rule.object_id, "review", REVIEW_NONE)
+        # force: lowering review from `user` is guarded (design-taskctl.md,
+        # "Guards") -- the user-triggered re-export resets it by design.
+        taskctl_store.set_metainfo(rule.object_id, "review", REVIEW_NONE, force=True)
     return taskctl_store.annotate(
         rule.object_id, f"re-exported from rulectl rule {rule.signature}",
     )

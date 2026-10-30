@@ -35,10 +35,13 @@ class StatusSpec:
     " ", "~", "X" -- see lib/objectfile.py's module docstring on why History
     stores raw status tokens rather than the "[ ]"-bracketed display form,
     to avoid double-bracketing the History transition markup). `transition_validator`,
-    if given, is called as validator(record, target, *, message, force) -> None
-    (the full ObjectRecord, so a validator can inspect Metainfo like
-    taskctl's `review`) and must raise ValueError on an invalid transition;
-    taskctl is the only tool that supplies one -- rulectl/adrctl leave it
+    if given, is called as validator(record, target, *, message, force,
+    approval) -> None (the full ObjectRecord, so a validator can inspect
+    Metainfo like taskctl's `review`; `approval` is the CLI's
+    --user-approved text or None) and must raise ValueError on an invalid
+    transition -- lib/guards.py's GuardViolation for one only the user may
+    authorize; taskctl/questctl are the only tools that supply one (the
+    same function) -- rulectl/adrctl leave it
     None, meaning every manual status change is accepted without restriction
     (design.md/design-decisions.md: "no automatic transitions", not "no
     transition validation").
@@ -87,6 +90,18 @@ class ToolSpec:
     # (design-questctl.md, "Operations"), never through the generic content
     # setter, which always logs `M` where `answer` needs `T`.
     no_generic_setter: tuple[str, ...] = ()
+    # Guards (design-taskctl.md, "Guards"): checks on an operation an agent
+    # must not perform unless the user asked for it. lib/store.py skips both
+    # when the caller passes an `approval` (the CLI's --user-approved) or the
+    # internal `force`, and lets every other caller through only if the
+    # guard returns without raising lib/guards.py's GuardViolation.
+    # `sequence_guard(records, record, target_status)` sees the whole store
+    # (taskctl's Sequential Processing: no later Task may move on while an
+    # earlier one is unresolved) -- run by set_status and by add with an
+    # explicit initial status. `metainfo_guard(record, metainfo_type,
+    # value)` runs before info-<type> changes an existing object's value.
+    sequence_guard: Optional[Callable[..., None]] = None
+    metainfo_guard: Optional[Callable[..., None]] = None
 
     def __post_init__(self) -> None:
         if self.default_mode not in ("file", "directory"):

@@ -141,7 +141,7 @@ class TestSpecRefLinkage(unittest.TestCase):
             new_id = add_adr("Use lock-free queues")
             self.assertEqual(run(["--root", root, "info-superseded-by", old_id, new_id])[0], 0)
             for status in ("superseded", "deprecated", "rejected"):
-                code, _out, err = run(["--root", root, "set-status", old_id, status, "--force"])
+                code, _out, err = run(["--root", root, "set-status", old_id, status, "--force", "--user-approved", "test"])
                 self.assertEqual(code, 0, err)
                 _c, out, _e = run_specctl(["--root", root, "--json", "show", section_id])
                 self.assertEqual(json.loads(out)["adr"], new_id, status)

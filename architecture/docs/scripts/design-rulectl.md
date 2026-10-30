@@ -50,6 +50,8 @@ In addition to the general operations from design.md, rulectl supports:
 
   Both branches end their Description with, or otherwise reference, the source Rule's Signature for traceability. No back-reference is written onto the Rule itself — the shared Object ID between Rule and Task is already sufficient to cross-reference (`taskctl show <id>` / `rulectl show <id>`), so no bidirectional linkage machinery like `lib/spec_link.py`'s (adrctl<->specctl) was built for this one-directional batch export.
 
+  **Gate**: every exported Task carries `gate=none` (design-taskctl.md, "Metainfo"/"Guards") — compliance checks are independent of each other, so a violation (`[R]`) or an uncheckable Rule (`[B]`) must not stop the remaining checks. Re-export restores `gate=none` if it differs; this and the `review` reset use the store's internal guard bypass, since `tasklist` itself is the operation the user asked for.
+
   `tasklist` writes into the taskctl store sharing this invocation's `--root` (design.md, "File and Directory Parameters"), the same way adrctl's `spec-ref` reaches specctl's store — not transactionally with rulectl's own store: `tasklist` never modifies any Rule.
 
 ## User Content
