@@ -71,8 +71,9 @@ Single-File-Mode.
 
 ## Offene Punkte
 
-- Metagroup-Rename für taskctl/rulectl/adrctl — im Contract (`design.md`,
-  "Metagroup Operations") dokumentiert, nicht implementiert.
+- Metagroup-Rename für taskctl/questctl/rulectl/adrctl — in `design.md`
+  ("Metagroup Operations") nur als nicht implementiert erwähnt
+  → `docs/backlog-features.md`, F1.
 - ADR umbenennen: `adrctl` kann Name/Signatur eines ADR nicht ändern;
   nach einer Korrektur durch `specctl-adr-author` bleibt ein falscher Titel
   stehen.

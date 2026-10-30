@@ -37,6 +37,7 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-10-21, CI and plugin versioning |  |
 | 2026-10-21, cross-tool CLI contract tests |  |
 | 2026-10-21, exit code 2 in all Skills |  |
+| 2026-10-30, trigger-based backlogs |  |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -968,3 +969,28 @@ listed `0`/`1` only, although every tool behaves identically
 (`scripts/tests/test_cli_contract.py`). All Skills and Skill design documents
 now name `2` as a malformed command line. Wording only, no behavior change;
 plugin version `0.2.1`.
+
+## Amendments (2026-10-30, trigger-based backlogs)
+
+Deferred work on the CLI tools now lives in `architecture/docs/backlog-features.md`
+(entries `F<n>`): F1 metagroup rename, F2 table-driven parser/dispatch. The
+rules for every `architecture/docs/backlog-*.md` are kept once in
+`architecture/docs/CLAUDE.md`, with a pointer from the root `CLAUDE.md` because
+a subdirectory `CLAUDE.md` is only loaded once a file below it is read.
+
+- An entry is raised only when its explicit trigger applies to the work at
+  hand; entries without a trigger are never raised proactively.
+- Before any planning or implementation the user is asked about that one
+  entry (benefit and effort in one sentence each); an explicit request counts
+  as consent.
+- A refusal holds per entry for the current session only and is not
+  persisted anywhere; it must survive context compaction.
+- A completed entry is deleted from its backlog and documented here as an
+  amendment, keeping the history in one place.
+
+F1 deliberately records its open design questions with recommendations
+instead of decisions: the contract is written into `design.md` once a concrete
+need shows what a rename must do (notably whether Object Types change).
+The Agent-eval failure scenarios stay B4 in `backlog-optimizing.md`, which is
+to be converted to the same entry format (and renamed `backlog-optimization.md`)
+in a follow-up step.

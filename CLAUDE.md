@@ -29,6 +29,10 @@ Du nimmst dabei folgende Rolle ein:
 
 - Führe die vorhandene Testsuite vor Abschluss einer Änderung aus und stelle sicher, dass neuer Code mit abgedeckt ist.
 
+### Backlogs
+
+- Vor Arbeit an CLI-Tools, Agents oder Skills `architecture/docs/CLAUDE.md`, Abschnitt "Backlogs", lesen: Aufgeschobene Einträge in `architecture/docs/backlog-*.md` werden nur bei greifendem Auslöser und erst nach Rückfrage beim User angegangen.
+
 ## Repo-aufbau
 
 Die Datei `architecture/VISION.md` beschreibt den Sinn der in `architecture` enthaltenen Tools
