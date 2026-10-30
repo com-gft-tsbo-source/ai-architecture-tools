@@ -1,7 +1,9 @@
 # Vergleichende Agent-Evals vor weiteren starken Kürzungen
 
 Status: E1 und E3–E6 am 2026-10-20 ausgeführt
-([Ergebnisse](results-2026-10-20.md), Harness `evals/agent_evals.py`).
+([Ergebnisse](results-2026-10-20.md), Harness `evals/agent_evals.py`);
+E1 für taskctl-author und specctl-author am 2026-10-30 erneut
+([Ergebnisse](results-2026-10-30.md)).
 E2 ist über die E1-Fixtures mit abgedeckt. Dieser Plan ersetzt nicht die
 bestehende CLI-Testsuite. B4 im [Backlog](../backlog-optimization.md) bleibt
 für die dort genannten Fehlerfälle offen.
