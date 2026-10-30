@@ -13,6 +13,14 @@ most recently returned by next, and never use --force. Use exactly the
 supplied --root. Put --json before next/show and omit it on writes.
 Exit code 0 means success; exit code 1 means an error.
 
+taskctl guards reject skipping past unresolved earlier Tasks and deciding a
+user review yourself (`[R]`→X, review changes while in R/C, lowering review
+from user). With --json their output is `{"reason": "sequence_blocked" |
+"approval_required", ...}`. Do not work around a rejection: stop and report
+it to the user. Add `--user-approved "<the user's instruction>"` to a write
+only when the user explicitly instructed that exact operation for THIS Task;
+it is recorded in History. Never supply it on your own judgment.
+
 ## Select, claim, resume and stop
 
 ```
@@ -63,11 +71,18 @@ taskctl --root <root> set-status <id> R --message "<reason>"
 For subagent review, use `subagent` with info-review and `C` with
 set-status instead of `user` and `R`. Existing reviews
 remain required. Only an explicit user instruction for THIS Task permits
-removing a review; annotate that instruction/reason before:
+removing a review; annotate that instruction/reason before. Lowering a
+`user` review requires the instruction as approval:
 
 ```
-taskctl --root <root> info-review <id> none
+taskctl --root <root> info-review <id> none --user-approved "<user's instruction>"
 taskctl --root <root> set-status <id> X --message "<user-authorized removal; completion evidence>"
+```
+
+If the user explicitly accepts a Task waiting in R, record their verdict:
+
+```
+taskctl --root <root> set-status <id> X --user-approved "<user's instruction>" --message "<verdict>"
 ```
 
 Never remove review for remote-action Tasks. To block, no review change needed:

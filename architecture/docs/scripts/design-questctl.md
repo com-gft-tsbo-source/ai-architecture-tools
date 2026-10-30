@@ -56,6 +56,10 @@ The *per-object* state machine is unchanged from taskctl (design-taskctl.md, "St
 
 **Deviation from taskctl:** `[B]`, `[R]`, and `[C]` on one Question never block *other* Questions from being *finished*. This is not the same thing as when *new* work may start — see Parallel Processing, below, for that.
 
+## Guards
+
+taskctl's review guards apply unchanged (design-taskctl.md, "Guards", rules 2–5): `[R]` → `[X]`, `info-review` on a Question in `[R]`/`[C]`, lowering `review` from `user`, and every `--force` require `--user-approved "<the user's instruction>"`, with the same History marker and `--json` error contract. taskctl's sequence guard (rule 1) and `gate` (rule 6) do **not** apply — Questions are worked in parallel by design (see Parallel Processing).
+
 ## Parallel Processing
 
 questctl is not sequential the way taskctl is (design-taskctl.md, "Sequential Processing") — several Questions may be worked at once, spanning a Subgroup, a whole Group, or any combination. But "several at once" is a deliberate act, not something `next`/`next-all` build up incrementally on their own:

@@ -296,7 +296,7 @@ class TestSetStatusAndAnnotate(unittest.TestCase):
     def test_set_status_calls_transition_validator(self):
         calls = []
 
-        def validator(record, target, *, message, force):
+        def validator(record, target, *, message, force, approval=None):
             calls.append((record.status, target, message, force))
             if target == "X" and record.status == " " and not force:
                 raise ValueError("cannot skip straight to done")

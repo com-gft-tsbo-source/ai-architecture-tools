@@ -300,7 +300,7 @@ Spec-vs-Implementierung-Gap, keine Verhaltensänderung durch die Neuerung
 selbst). `taskctl.py` selbst brauchte keine Code-Änderung — alles läuft über
 `lib/taskctl_spec.py` und das gemeinsame `lib/`-Modell.
 
-551 Unit-/Integrationstests insgesamt unter `tests/` (davon 8 Plugin-Konsistenztests in `tests/test_plugin.py`)
+572 Unit-/Integrationstests insgesamt unter `tests/` (davon 8 Plugin-Konsistenztests in `tests/test_plugin.py`)
 (`python -m unittest discover -s architecture/scripts/tests -t architecture/scripts`),
 davon rund 170 specctl-spezifisch (Single-File- und Directory-Mode, inkl.
 `move`, `init`/`set-title`/`set-preamble` und die Init-Pflicht für jede
@@ -562,3 +562,21 @@ architecture/scripts/
 Task Metainfo includes optional `origin`; `rulectl tasklist` stamps and
 refreshes `rulectl:<rule-id>` on every exported Task. Existing exports gain
 the marker on re-export. Assignment remains independent of provenance.
+
+## Guards und `--user-approved` (2026-10-30)
+
+taskctl erzwingt Sequential Processing und User-Reviews
+(`design-taskctl.md`, "Guards"; `design-decisions.md`, "Amendments
+(2026-10-30, taskctl guards + `--user-approved`)"): `lib/guards.py`
+(`GuardViolation`, `reason` `sequence_blocked`/`approval_required`, bei
+`--json` als JSON auf stdout), neue `ToolSpec`-Felder `sequence_guard`/
+`metainfo_guard` (geprüft in `lib/store.py`s `set_status`/`add`/
+`set_metainfo`), `[R]`→`[X]`-Sperre im gemeinsamen `validate_transition`.
+`--user-approved <text>` (generisch in `lib/cliapp.py` für `add`,
+`set-status`, `info-*`) hebt die Guards auf und landet als
+`USER-APPROVED: <text>` in der History; `--force` verlangt ihn bei allen
+Engine-Tools. Store-internes `force` umgeht alle Guards ohne Marker (nur
+`lib/tasklist.py`). questctl übernimmt nur die Review-Guards. Neue
+taskctl-Metainfo `gate` (`sequential`|`none`): `rulectl tasklist` setzt
+`none`, damit `rulectl-checker` nach `[R]`/`[B]` weiterprüfen kann; `next`
+überspringt solche Tasks in `[B]`/`[R]`/`[C]`.

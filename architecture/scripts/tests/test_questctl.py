@@ -270,7 +270,24 @@ class TestReusedStatusMachine(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("invalid status transition", err)
             self.assertEqual(run(["--root", root, "set-status", qid, "R"])[0], 0)
-            self.assertEqual(run(["--root", root, "set-status", qid, "X"])[0], 0)
+            self.assertEqual(run(["--root", root, "set-status", qid, "X"])[0], 1)
+            self.assertEqual(run(["--root", root, "set-status", qid, "X", "--user-approved", "ok"])[0], 0)
+
+    def test_review_guard_applies_but_sequence_guard_does_not(self):
+        """design-questctl.md, "Guards": taskctl's review protection, but
+        Questions stay independent of each other."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "questions")
+            _c, out, _e = run(["--root", root, "--json", "add", "--name", "Q1", "--review", "user"])
+            first = json.loads(out)["id"]
+            _c, out, _e = run(["--root", root, "--json", "add", "--name", "Q2"])
+            second = json.loads(out)["id"]
+            run(["--root", root, "set-status", first, "~"])
+            self.assertEqual(run(["--root", root, "info-review", first, "none"])[0], 1)
+            run(["--root", root, "set-status", first, "R"])
+            self.assertEqual(run(["--root", root, "info-review", first, "subagent"])[0], 1)
+            code, _out, err = run(["--root", root, "set-status", second, "~"])
+            self.assertEqual(code, 0, err)
 
     def test_blocking_requires_message(self):
         with tempfile.TemporaryDirectory() as tmp:

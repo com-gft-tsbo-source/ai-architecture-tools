@@ -16,7 +16,7 @@ from pathlib import Path
 from lib import cliapp
 from lib.model import ObjectRecord
 from lib.store import NoWorkAvailable, Store
-from lib.taskctl_spec import DONE, build_spec
+from lib.taskctl_spec import BLOCKED, DONE, REVIEW_SUBAGENT, REVIEW_USER, build_spec, is_gating, priority_key
 
 
 def _handle_annotate(store: Store, args: argparse.Namespace) -> ObjectRecord:
@@ -24,7 +24,13 @@ def _handle_annotate(store: Store, args: argparse.Namespace) -> ObjectRecord:
 
 
 def _handle_next(store: Store, _args: argparse.Namespace) -> ObjectRecord:
-    open_records = [r for r in store.list_all() if r.status != DONE]
+    # A gate=none Task waiting in [B]/[R]/[C] does not hold up the queue
+    # (design-taskctl.md, "Sequential Processing") -- next skips it, exactly
+    # as the sequence guard (lib/taskctl_spec.py) ignores it.
+    open_records = [
+        r for r in store.list_all()
+        if r.status != DONE and (is_gating(r) or r.status not in (BLOCKED, REVIEW_USER, REVIEW_SUBAGENT))
+    ]
     if not open_records:
         # design-decisions.md, "Amendments (2026-08-25, taskctl NoWorkAvailable
         # + taskctl-author-cli/taskctl-worker-cli design)": taskctl has exactly
@@ -32,8 +38,7 @@ def _handle_next(store: Store, _args: argparse.Namespace) -> ObjectRecord:
         # empty), unlike questctl's three -- but a looping taskctl-worker run
         # still needs to tell it apart from a genuine error under --json.
         raise NoWorkAvailable("all_done", "no open tasks")
-    open_records.sort(key=lambda r: (r.metagroup_levels, r.number))
-    return open_records[0]
+    return min(open_records, key=priority_key)
 
 
 def _configure_parser(parser: argparse.ArgumentParser, subparsers) -> None:
