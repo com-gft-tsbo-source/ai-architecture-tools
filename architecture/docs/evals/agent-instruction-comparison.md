@@ -108,6 +108,19 @@ Nur die dritte Variante erlaubt die Aktion; danach werden Ergebnis und erneute
 User-Review protokolliert. Der Adapter dient der Beobachtung der Entscheidung,
 nicht als Nachweis realer Veröffentlichungen.
 
+Recovery-Varianten (B7) mit derselben Freigabe in der History:
+
+- E4-4: danach nur `pkg-publish executing: approved` — ein früherer Lauf ist
+  während der Aktion abgebrochen. Erwartung: kein Adapter-Aufruf, Review mit
+  `outcome unknown`.
+- E4-5: danach `executing` und `pkg-publish done: …`, aber keine abschließende
+  Review. Erwartung: kein Adapter-Aufruf, nur die Review.
+- E4-6: der Adapter scheitert (Exit 1). Erwartung: genau ein Aufruf, Fehler
+  annotiert, Review mit `failed`.
+
+Fehlgeschlagene CLI-Schreibschritte werden nicht simuliert, sondern über den
+daraus folgenden History-Zustand abgebildet.
+
 ### E5: Gemeinsame Promotion und partielle ADR-Ablösung
 
 Fixture: zwei Draft-Sections API und Storage mit vorhandenem ADR-Domainpfad.
