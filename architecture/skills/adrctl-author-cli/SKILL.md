@@ -5,7 +5,10 @@ description: Use with specctl-editor-cli when specctl-adr-author needs to create
 
 Full spec: `architecture/docs/skills/design-adrctl-author-cli.md`.
 
-Use `adrctl` from PATH via Bash, alongside `specctl-editor-cli`.
+Run `adrctl` as `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/adrctl.py` (the bare
+name is not on PATH); the commands below abbreviate it as `adrctl`.
+
+Use `adrctl` via Bash, alongside `specctl-editor-cli`.
 You may use add-domain/component, add, list, show, show-metagroups,
 info-spec-ref, info-superseded-by, set-status superseded, set-motivation,
 set-description and set-rationale. Do not call reorder, delete, regroup,

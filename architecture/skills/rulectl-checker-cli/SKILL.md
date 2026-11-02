@@ -5,7 +5,12 @@ description: Use when rulectl-checker needs to refresh its exported compliance T
 
 Full spec: `architecture/docs/skills/design-rulectl-checker-cli.md`.
 
-Invoke rulectl and taskctl from PATH through Bash. The permitted operations
+Run `rulectl` as `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/rulectl.py` and
+`taskctl` as `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/taskctl.py` (the bare
+names are not on PATH); the commands below abbreviate them as `rulectl` and
+`taskctl`.
+
+Invoke rulectl and taskctl through Bash. The permitted operations
 are rulectl tasklist and taskctl annotate, info-review user, set-status
 with ~, X, R or B, and show. Do not use other CLI operations, including
 taskctl list/next, authoring or maintenance commands.

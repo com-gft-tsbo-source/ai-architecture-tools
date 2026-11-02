@@ -28,7 +28,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 PLUGIN = "architecture-tools"
 CLIS = ("taskctl", "rulectl", "questctl", "specctl", "adrctl")
-CLI_RE = re.compile(r"(?<![\w/.-])(?:\S*/)?(" + "|".join(CLIS) + r")(?:\.py)?\s")
+CLI_RE = re.compile(r"(?<![\w/.-])(?:\S*/)?(" + "|".join(CLIS) + r")(?:\.py)?[\"']?\s")
 # Session variables of the hosting Claude Code session must not leak into the
 # evaluated session (shared session id, plugin/skill sync, messaging socket).
 ENV_DROP = (
@@ -557,7 +557,7 @@ def cli_calls(calls: list[dict]) -> list[tuple[int, str, str]]:
 
 AUTHOR_CASES = {"E1-taskctl-author", "E1-specctl-author"}
 READ_OPS = {"list", "show", "show-metagroups", "next", "next-all", "history", "render"}
-CLI_OP_RE = re.compile(r"(?:^|[\s/])(" + "|".join(CLIS) + r")(?:\.py)?"
+CLI_OP_RE = re.compile(r"(?:^|[\s/])(" + "|".join(CLIS) + r")(?:\.py)?[\"']?"
                        r"((?:\s+(?:--root\s+\S+|--json))*)\s+([a-z][\w-]*)")
 
 

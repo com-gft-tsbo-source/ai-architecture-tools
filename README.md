@@ -10,9 +10,14 @@ Claude Code Skills and Subagents built on them. See `architecture/VISION.md`.
 /plugin install architecture-tools@ai-architecture-tools
 ```
 
-The CLIs then are on `PATH` inside Claude Code; requires `python3` (≥ 3.10,
-standard library only). To use them in your own shell, add
-`architecture/bin` of a checkout to your `PATH`.
+The Skills run the CLIs from the plugin directory; requires `python3`
+(≥ 3.10, standard library only). To use the CLIs in your own shell, add
+`architecture/cli` of a checkout to your `PATH`.
+
+Claude Code on the web has no `/plugin` command and ignores plugins enabled
+in a repository's `.claude/settings.json`; there the plugin is only
+available through claude.ai organization settings, which require a private
+or internal marketplace repository.
 
 ## Running taskctl-worker unattended
 

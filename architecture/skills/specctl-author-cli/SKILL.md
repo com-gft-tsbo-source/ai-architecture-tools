@@ -5,7 +5,10 @@ description: Use when specctl-author needs CLI commands to initialize a document
 
 Full spec: `architecture/docs/skills/design-specctl-author-cli.md`.
 
-Invoke specctl from PATH through Bash. You may use init, set-title,
+Run `specctl` as `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specctl.py` (the
+bare name is not on PATH); the commands below abbreviate it as `specctl`.
+
+Invoke specctl through Bash. You may use init, set-title,
 set-preamble, add-part/chapter/section/subsection/point, set-description,
 set-open-questions, rename, reorder, move-to-<level>, delete, list and show.
 Operate only on draft content. Do not call set-status, set-adr, render or

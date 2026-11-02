@@ -5,7 +5,10 @@ description: Use when questctl-author needs to detect store depth, create a conf
 
 Full spec: `architecture/docs/skills/design-questctl-author-cli.md`.
 
-Use `questctl` from PATH via Bash. Allowed operations are listed below;
+Run `questctl` as `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/questctl.py` (the
+bare name is not on PATH); the commands below abbreviate it as `questctl`.
+
+Use `questctl` via Bash. Allowed operations are listed below;
 the calling Agent decides extraction, taxonomy confirmation and duplicates.
 
 ## Conventions and depth detection

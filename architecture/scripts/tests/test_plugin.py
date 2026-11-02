@@ -17,7 +17,7 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = PLUGIN_ROOT.parent
 SCRIPTS = PLUGIN_ROOT / "scripts"
-BIN = PLUGIN_ROOT / "bin"
+CLI = PLUGIN_ROOT / "cli"
 
 
 def load_json(path):
@@ -45,6 +45,10 @@ class TestManifests(unittest.TestCase):
             if child.is_dir():
                 self.assertTrue((child / "SKILL.md").is_file(), child)
 
+    def test_no_top_level_bin_dir(self):
+        # claude.ai (org sync, upload) rejects plugins with a top-level bin/.
+        self.assertFalse((PLUGIN_ROOT / "bin").exists())
+
     def test_version_is_semver(self):
         self.assertRegex(self.plugin["version"], r"^\d+\.\d+\.\d+$")
 
@@ -55,29 +59,36 @@ class TestManifests(unittest.TestCase):
         self.assertIs(settings["enabledPlugins"][key], False)
 
 
-class TestBinWrappers(unittest.TestCase):
+class TestCliWrappers(unittest.TestCase):
     def test_one_executable_wrapper_per_cli(self):
         clis = {p.stem for p in SCRIPTS.glob("*ctl.py")}
-        wrappers = {p.name for p in BIN.iterdir()}
+        wrappers = {p.name for p in CLI.iterdir()}
         self.assertEqual(wrappers, clis)
         for name in wrappers:
-            self.assertTrue(os.access(BIN / name, os.X_OK), name)
+            self.assertTrue(os.access(CLI / name, os.X_OK), name)
 
     def test_wrapper_runs_cli_through_symlink_from_foreign_cwd(self):
         with tempfile.TemporaryDirectory() as tmp:
             link = Path(tmp) / "rulectl"
-            link.symlink_to(BIN / "rulectl")
+            link.symlink_to(CLI / "rulectl")
             result = subprocess.run(
                 [str(link), "--help"], cwd=tmp, capture_output=True, text=True
             )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(result.stdout.startswith("usage: rulectl"))
 
-    def test_skills_reference_bare_cli_names_only(self):
+    def test_skills_run_clis_through_plugin_root(self):
+        # No bin/ on PATH (claude.ai rejects it): Skills name the script via
+        # ${CLAUDE_PLUGIN_ROOT}, never a path into a repository checkout.
+        pattern = re.compile(r"(\S*)scripts/(\w+ctl)\.py")
         for skill in (PLUGIN_ROOT / "skills").glob("*/SKILL.md"):
             text = skill.read_text(encoding="utf-8")
-            self.assertIsNone(re.search(r"scripts/\w+ctl\.py", text), skill)
-
+            self.assertNotIn("from PATH", text, skill)
+            refs = pattern.findall(text)
+            self.assertTrue(refs, skill)
+            for prefix, tool in refs:
+                self.assertEqual(prefix, "${CLAUDE_PLUGIN_ROOT}/", skill)
+                self.assertTrue((SCRIPTS / f"{tool}.py").is_file(), (skill, tool))
 
 if __name__ == "__main__":
     unittest.main()

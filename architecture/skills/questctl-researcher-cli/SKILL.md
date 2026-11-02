@@ -5,6 +5,9 @@ description: Use when questctl-researcher needs to select open Questions, record
 
 Full spec: `architecture/docs/skills/design-questctl-researcher-cli.md`.
 
+Run `questctl` as `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/questctl.py` (the
+bare name is not on PATH); the commands below abbreviate it as `questctl`.
+
 You operate `questctl` via Bash, using only the operations below.
 The calling Agent decides research scope and evidence sufficiency.
 
@@ -12,7 +15,7 @@ The calling Agent decides research scope and evidence sufficiency.
 
 - Allowed: `next-all`, `show`, `annotate`, `set-status`, `answer`, `info-review`.
 - Use exactly the supplied `--root`. Put `--json` before `next-all` and
-  `show` when parsing their output. Invoke questctl from PATH through Bash;
+  `show` when parsing their output. Invoke questctl through Bash;
   no operations beyond the allow-list are permitted.
 - Exit `0` means success, `1` means error or no work, `2` means malformed
   CLI usage. On initial
