@@ -64,9 +64,17 @@ class TestTraceParsing(unittest.TestCase):
         calls = [call("1", "Bash", command="R=/x\ntaskctl --root $R next"),
                  call("2", "Bash", command="cat /x/tasks/taskctl.md"),
                  call("3", "Bash", command="/opt/bin/rulectl --root /r list"),
-                 call("4", "Read", file_path="taskctl")]
+                 call("4", "Read", file_path="taskctl"),
+                 # Skills run the CLIs as `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/<tool>.py`
+                 call("5", "Bash", command="python3 /p/scripts/adrctl.py --root /r list"),
+                 call("6", "Bash", command='python3 "/p q/scripts/specctl.py" --root /r show')]
         self.assertEqual([(i, t) for i, t, _ in ae.cli_calls(calls)],
-                         [(0, "taskctl"), (2, "rulectl")])
+                         [(0, "taskctl"), (2, "rulectl"), (4, "adrctl"), (5, "specctl")])
+
+    def test_cli_writes_detects_plugin_root_invocations(self):
+        segs = ["python3 /p/scripts/taskctl.py --root /r --json show 1",
+                'python3 "/p/scripts/taskctl.py" --root /r set-status 1 X']
+        self.assertEqual(ae.cli_writes(segs), segs[1:])
 
 
 class TestRoutingChecks(unittest.TestCase):

@@ -53,7 +53,7 @@ Greift ein Auslöser, **zuerst fragen, dann erst handeln**:
   anpassen.
 - Konventionen aus `architecture/scripts/CLAUDE.md` gelten unverändert
   (Tests, `lib/`-Wiederverwendung, Plugin-Version bei Änderungen an
-  `agents/`, `skills/`, `bin/`).
+  `agents/`, `skills/`, `scripts/*ctl`).
 - Nach Abschluss: Umsetzung als Amendment in
   `docs/scripts/design-decisions.md` dokumentieren (inkl. Zeile im
   "Amendment index"), den Eintrag aus dem Backlog **löschen** und alle im

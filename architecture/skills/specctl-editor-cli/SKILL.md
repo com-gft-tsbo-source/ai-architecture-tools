@@ -5,7 +5,10 @@ description: Use with adrctl-author-cli when specctl-adr-author promotes existin
 
 Full spec: `architecture/docs/skills/design-specctl-editor-cli.md`.
 
-Use `specctl` from PATH via Bash, alongside `adrctl-author-cli`.
+Run `specctl` as `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specctl.py` (the
+bare name is not on PATH); the commands below abbreviate it as `specctl`.
+
+Use `specctl` via Bash, alongside `adrctl-author-cli`.
 The permitted operations are set-status stable, set-description,
 set-open-questions, set-adr, list and show. Do not initialize documents,
 change their title or preamble, add, rename, reorder, move or delete Sections,

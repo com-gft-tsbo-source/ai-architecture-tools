@@ -27,7 +27,7 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-08-25, taskctl-author/taskctl-worker Subagent design |  |
 | 2026-08-27, specctl-author/specctl-adr-author design | files created by 2026-08-27, specctl-author/specctl-adr-author implementation |
 | 2026-08-27, specctl-author/specctl-adr-author implementation |  |
-| 2026-10-19, plugin distribution |  |
+| 2026-10-19, plugin distribution | CLIs on `PATH` via `bin/` → superseded by 2026-11-02, no top-level `bin/` |
 | 2026-10-19, taskctl-author/taskctl-worker implementation |  |
 | 2026-10-19, local-first: one gated path for remote actions |  |
 | 2026-10-19, specctl/adrctl fixes from integrating the specctl Subagents |  |
@@ -42,6 +42,7 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-10-30, optimization backlog in entry format |  |
 | 2026-10-30, role-specific Skill surface |  |
 | 2026-10-30, remote-action recovery |  |
+| 2026-11-02, no top-level `bin/` |  |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -659,7 +660,7 @@ without changing the development layout of the repository.
   unaffected. The design documents stay in `architecture/docs/subagents/`:
   "Subagent" remains the concept name; only the shipped directory follows
   the plugin convention.
-- **CLIs reach `PATH` through `architecture/bin/`**: one POSIX `sh` wrapper per
+- *(Superseded by 2026-11-02, no top-level `bin/`.)* **CLIs reach `PATH` through `architecture/bin/`**: one POSIX `sh` wrapper per
   `scripts/<tool>.py` (`exec python3 .../scripts/<tool>.py "$@"`, resolving
   its own location via `readlink -f`). Claude Code puts an enabled plugin's
   `bin/` on the Bash tool's `PATH`, so the Skills' CLI contract is just the
@@ -1160,3 +1161,38 @@ with the user:
   ([results](../evals/results-2026-10-30-e4-recovery.md)). B4's remaining
   write-failure scenarios are narrowed to writes outside the remote gate.
   Plugin version `0.3.2`.
+
+## Amendments (2026-11-02, no top-level `bin/`)
+
+Adding the plugin through claude.ai failed: claude.ai rejects a plugin with
+a top-level `bin/` directory (org sync and direct upload; error "Plugin
+contains a top-level bin/ directory",
+https://code.claude.com/docs/en/plugins/host-marketplace.md). The 2026-10-19
+"known limitation" therefore blocked every claude.ai route, not only
+Cowork. Decided with the user:
+
+- **`architecture/bin/<tool>` → `architecture/scripts/<tool>`**, next to
+  `<tool>.py` (one directory for everything a CLI consists of; the wrapper
+  now resolves `<tool>.py` in its own directory). The wrappers are no longer
+  on the Bash tool's `PATH` and serve only users who put
+  `architecture/scripts` on their own `PATH` outside Claude Code. Rejected:
+  a separate `cli/` directory — a second location for the same tools.
+- **Skills run the scripts via `${CLAUDE_PLUGIN_ROOT}`:**
+  `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/<tool>.py`, stated once per
+  `SKILL.md`; the command examples keep the bare name as an abbreviation.
+  Claude Code substitutes the variable in plugin Skill content; it is *not*
+  set in the Bash tool's environment, so it must stay in the Markdown text.
+  Calling `python3` on the script, not the wrapper, avoids depending on the
+  executable bit surviving claude.ai sync (undocumented).
+- Rejected: keeping `bin/` and accepting the limitation (the reason for this
+  change); a Skill-relative path via `${CLAUDE_SKILL_DIR}/../../` (fragile,
+  same substitution mechanism anyway).
+- `tests/test_plugin.py` enforces: no `bin/` at the plugin root, every
+  `SKILL.md` names its scripts only as `${CLAUDE_PLUGIN_ROOT}/scripts/<tool>.py`.
+  The eval harness recognizes quoted script paths as CLI calls.
+- Still out of reach, not addressed here: Claude Code on the web does not
+  install plugins declared in a repository's `.claude/settings.json` and has
+  no `/plugin` command; claude.ai org sync requires a *private or internal*
+  marketplace repository (https://claude.com/docs/plugins/org-sync), while
+  this repository is public.
+- Plugin version `0.4.0` (changed CLI invocation contract of all Skills).

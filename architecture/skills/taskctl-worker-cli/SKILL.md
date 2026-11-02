@@ -5,7 +5,10 @@ description: Use when taskctl-worker needs to select, claim or resume existing T
 
 Full spec: `architecture/docs/skills/design-taskctl-worker-cli.md`.
 
-Invoke taskctl from PATH through Bash. You may use next, set-status,
+Run `taskctl` as `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/taskctl.py` (the
+bare name is not on PATH); the commands below abbreviate it as `taskctl`.
+
+Invoke taskctl through Bash. You may use next, set-status,
 annotate, show, and info-review immediately before an authorized outcome
 transition. Do not author, restructure, delete or reassign Tasks, set origin,
 browse with list/show-metagroups, or call reindex/history. Mutate only the ID

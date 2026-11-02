@@ -5,7 +5,10 @@ description: Use when taskctl-author needs to create or extend Phases and Tasks,
 
 Full spec: `architecture/docs/skills/design-taskctl-author-cli.md`.
 
-Use `taskctl` from PATH via Bash. Use only operations below; the calling
+Run `taskctl` as `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/taskctl.py` (the
+bare name is not on PATH); the commands below abbreviate it as `taskctl`.
+
+Use `taskctl` via Bash. Use only operations below; the calling
 Agent controls planning, deletion confirmation and ordering judgments.
 
 ## Conventions

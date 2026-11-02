@@ -144,17 +144,20 @@ Keine Testzahlen in Dokumenten festschreiben — sie veralten sofort.
 (Begründung: `design-decisions.md`, "Amendments (2026-10-19, plugin
 distribution)"). Daraus folgen Pflichten bei Änderungen:
 
-- Neues CLI-Tool `scripts/<tool>.py` → Wrapper `architecture/bin/<tool>`
-  (ausführbar, Muster der vorhandenen Wrapper) anlegen.
+- Neues CLI-Tool `scripts/<tool>.py` → Wrapper `scripts/<tool>`
+  (ausführbar, Muster der vorhandenen Wrapper) anlegen. Kein Verzeichnis
+  `bin/` im Plugin-Root: claude.ai lehnt solche Plugins ab.
 - Subagents (`architecture/agents/*.md`) und Skills
   (`architecture/skills/<name>/SKILL.md`) werden automatisch gefunden —
   `plugin.json` darf keinen `agents`-Key setzen (er ersetzt den
   Default-Scan).
-- Skills rufen CLIs nur über den nackten Namen auf (`rulectl ...`), nie über
-  einen Pfad in dieses Repository.
+- Skills rufen CLIs als `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/<tool>.py`
+  auf (einmal je `SKILL.md` genannt, Beispiele kürzen auf den Namen ab), nie
+  über einen Pfad in dieses Repository. `CLAUDE_PLUGIN_ROOT` wird nur im
+  Skill-Text ersetzt, nicht in der Bash-Umgebung.
 - `tests/test_plugin.py` prüft diese Punkte; zusätzlich vor einem Release
   `claude plugin validate .` (Repo-Root) ausführen.
-- Jede Änderung unter `agents/`, `skills/` oder `bin/` braucht eine neue
+- Jede Änderung unter `agents/`, `skills/` oder an `scripts/*ctl` braucht eine neue
   `version` in `plugin.json` — der CI-Job `plugin-version` lässt einen PR
   sonst scheitern.
 - Lokal testen: `claude --plugin-dir ./architecture` (in diesem Repo ist das
@@ -166,14 +169,14 @@ distribution)"). Daraus folgen Pflichten bei Änderungen:
 öffentliche Repo) führt bei jedem Push/PR beide Testsuites
 (`architecture/scripts/tests`, `evals`) unter Python 3.10 (garantiertes
 Minimum der Zielumgebungen) und 3.13 aus. Kein Laufzeit-Versionscheck in
-`bin/` — ältere Pythons werden nicht unterstützt, Fehler dort sind akzeptiert.
+den Wrappern — ältere Pythons werden nicht unterstützt, Fehler dort sind akzeptiert.
 
 ## Struktur
 
 ```
 architecture/scripts/
 ├── CLAUDE.md
-├── ../bin/<tool>      # Plugin-Wrapper je CLI (auf PATH, wenn Plugin aktiv)
+├── <tool>            # sh-Wrapper je CLI (für eigenen PATH außerhalb Claude Code)
 ├── taskctl.py         # CLI: Taskliste (0/1 Ebenen: Phase)
 ├── questctl.py        # CLI: offene Fragen (0/1/2 Ebenen: Group/Subgroup)
 ├── rulectl.py         # CLI: Code-Qualitäts-Regeln (+ tasklist-Export)

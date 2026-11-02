@@ -5,7 +5,10 @@ description: Use when rulectl-author needs the CLI syntax for creating metagroup
 
 Full spec: `architecture/docs/skills/design-rulectl-author-cli.md`.
 
-Use `rulectl` from PATH via Bash. Only the operations below are allowed;
+Run `rulectl` as `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/rulectl.py` (the
+bare name is not on PATH); the commands below abbreviate it as `rulectl`.
+
+Use `rulectl` via Bash. Only the operations below are allowed;
 content, grouping and duplicate judgments belong to the calling Agent.
 
 ## Conventions
