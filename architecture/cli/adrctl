@@ -1,3 +1,0 @@
-#!/bin/sh
-# Plugin entry point for `adrctl`; the implementation lives in scripts/.
-exec python3 "$(dirname "$(readlink -f "$0")")/../scripts/adrctl.py" "$@"

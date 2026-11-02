@@ -144,7 +144,7 @@ Keine Testzahlen in Dokumenten festschreiben — sie veralten sofort.
 (Begründung: `design-decisions.md`, "Amendments (2026-10-19, plugin
 distribution)"). Daraus folgen Pflichten bei Änderungen:
 
-- Neues CLI-Tool `scripts/<tool>.py` → Wrapper `architecture/cli/<tool>`
+- Neues CLI-Tool `scripts/<tool>.py` → Wrapper `scripts/<tool>`
   (ausführbar, Muster der vorhandenen Wrapper) anlegen. Kein Verzeichnis
   `bin/` im Plugin-Root: claude.ai lehnt solche Plugins ab.
 - Subagents (`architecture/agents/*.md`) und Skills
@@ -157,7 +157,7 @@ distribution)"). Daraus folgen Pflichten bei Änderungen:
   Skill-Text ersetzt, nicht in der Bash-Umgebung.
 - `tests/test_plugin.py` prüft diese Punkte; zusätzlich vor einem Release
   `claude plugin validate .` (Repo-Root) ausführen.
-- Jede Änderung unter `agents/`, `skills/` oder `cli/` braucht eine neue
+- Jede Änderung unter `agents/`, `skills/` oder an `scripts/*ctl` braucht eine neue
   `version` in `plugin.json` — der CI-Job `plugin-version` lässt einen PR
   sonst scheitern.
 - Lokal testen: `claude --plugin-dir ./architecture` (in diesem Repo ist das
@@ -169,14 +169,14 @@ distribution)"). Daraus folgen Pflichten bei Änderungen:
 öffentliche Repo) führt bei jedem Push/PR beide Testsuites
 (`architecture/scripts/tests`, `evals`) unter Python 3.10 (garantiertes
 Minimum der Zielumgebungen) und 3.13 aus. Kein Laufzeit-Versionscheck in
-`cli/` — ältere Pythons werden nicht unterstützt, Fehler dort sind akzeptiert.
+den Wrappern — ältere Pythons werden nicht unterstützt, Fehler dort sind akzeptiert.
 
 ## Struktur
 
 ```
 architecture/scripts/
 ├── CLAUDE.md
-├── ../cli/<tool>      # sh-Wrapper je CLI (für eigenen PATH außerhalb Claude Code)
+├── <tool>            # sh-Wrapper je CLI (für eigenen PATH außerhalb Claude Code)
 ├── taskctl.py         # CLI: Taskliste (0/1 Ebenen: Phase)
 ├── questctl.py        # CLI: offene Fragen (0/1/2 Ebenen: Group/Subgroup)
 ├── rulectl.py         # CLI: Code-Qualitäts-Regeln (+ tasklist-Export)

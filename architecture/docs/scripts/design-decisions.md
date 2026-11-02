@@ -1171,9 +1171,12 @@ https://code.claude.com/docs/en/plugins/host-marketplace.md). The 2026-10-19
 "known limitation" therefore blocked every claude.ai route, not only
 Cowork. Decided with the user:
 
-- **`architecture/bin/` → `architecture/cli/`.** The `sh` wrappers are
-  unchanged; they are no longer on the Bash tool's `PATH` and serve only
-  users who put `architecture/cli` on their own `PATH` outside Claude Code.
+- **`architecture/bin/<tool>` → `architecture/scripts/<tool>`**, next to
+  `<tool>.py` (one directory for everything a CLI consists of; the wrapper
+  now resolves `<tool>.py` in its own directory). The wrappers are no longer
+  on the Bash tool's `PATH` and serve only users who put
+  `architecture/scripts` on their own `PATH` outside Claude Code. Rejected:
+  a separate `cli/` directory — a second location for the same tools.
 - **Skills run the scripts via `${CLAUDE_PLUGIN_ROOT}`:**
   `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/<tool>.py`, stated once per
   `SKILL.md`; the command examples keep the bare name as an abbreviation.

@@ -17,7 +17,6 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = PLUGIN_ROOT.parent
 SCRIPTS = PLUGIN_ROOT / "scripts"
-CLI = PLUGIN_ROOT / "cli"
 
 
 def load_json(path):
@@ -62,15 +61,15 @@ class TestManifests(unittest.TestCase):
 class TestCliWrappers(unittest.TestCase):
     def test_one_executable_wrapper_per_cli(self):
         clis = {p.stem for p in SCRIPTS.glob("*ctl.py")}
-        wrappers = {p.name for p in CLI.iterdir()}
+        wrappers = {p.name for p in SCRIPTS.glob("*ctl")}
         self.assertEqual(wrappers, clis)
         for name in wrappers:
-            self.assertTrue(os.access(CLI / name, os.X_OK), name)
+            self.assertTrue(os.access(SCRIPTS / name, os.X_OK), name)
 
     def test_wrapper_runs_cli_through_symlink_from_foreign_cwd(self):
         with tempfile.TemporaryDirectory() as tmp:
             link = Path(tmp) / "rulectl"
-            link.symlink_to(CLI / "rulectl")
+            link.symlink_to(SCRIPTS / "rulectl")
             result = subprocess.run(
                 [str(link), "--help"], cwd=tmp, capture_output=True, text=True
             )

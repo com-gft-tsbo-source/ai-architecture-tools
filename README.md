@@ -12,7 +12,7 @@ Claude Code Skills and Subagents built on them. See `architecture/VISION.md`.
 
 The Skills run the CLIs from the plugin directory; requires `python3`
 (≥ 3.10, standard library only). To use the CLIs in your own shell, add
-`architecture/cli` of a checkout to your `PATH`.
+`architecture/scripts` of a checkout to your `PATH`.
 
 Claude Code on the web has no `/plugin` command and ignores plugins enabled
 in a repository's `.claude/settings.json`; there the plugin is only

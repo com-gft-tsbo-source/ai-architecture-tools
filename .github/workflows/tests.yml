@@ -37,7 +37,7 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          paths="architecture/agents architecture/skills architecture/cli"
+          paths="architecture/agents architecture/skills architecture/scripts/*ctl"
           if git diff --quiet "$BASE"...HEAD -- $paths; then
             echo "No distributed Agent/Skill/CLI wrapper changes."
             exit 0
