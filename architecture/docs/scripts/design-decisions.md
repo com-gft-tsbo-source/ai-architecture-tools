@@ -43,6 +43,7 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-10-30, role-specific Skill surface |  |
 | 2026-10-30, remote-action recovery |  |
 | 2026-11-02, no top-level `bin/` |  |
+| 2026-11-03, uniform object selector |  |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -1196,3 +1197,33 @@ Cowork. Decided with the user:
   marketplace repository (https://claude.com/docs/plugins/org-sync), while
   this repository is public.
 - Plugin version `0.4.0` (changed CLI invocation contract of all Skills).
+
+## Amendments (2026-11-03, uniform object selector)
+
+Trigger: `list` prints Signatures like `1-001-45d2c8-Foo_bar`, but only
+`show` could resolve one; every other command demanded the raw ID. Decided
+with the user:
+
+- **Signatures were already uniform** (`<Type>-<nr>-<ID>-<name>` in all five
+  tools; the differences are the Object Type shape — Phase number vs. padded
+  abbreviation — and the status prefix, which is not part of the Signature).
+  Output, JSON fields and Object Types stay unchanged. Rejected: dropping
+  the padding `_` of abbreviations in CLI output (would need input
+  normalization and touches `lib/abbrev.py` semantics for no gain).
+- **One selector for every ID argument**, in all five tools: raw ID,
+  Signature, `list` output line, `<path>/<nr>`, or an unambiguous
+  case-insensitive Signature fragment (`design.md`, "Object selector").
+  Exact matches win over fragments; ambiguity is an error listing the
+  candidates — also for `delete`.
+- **CLI layer only.** `lib/idmatch.py` holds the matching; `lib/cliapp.py` and
+  `specctl.py` replace the argument by the raw ID before calling the store.
+  Store mutators and all internal references (`spec-ref`, `origin`,
+  `rulectl tasklist`, `adr_lookup`) stay exact. Rejected: fuzzy matching in
+  cross-tool references — a wrong fragment would be persisted silently.
+- **Same-store references** (adrctl `superseded-by`, `MetainfoSpec.ref`) are
+  resolved too and stored as raw ID. A value that names no object stays
+  verbatim (the successor may not exist yet); an ambiguous fragment is an
+  error.
+- An exact raw ID now wins over the `/` path syntax, so a free-form ID is
+  never shadowed by a path selector.
+- Plugin version `0.4.1`.

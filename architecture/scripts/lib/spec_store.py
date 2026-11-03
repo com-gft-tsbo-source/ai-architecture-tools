@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from lib import abbrev, adr_lookup, locking, metagroup, numbering
+from lib import abbrev, adr_lookup, idmatch, locking, metagroup, numbering
 from lib import store as generic_store
 from lib.atomicio import atomic_write_text
 from lib.clock import now_iso
@@ -506,27 +506,21 @@ class SpecStore:
         return sections
 
     def resolve_id(self, token: str) -> SpecSection:
-        """--id selector: (1) Signature match, (2) contains '/' -> ancestor-path/nr,
-        (3) raw ID (design.md, CLI Contract)."""
-        sections = self.list_all()
-        for s in sections:
-            if s.signature == token:
-                return s
-        if "/" in token:
-            path_str, _, nr_str = token.rpartition("/")
-            try:
-                nr = int(nr_str)
-            except ValueError:
-                raise SpecStoreError(f"malformed --id path selector: {token!r}") from None
-            path_segments = tuple(path_str.split("/")) if path_str else ()
-            for s in sections:
-                if s.ancestor_levels == path_segments and s.number == nr:
-                    return s
-            raise SpecStoreError(f"no section at path {path_str!r} number {nr}")
-        for s in sections:
-            if s.object_id == token:
-                return s
-        raise SpecStoreError(f"no section matches --id {token!r}")
+        """CLI selector: raw ID, Signature, `ancestor-path/nr` or an
+        unambiguous Signature fragment (lib/idmatch.py)."""
+        try:
+            return idmatch.resolve(
+                self.list_all(), token, kind="section",
+                object_id=lambda s: s.object_id,
+                signature=lambda s: s.signature,
+                by_path=lambda sections, path, nr: next(
+                    (s for s in sections
+                     if s.ancestor_levels == (tuple(path.split("/")) if path else ()) and s.number == nr),
+                    None,
+                ),
+            )
+        except idmatch.IdMatchError as exc:
+            raise SpecStoreError(str(exc)) from None
 
     def render_plain(self) -> str:
         """The `render` operation: comment-stripped Markdown, headings and

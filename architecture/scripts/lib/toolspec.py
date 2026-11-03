@@ -25,6 +25,9 @@ class MetagroupLevelSpec:
 class MetainfoSpec:
     type: str
     choices: Optional[tuple[str, ...]] = None  # None => free text
+    # Value names another object of the *same* store (adrctl's superseded-by):
+    # the CLI accepts ID, Signature or a unique fragment and stores the raw ID.
+    ref: bool = False
 
 
 @dataclass(frozen=True)

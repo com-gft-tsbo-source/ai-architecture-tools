@@ -19,7 +19,7 @@ def build_spec() -> ToolSpec:
             MetagroupLevelSpec(type="Component"),
         ),
         metainfo=(
-            MetainfoSpec(type="superseded-by"),
+            MetainfoSpec(type="superseded-by", ref=True),
             MetainfoSpec(type="spec-ref"),
         ),
         status=StatusSpec(
