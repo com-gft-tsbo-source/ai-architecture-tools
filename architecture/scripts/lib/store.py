@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from lib import abbrev, atomicio, index, locking, metagroup, numbering, objectfile, singlefile
+from lib import abbrev, atomicio, idmatch, index, locking, metagroup, numbering, objectfile, singlefile
 from lib.clock import now_iso
 from lib.guards import approval_message
 from lib.history import HistoryEntry
@@ -26,6 +26,10 @@ from lib.toolspec import ToolSpec
 
 class StoreError(Exception):
     pass
+
+
+class NoSuchObjectError(StoreError):
+    """A CLI selector matched no object (lib/idmatch.py)."""
 
 
 class NoWorkAvailable(StoreError):
@@ -400,26 +404,23 @@ class Store:
         return records
 
     def resolve_id(self, token: str) -> ObjectRecord:
-        """--id selector: (1) Signature match, (2) contains '/' -> metagroup-path/nr, (3) raw ID."""
-        records = self.list_all()
-        for record in records:
-            if record.signature == token:
-                return record
-        if "/" in token:
-            path_str, _, nr_str = token.rpartition("/")
-            try:
-                nr = int(nr_str)
-            except ValueError:
-                raise StoreError(f"malformed --id path selector: {token!r}") from None
-            path_segments = path_str.split("/")
-            for record in records:
-                if list(record.metagroup_levels) == path_segments and record.number == nr:
-                    return record
-            raise StoreError(f"no object at metagroup path {path_str!r} number {nr}")
-        for record in records:
-            if record.object_id == token:
-                return record
-        raise StoreError(f"no object matches --id {token!r}")
+        """CLI selector: raw ID, Signature, `metagroup-path/nr` or an
+        unambiguous Signature fragment (lib/idmatch.py)."""
+        try:
+            return idmatch.resolve(
+                self.list_all(), token, kind="object",
+                object_id=lambda r: r.object_id,
+                signature=lambda r: r.signature,
+                by_path=lambda records, path, nr: next(
+                    (r for r in records
+                     if list(r.metagroup_levels) == (path.split("/") if path else []) and r.number == nr),
+                    None,
+                ),
+            )
+        except idmatch.NoMatchError as exc:
+            raise NoSuchObjectError(str(exc)) from None
+        except idmatch.IdMatchError as exc:
+            raise StoreError(str(exc)) from None
 
     # -- status / content mutation ------------------------------------------
 

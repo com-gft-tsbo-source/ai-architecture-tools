@@ -79,6 +79,10 @@ Single-File-Mode.
   Tasks in `[B]`/`[R]`/`[C]`.
 - **questctl** `answer` schreibt `### Answer` per `Store.annotate_content`
   (History `T`); `ToolSpec.no_generic_setter` unterdrückt `set-answer`.
+- **Objekt-Selektor** (`lib/idmatch.py`): jedes ID-Argument akzeptiert rohe ID,
+  Signatur, `list`-Zeile, `<Pfad>/<Nr>` oder eindeutigen Signatur-Teilstring
+  (case-insensitive). Aufgelöst nur in der CLI-Schicht (`cliapp._canonicalize_ids`,
+  `specctl.main`); Stores und tool-übergreifende Verweise bleiben exakt.
 - Schreibvorgänge sind atomar (`.tmp` + `os.replace`); neue Datei vor dem
   Löschen der alten. Object-IDs werden bei `add` auf Eindeutigkeit geprüft.
 
@@ -186,6 +190,7 @@ architecture/scripts/
 └── lib/
     ├── locking, atomicio, clock, numbering, history, text, abbrev, metagroup
     │                      # geteilt zwischen allen fünf Tools
+    ├── idmatch            # CLI-Objekt-Selektor (ID/Signatur/Teilstring)
     ├── model, objectfile, singlefile, store, toolspec, index, render, cliapp, guards
     │                      # generisches Objektformat: taskctl/questctl/rulectl/adrctl
     ├── taskctl_spec, questctl_spec, adrctl_spec

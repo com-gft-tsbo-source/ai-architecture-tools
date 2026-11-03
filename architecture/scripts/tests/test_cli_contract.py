@@ -144,3 +144,68 @@ class CliContractTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IdSelectorTest(unittest.TestCase):
+    """Every command taking an object ID accepts the raw ID, the Signature,
+    a `list` output line or a unique Signature fragment (lib/idmatch.py)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _create(self, tool: Tool) -> dict:
+        create_object(tool, self.root)
+        code, out, err = run(tool, ["--root", self.root, "--json", "list"])
+        self.assertEqual(code, 0, err)
+        return json.loads(out)[0]
+
+    def test_show_accepts_id_signature_list_line_and_fragment(self):
+        for tool in TOOLS:
+            with self.subTest(tool=tool.name):
+                with tempfile.TemporaryDirectory() as root:
+                    self.root = root
+                    obj = self._create(tool)
+                    _code, list_out, _err = run(tool, ["--root", root, "list"])
+                    selectors = [
+                        obj["id"], obj["signature"], list_out.splitlines()[0],
+                        obj["id"][1:5], obj["signature"].lower(),
+                    ]
+                    for selector in selectors:
+                        code, out, err = run(tool, ["--root", root, "--json", "show", selector])
+                        self.assertEqual(code, 0, f"{selector!r}: {err}")
+                        self.assertEqual(json.loads(out)["id"], obj["id"])
+
+    def test_unknown_and_ambiguous_selectors_exit_1(self):
+        for tool in TOOLS:
+            with self.subTest(tool=tool.name):
+                with tempfile.TemporaryDirectory() as root:
+                    self.root = root
+                    first = self._create(tool)
+                    # Second object with a longer name: IDs derive from the name.
+                    name = first["name"]
+                    second = [name + "B" if arg == name else arg for arg in tool.create]
+                    code, _out, err = run(tool, ["--root", root, *second])
+                    self.assertEqual(code, 0, err)
+                    code, _out, err = run(tool, ["--root", root, "show", "no-such-thing-xyz"])
+                    self.assertEqual(code, 1)
+                    self.assertTrue(err.strip())
+                    # The name part is shared by both objects.
+                    fragment = first["signature"].split("-", 3)[3].lower()
+                    code, _out, err = run(tool, ["--root", root, "show", fragment])
+                    self.assertEqual(code, 1)
+                    self.assertIn("ambiguous", err)
+
+    def test_mutating_command_accepts_fragment(self):
+        for tool in TOOLS:
+            with self.subTest(tool=tool.name):
+                with tempfile.TemporaryDirectory() as root:
+                    self.root = root
+                    obj = self._create(tool)
+                    code, _out, err = run(tool, ["--root", root, "delete", obj["signature"].lower()])
+                    self.assertEqual(code, 0, err)
+                    code, out, err = run(tool, ["--root", root, "--json", "list"])
+                    self.assertEqual(json.loads(out), [])

@@ -18,7 +18,7 @@ from typing import Callable, Optional
 from lib import render
 from lib.guards import APPROVAL_REQUIRED, GuardViolation
 from lib.model import ObjectRecord
-from lib.store import NoWorkAvailable, ReindexReport, Store, StoreError
+from lib.store import NoSuchObjectError, NoWorkAvailable, ReindexReport, Store, StoreError
 from lib.toolspec import ToolSpec
 
 Handler = Callable[[Store, argparse.Namespace], object]
@@ -165,6 +165,34 @@ def _metagroup_path_for_add(spec: ToolSpec, args: argparse.Namespace) -> list[st
             return []
         raise CliError(f"add requires exactly one of [{flags}] specifying the object's metagroup path")
     return supplied[0][1].split("/")
+
+
+def _resolve_ref(store: Store, value: str) -> str:
+    try:
+        return store.resolve_id(value).object_id
+    except NoSuchObjectError:
+        return value
+
+
+def _canonicalize_ids(spec: ToolSpec, store: Store, args: argparse.Namespace) -> None:
+    """CLI-only loose lookup (lib/idmatch.py): an object argument may be the
+    raw ID, the Signature or a unique fragment of it. Replaced here by the raw
+    ID so the store and every internal caller only ever see exact IDs.
+    Same-store reference metainfo (`ref=True`) is resolved the same way, but a
+    value naming no object stays verbatim (the referenced object may not exist
+    yet); an ambiguous fragment is an error. Cross-tool references (spec-ref,
+    origin, ...) stay exact."""
+    if getattr(args, "id", None) is not None:
+        args.id = store.resolve_id(args.id).object_id
+    for metainfo in spec.metainfo:
+        if not metainfo.ref:
+            continue
+        if args.command == f"info-{_flag_name(metainfo.type)}":
+            args.value = _resolve_ref(store, args.value)
+        elif args.command == "add":
+            attr = f"metainfo__{metainfo.type}"
+            if getattr(args, attr, None) is not None:
+                setattr(args, attr, _resolve_ref(store, getattr(args, attr)))
 
 
 def dispatch(spec: ToolSpec, store: Store, args: argparse.Namespace, extra_handlers: dict[str, Handler]) -> object:
@@ -357,6 +385,7 @@ def main(
 
     try:
         store = Store(spec=spec, root=Path(args.root))
+        _canonicalize_ids(spec, store, args)
         result = dispatch(spec, store, args, extra_handlers)
         if after_dispatch is not None:
             after_dispatch(spec, store, args, result)

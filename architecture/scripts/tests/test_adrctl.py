@@ -59,6 +59,24 @@ class TestEndToEnd(unittest.TestCase):
             code, out, _err = run(["--root", root, "--json", "show", old_id])
             self.assertEqual(json.loads(out)["metainfo"]["superseded-by"], "abc123")
 
+    def test_superseded_by_accepts_signature_fragment_and_keeps_unknown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "adrs")
+            run(["--root", root, "add-domain", "Backend"])
+            ids = {}
+            for name in ("Old ADR", "New ADR"):
+                _c, out, _e = run(["--root", root, "--json", "add", "--name", name, "--domain", "Backend"])
+                ids[name] = json.loads(out)["id"]
+            run(["--root", root, "set-status", "old_adr", "superseded"])
+            code, _out, _err = run(["--root", root, "info-superseded-by", "old_adr", "new_adr"])
+            self.assertEqual(code, 0)
+            _c, out, _e = run(["--root", root, "--json", "show", ids["Old ADR"]])
+            self.assertEqual(json.loads(out)["metainfo"]["superseded-by"], ids["New ADR"])
+            # An ambiguous fragment is an error, an unknown value stays verbatim.
+            code, _out, err = run(["--root", root, "info-superseded-by", "old_adr", "adr"])
+            self.assertEqual(code, 1)
+            self.assertIn("ambiguous", err)
+
     def test_add_with_wrong_path_depth_for_command_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "adrs")

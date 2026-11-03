@@ -307,6 +307,10 @@ def main(argv: list[str]) -> int:
 
     try:
         store = SpecStore(root=Path(args.root))
+        if getattr(args, "id", None) is not None:
+            # CLI accepts ID, Signature or a unique fragment (lib/idmatch.py);
+            # the store itself is only ever called with the exact raw ID.
+            args.id = store.resolve_id(args.id).object_id
         result = dispatch(store, args)
     except (SpecStoreError, CliError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
