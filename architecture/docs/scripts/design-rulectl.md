@@ -52,7 +52,7 @@ In addition to the general operations from design.md, rulectl supports:
 
   **Gate**: every exported Task carries `gate=none` (design-taskctl.md, "Metainfo"/"Guards") — compliance checks are independent of each other, so a violation (`[R]`) or an uncheckable Rule (`[B]`) must not stop the remaining checks. Re-export restores `gate=none` if it differs; this and the `review` reset use the store's internal guard bypass, since `tasklist` itself is the operation the user asked for.
 
-  `tasklist` writes into the taskctl store sharing this invocation's `--root` (design.md, "File and Directory Parameters"), the same way adrctl's `spec-ref` reaches specctl's store — not transactionally with rulectl's own store: `tasklist` never modifies any Rule.
+  `tasklist` writes into the taskctl store sharing this invocation's `--root` (design.md, "File and Directory Parameters"), the same way adrctl's `spec-ref` reaches specctl's store — creating that taskctl store (`tasks`) if it does not exist yet — `tasklist` is a creating command for taskctl, but the rulectl store itself must already exist — and not transactionally with rulectl's own store: `tasklist` never modifies any Rule.
 
 ## User Content
 

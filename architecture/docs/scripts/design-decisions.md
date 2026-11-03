@@ -44,6 +44,7 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-10-30, remote-action recovery |  |
 | 2026-11-02, no top-level `bin/` |  |
 | 2026-11-03, uniform object selector |  |
+| 2026-11-03, optional root `doc`, strict store existence |  |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -1227,3 +1228,29 @@ with the user:
 - An exact raw ID now wins over the `/` path syntax, so a free-form ID is
   never shadowed by a path selector.
 - Plugin version `0.4.1`.
+
+## Amendments (2026-11-03, optional root `doc`, strict store existence)
+
+Requested by the user after an impact analysis. Changes `--root` from
+required to optional and stops implicit store creation:
+
+- **Default root `doc`.** Without `--root`, all five tools use the directory
+  `doc` relative to the cwd. It must exist; otherwise the invocation fails
+  and creates nothing.
+- **Only creating commands create a store**: `add`, `add-<metagroup-type>`,
+  `specctl init`, and — for taskctl — `rulectl tasklist` (decided with the
+  user: it creates `tasks`). Every other command fails with "no <tool> store
+  found" when its own store target is missing; "expected files" means the
+  tool's own store only, never all stores of a project. Previously a read
+  silently created an empty store (`mkdir`).
+- **Explicit nonexistent `--root` still works for creating commands**
+  (kept to not break existing projects and `design.md`'s first-invocation
+  rules); only the implicit `doc` is required to exist.
+- **Cross-tool links**: `adrctl`'s `spec-ref` propagation no longer creates
+  a specctl store (it fails with the spec-ref error instead); `rulectl
+  tasklist` still requires the rulectl store.
+- **Agents/Skills** always pass an absolute `--root`, because the default
+  depends on the cwd (a wrong cwd could hit an unrelated `doc/`).
+- Implementation: `store.resolve_root_argument`, `Store`/`SpecStore`
+  `must_exist`; tests in `test_cli_contract.py`, `test_rulectl.py`.
+- Plugin version `0.5.0`.

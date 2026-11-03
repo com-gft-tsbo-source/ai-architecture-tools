@@ -33,7 +33,7 @@ def propagate(root: Path, spec_ref: str, adr_id: str, *, message: str = "") -> N
     A `spec_ref` naming a Section that doesn't exist raises SpecLinkError,
     aborting the triggering adrctl operation (design-adrctl.md, "Metainfo")."""
     try:
-        store = SpecStore(root=Path(root))
+        store = SpecStore(root=Path(root), must_exist=True)
         store.receive_adr_link(spec_ref, adr_id, message=message)
     except SpecStoreError as exc:
         raise SpecLinkError(f"spec-ref {spec_ref!r}: {exc}") from exc

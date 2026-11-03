@@ -184,6 +184,17 @@ class TestSpecRefLinkage(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(json.loads(out)["adr"], adr_id)
 
+    def test_spec_ref_without_spec_store_does_not_create_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run(["--root", tmp, "add-domain", "Backend"])
+            code, _out, err = run([
+                "--root", tmp, "add", "--name", "D", "--domain", "Backend", "--spec-ref", "abc123",
+            ])
+            self.assertEqual(code, 1)
+            self.assertIn("no specctl store", err)
+            self.assertFalse((Path(tmp) / "spec.md").exists())
+            self.assertFalse((Path(tmp) / "spec").exists())
+
     def test_missing_spec_ref_target_aborts_adrctl_but_adr_persists(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "adrs")

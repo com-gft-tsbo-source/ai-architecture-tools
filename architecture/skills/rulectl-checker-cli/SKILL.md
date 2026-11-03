@@ -14,7 +14,7 @@ Invoke rulectl and taskctl through Bash. The permitted operations
 are rulectl tasklist and taskctl annotate, info-review user, set-status
 with ~, X, R or B, and show. Do not use other CLI operations, including
 taskctl list/next, authoring or maintenance commands.
-Use the same explicit `--root` for both tools. Put `--json` before tasklist
+Use the same explicit absolute `--root` for both tools, never omit it (`tasklist` creates `tasks` there). Put `--json` before tasklist
 and show when parsing their output; omit it on writes. Exit code 0 means
 success, 1 means an error, and 2 means malformed CLI usage.
 

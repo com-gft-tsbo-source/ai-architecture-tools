@@ -53,9 +53,9 @@ implicit in a few scattered rules.
 
 Always supplied explicitly by the caller (user or orchestrating Skill/agent)
 — there is no default or auto-discovered path. The Subagent is stateless
-with respect to *which* project's rule store it targets; `rulectl` itself
-auto-creates the store on first use if `--root` points at a location that
-doesn't exist yet, so a fresh project is not a precondition.
+with respect to *which* project's rule store it targets; `--root` must be an
+absolute path; `rulectl`'s `add*` commands create the store on first use, so a
+fresh project is not a precondition.
 
 ## Workflow
 

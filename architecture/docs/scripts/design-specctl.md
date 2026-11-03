@@ -6,7 +6,7 @@ Objects are **Sections** of a specification/design document — a Markdown headi
 
 Store name `spec` (design.md, "File and Directory Parameters"): resolves to `<shared-dir>/spec.md` or `<shared-dir>/spec`. Default mode when neither exists yet: **file** — the primary use case is a single flowing document (like `design.md` itself), unlike the other three tools' more naturally directory-shaped object collections. Singular, not `specs`: one document ("the spec"), with potentially many ADRs governing parts of it — not a collection of many specs.
 
-Unlike the other three tools, a specctl store is not auto-vivified on first write: `init <title>` must run once, explicitly, before any other operation may modify it (see "Title and Preamble" and "Operations" below) — every mutating operation aborts otherwise.
+Unlike the other three tools, a specctl store is not auto-vivified on first write: `init <title>` must run once, explicitly, before any other operation may modify it (see "Title and Preamble" and "Operations" below) — every other operation (mutating or reading) aborts if the store does not exist, without creating it (design.md, "File and Directory Parameters").
 
 ## Deviation from the general model
 

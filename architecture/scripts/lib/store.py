@@ -59,6 +59,35 @@ def _validate_metainfo_choice(spec: ToolSpec, metainfo_type: str, value: str) ->
             return
 
 
+DEFAULT_ROOT = "doc"
+
+
+def resolve_root_argument(value: Optional[str]) -> Path:
+    """The --root value a CLI invocation actually uses: the given one, or --
+    when omitted -- the project convention `doc` (relative to the current
+    directory), which must already exist as a directory (design.md, "File
+    and Directory Parameters": implicit default root)."""
+    if value is not None:
+        return Path(value)
+    default = Path(DEFAULT_ROOT)
+    if not default.is_dir():
+        raise StoreError(
+            f"--root not given and the default root {DEFAULT_ROOT!r} does not exist as a "
+            f"directory (relative to {Path.cwd()}) -- create it or pass --root"
+        )
+    return default
+
+
+def require_existing_target(
+    target: Path, mode: str, tool: str, hint: str = "create it first with 'add' or 'add-<metagroup>'"
+) -> None:
+    """Non-bootstrapping commands need the tool's own store to exist
+    already (design.md, "File and Directory Parameters")."""
+    exists = target.is_dir() if mode == "directory" else target.is_file()
+    if not exists:
+        raise StoreError(f"no {tool} store found at {target} -- {hint}")
+
+
 def resolve_root(given_path: Path, name: str, default_mode: str) -> tuple[Path, str]:
     """Resolve a --root argument to this tool's actual file-or-directory
     target and mode, per design.md "File and Directory Parameters". Pure
@@ -128,10 +157,15 @@ class Store:
 
     spec: ToolSpec
     root: Path
+    # True for every command that must not create the store (design.md,
+    # "File and Directory Parameters": only creating commands may).
+    must_exist: bool = False
     mode: str = field(init=False)
 
     def __post_init__(self) -> None:
         self.root, self.mode = resolve_root(Path(self.root), self.spec.root_name, self.spec.default_mode)
+        if self.must_exist:
+            require_existing_target(self.root, self.mode, self.spec.name)
         if self.mode == "directory":
             self.root.mkdir(parents=True, exist_ok=True)
         else:

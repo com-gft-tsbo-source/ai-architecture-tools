@@ -191,6 +191,9 @@ class SpecStore:
     "Store")."""
 
     root: Path
+    # True for every command except `init` (design.md, "File and Directory
+    # Parameters"): the store must not be created implicitly.
+    must_exist: bool = False
     mode: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -198,6 +201,10 @@ class SpecStore:
             self.root, self.mode = generic_store.resolve_root(
                 Path(self.root), _ROOT_NAME, _DEFAULT_MODE
             )
+            if self.must_exist:
+                generic_store.require_existing_target(
+                    self.root, self.mode, "specctl", hint="run 'init' first"
+                )
         except generic_store.StoreError as exc:
             raise SpecStoreError(str(exc)) from exc
         if self.mode == "directory":

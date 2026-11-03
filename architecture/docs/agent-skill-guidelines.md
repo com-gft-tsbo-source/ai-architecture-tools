@@ -44,6 +44,13 @@ Freigaben, mehrfachen Prüfungen und nichttransaktionalen Änderungen. Sie solle
 den Geltungsbereich der bestehenden Regel erklären, keine Ausnahmen schaffen.
 Ausführliche Historie, Alternativen und Zukunftsplanung bleiben in den Designs.
 
+## Root-Pfade
+
+- Agents und Skills übergeben `--root` immer explizit und als absoluten Pfad
+  und verlassen sich nie auf den impliziten Default `doc` der CLIs. Jeder
+  Agent verlangt den Pfad vom Aufrufer; ein relativer oder fehlender Pfad ist
+  eine Rückfrage, kein Anlass zum Raten.
+
 ## Änderungen prüfen
 
 Ein statischer Regelabgleich prüft Eingaben, Reihenfolge, Freigaben,

@@ -12,7 +12,7 @@ If an operation is not covered, report a Skill gap rather than inventing it.
 
 ## Inputs and boundaries
 
-Require an explicit `--root` and exactly one answer-source: a file, pasted
+Require an explicit, absolute `--root` path (never omit it, never relative) and exactly one answer-source: a file, pasted
 text, a URL or a directory of documents. The source is independent of the
 store location. For a directory,
 read every document recursively. Read/search the source with your own tools.

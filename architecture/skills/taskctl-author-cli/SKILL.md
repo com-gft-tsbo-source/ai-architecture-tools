@@ -13,7 +13,8 @@ Agent controls planning, deletion confirmation and ordering judgments.
 
 ## Conventions
 
-Use exactly the supplied `--root`; absent stores initialize on first use.
+Use exactly the supplied absolute `--root`, never omit it; only `add*` commands
+create an absent store, all others fail on it.
 Put `--json` before read commands whose output you parse, rather than scraping
 human-readable output. Exit code 0 means success; exit code 1 reports an error
 on stderr; exit code 2 means malformed CLI usage. Calls are independent; earlier writes are not rolled back.

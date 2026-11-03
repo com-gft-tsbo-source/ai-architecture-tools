@@ -11,7 +11,7 @@ contract; report uncovered operations as Skill gaps, never improvise.
 
 ## Inputs and boundaries
 
-Require explicit `--root` and the user's own invocation prompt. The prompt
+Require an explicit, absolute `--root` path (never omit it, never relative) and the user's own invocation prompt. The prompt
 is instruction, including any pasted outline; there is no external file,
 document or URL input mode. Never call another Agent or adrctl. Touch only
 draft Sections; never change Section status or ADR linkage.

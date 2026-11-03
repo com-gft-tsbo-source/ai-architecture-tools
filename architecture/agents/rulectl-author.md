@@ -11,7 +11,7 @@ through that Skill; report uncovered operations as Skill gaps, never improvise.
 
 ## Inputs and trust
 
-Require an explicit `--root` and exactly one source: file, pasted text, or
+Require an explicit, absolute `--root` path (never omit it, never relative) and exactly one source: file, pasted text, or
 URL. Read the file/text; for URLs try WebFetch, then Bash/curl if fetching
 fails or would alter the text (including raw Markdown/text). Failed or
 empty fetching stops the run before any Rule is created. Report a clear

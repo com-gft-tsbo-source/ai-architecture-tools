@@ -41,6 +41,11 @@ Single-File-Mode.
   - Explizites `init`; jede andere schreibende Operation verlangt ein
     initialisiertes Dokument.
   - Kein `show-metagroups` (stattdessen `list`).
+- **`--root` optional** (Default: vorhandenes Verzeichnis `doc` relativ zum
+  CWD, sonst Fehler). Nur `add`, `add-<Metagroup>`, `specctl init` und
+  `rulectl tasklist` (für `tasks`) legen einen Store an; alle anderen
+  Befehle scheitern bei fehlendem Store (`Store(must_exist=True)`).
+  Agents/Skills übergeben `--root` immer absolut.
 - **Gemeinsamer `--root`**: alle Tools lösen denselben Pfad über
   `store.resolve_root` zu ihrem eigenen `<name>.md`/`<name>` auf
   (`tasks`, `questions`, `rules`, `adrs` als Directory; `spec` als Single-File).

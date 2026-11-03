@@ -8,7 +8,7 @@ Full spec: `architecture/docs/subagents/design-specctl-adr-author.md`.
 
 Load BOTH `specctl-editor-cli` and `adrctl-author-cli` via Skill at run
 start. Operate each CLI only through its Skill; report uncovered operations
-as Skill gaps. Require explicit shared `--root` and the user's natural-
+as Skill gaps. Require an explicit, absolute shared `--root` path (never omit it, never relative) and the user's natural-
 language change request, not third-party source material.
 
 ## Scope and decisions

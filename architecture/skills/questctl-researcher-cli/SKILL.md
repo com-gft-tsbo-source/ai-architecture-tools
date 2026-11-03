@@ -14,7 +14,7 @@ The calling Agent decides research scope and evidence sufficiency.
 ## Scope and conventions
 
 - Allowed: `next-all`, `show`, `annotate`, `set-status`, `answer`, `info-review`.
-- Use exactly the supplied `--root`. Put `--json` before `next-all` and
+- Use exactly the supplied absolute `--root`, never omit it. Put `--json` before `next-all` and
   `show` when parsing their output. Invoke questctl through Bash;
   no operations beyond the allow-list are permitted.
 - Exit `0` means success, `1` means error or no work, `2` means malformed

@@ -13,7 +13,8 @@ content, grouping and duplicate judgments belong to the calling Agent.
 
 ## Conventions
 
-Use exactly the supplied `--root`; a missing store is created on first use.
+Use exactly the supplied absolute `--root`, never omit it; only `add*` commands
+create a missing store, all others fail on it.
 Put `--json` BEFORE read commands whose output you parse; never scrape
 human output. Exit code 0 means success; exit code 1 means an error reported
 on stderr; exit code 2 means malformed CLI usage. Judge success by the exit code rather than stderr presence.

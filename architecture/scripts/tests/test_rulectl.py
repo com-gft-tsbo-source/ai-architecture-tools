@@ -244,10 +244,30 @@ class TestTasklist(unittest.TestCase):
 
     def test_tasklist_empty_store_is_noop(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = str(Path(tmp) / "project")
-            code, out, _err = run(["--root", root, "tasklist"])
+            root = Path(tmp) / "project"
+            (root / "rules").mkdir(parents=True)
+            code, out, _err = run(["--root", str(root), "tasklist"])
             self.assertEqual(code, 0)
             self.assertEqual(out.strip(), "")
+
+    def test_tasklist_creates_missing_tasks_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "project")
+            run(["--root", root, "add-language", "Py"])
+            run(["--root", root, "add-context", "Py/Core"])
+            run(["--root", root, "add-category", "Py/Core/Style"])
+            run(["--root", root, "add", "--name", "R", "--category", "Py/Core/Style"])
+            self.assertFalse((Path(root) / "tasks").exists())
+            code, _out, err = run(["--root", root, "tasklist"])
+            self.assertEqual(code, 0, err)
+            self.assertTrue((Path(root) / "tasks").is_dir())
+
+    def test_tasklist_without_rules_store_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, _out, err = run(["--root", tmp, "tasklist"])
+            self.assertEqual(code, 1)
+            self.assertIn("no rulectl store", err)
+            self.assertFalse((Path(tmp) / "tasks").exists())
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ A new tool is covered by adding it to TOOLS.
 import contextlib
 import io
 import json
+import os
 import tempfile
 import unittest
 from dataclasses import dataclass
@@ -69,6 +70,26 @@ def create_object(tool: Tool, root: str) -> str:
     return json.loads(out)["id"]
 
 
+def create_object_default(tool: Tool) -> str:
+    """create_object() with the implicit --root."""
+    for argv in tool.prepare:
+        code, _out, err = run(tool, list(argv))
+        assert code == 0, f"{tool.name} {argv}: {err!r}"
+    code, out, err = run(tool, ["--json", *tool.create])
+    assert code == 0, f"{tool.name} {tool.create}: {err!r}"
+    return json.loads(out)["id"]
+
+
+@contextlib.contextmanager
+def _chdir(path: str):
+    previous = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(previous)
+
+
 class CliContractTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -85,12 +106,33 @@ class CliContractTest(unittest.TestCase):
                 self.assertIn("--root", out)
                 self.assertIn("--json", out)
 
-    def test_root_is_required(self):
+    def test_root_defaults_to_existing_doc_directory(self):
+        # design.md, "File and Directory Parameters": --root is optional;
+        # omitted, it means the directory "doc" relative to the cwd.
         for tool in TOOLS:
-            with self.subTest(tool=tool.name):
-                code, _out, err = run(tool, ["list"])
-                self.assertEqual(code, 2)
-                self.assertIn("--root", err)
+            with self.subTest(tool=tool.name), tempfile.TemporaryDirectory() as cwd:
+                with _chdir(cwd):
+                    code, _out, err = run(tool, ["list"])
+                    self.assertEqual(code, 1)  # no doc directory
+                    self.assertIn("'doc'", err)
+                    self.assertFalse(os.path.exists("doc"))
+                    os.mkdir("doc")
+                    code, _out, err = run(tool, ["list"])
+                    self.assertEqual(code, 1)  # doc exists, store does not
+                    self.assertIn("no ", err)
+                    self.assertEqual(os.listdir("doc"), [])  # read did not create
+                    object_id = create_object_default(tool)
+                    code, out, _err = run(tool, ["--json", "show", object_id])
+                    self.assertEqual(code, 0)
+
+    def test_creating_commands_only_create_the_store(self):
+        for tool in TOOLS:
+            with self.subTest(tool=tool.name), tempfile.TemporaryDirectory() as tmp:
+                code, _out, _err = run(tool, ["--root", tmp, "show", "x"])
+                self.assertEqual(code, 1)
+                self.assertEqual(os.listdir(tmp), [])
+                create_object(tool, tmp)
+                self.assertTrue(os.listdir(tmp))
 
     def test_unknown_subcommand_is_usage_error(self):
         for tool in TOOLS:

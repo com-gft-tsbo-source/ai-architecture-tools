@@ -38,6 +38,7 @@ from pathlib import Path
 from lib import spec_render as render
 from lib.spec_model import LEVEL_TYPES, SpecSection
 from lib.spec_store import SpecStore, SpecStoreError
+from lib.store import StoreError, resolve_root_argument
 
 
 class CliError(Exception):
@@ -55,9 +56,10 @@ def _move_flag_name(level_type: str) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="specctl")
     parser.add_argument(
-        "--root", required=True,
+        "--root", default=None,
         help="A directory shared by all four tools, or any single tool's own file/directory within "
-             "it -- resolved to specctl's spec.md / spec (design.md, 'File and Directory Parameters').",
+             "it -- resolved to specctl's spec.md / spec (design.md, 'File and Directory Parameters'). "
+             "Default: the existing directory 'doc'. Always pass an absolute path when called by an agent.",
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -306,13 +308,14 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     try:
-        store = SpecStore(root=Path(args.root))
+        args.root = resolve_root_argument(args.root)
+        store = SpecStore(root=args.root, must_exist=args.command != "init")
         if getattr(args, "id", None) is not None:
             # CLI accepts ID, Signature or a unique fragment (lib/idmatch.py);
             # the store itself is only ever called with the exact raw ID.
             args.id = store.resolve_id(args.id).object_id
         result = dispatch(store, args)
-    except (SpecStoreError, CliError, ValueError) as exc:
+    except (SpecStoreError, StoreError, CliError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

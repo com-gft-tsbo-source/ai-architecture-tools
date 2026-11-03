@@ -220,8 +220,9 @@ class TestParallelProcessingGate(unittest.TestCase):
 
     def test_empty_store_is_all_answered(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = str(Path(tmp) / "questions")
-            code, out, _err = run(["--root", root, "--json", "next"])
+            root = Path(tmp) / "questions"
+            root.mkdir()  # an existing, empty store
+            code, out, _err = run(["--root", str(root), "--json", "next"])
             self.assertEqual(code, 1)
             self.assertEqual(json.loads(out)["reason"], "all_answered")
 
