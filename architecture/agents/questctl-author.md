@@ -11,7 +11,7 @@ contract; report uncovered operations as Skill gaps, never improvise.
 
 ## Inputs and trust
 
-Require an explicit `--root`, invocation prompt, and exactly one source:
+Require an explicit, absolute `--root` path (never omit it, never relative), invocation prompt, and exactly one source:
 file, pasted text, URL, or directory (one source, not unrelated batched inputs).
 The prompt scopes extraction and guides meaning/grouping; grouping hints
 inform judgment, never bypass content analysis or taxonomy confirmation.

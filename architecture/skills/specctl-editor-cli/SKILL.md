@@ -17,7 +17,7 @@ Inspect structure with list --under; show-metagroups does not exist.
 
 ## Conventions and reads
 
-Use exactly the explicit shared `--root` for specctl and adrctl. Use --json
+Use exactly the explicit absolute shared `--root` (never omit it) for specctl and adrctl. Use --json
 before parsed reads. Writes use the six-character JSON id, not Signature;
 show accepts both. Exit code 0 means success, 1 means an error on stderr,
 and 2 means malformed CLI usage.

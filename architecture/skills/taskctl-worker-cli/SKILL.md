@@ -13,7 +13,7 @@ annotate, show, and info-review immediately before an authorized outcome
 transition. Do not author, restructure, delete or reassign Tasks, set origin,
 browse with list/show-metagroups, or call reindex/history. Mutate only the ID
 most recently returned by next, and never use --force. Use exactly the
-supplied --root. Put --json before next/show and omit it on writes.
+supplied absolute --root (never omit it). Put --json before next/show and omit it on writes.
 Exit code 0 means success; exit code 1 means an error; exit code 2 means
 malformed CLI usage.
 

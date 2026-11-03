@@ -18,7 +18,7 @@ to the Agent. Use no other operations.
 
 ## Conventions and placement
 
-Use exactly the explicit shared root for both tools. Put --json BEFORE
+Use exactly the explicit absolute shared root for both tools, never omit it. Put --json BEFORE
 parsed list/show/show-metagroups. Exit code 0 means success, 1 means an
 error on stderr, and 2 means malformed CLI usage.
 Inspect existing Domains; new ones require ONE batched upfront decision,

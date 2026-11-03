@@ -12,7 +12,7 @@ Tools:
 
 ## File and Directory Parameters
 
-Tools store their data in files or directories, resolved from a single `--root <path>` (see CLI Contract). Each tool has a fixed **store name** (`tasks` for taskctl, `questions` for questctl, `rules` for rulectl, `adrs` for adrctl, `spec` for specctl — see each tool's design document) that names its data within a directory shared by all five tools — this is what lets tools reference each other's objects (e.g. adrctl ↔ specctl, design-specctl.md "ADR Linkage") without an ambiguous, separately-configured path.
+Tools store their data in files or directories, resolved from a single `--root <path>` (see CLI Contract). If `--root` is omitted, the default `doc` is used — a directory relative to the current working directory that **must already exist** (otherwise the invocation fails and nothing is created). Each tool has a fixed **store name** (`tasks` for taskctl, `questions` for questctl, `rules` for rulectl, `adrs` for adrctl, `spec` for specctl — see each tool's design document) that names its data within a directory shared by all five tools — this is what lets tools reference each other's objects (e.g. adrctl ↔ specctl, design-specctl.md "ADR Linkage") without an ambiguous, separately-configured path.
 
 `--root <path>` is resolved to the tool's actual file-or-directory target in two steps:
 
@@ -28,7 +28,7 @@ This means `--root` may point at *any* tool's own **file** — e.g. running `spe
 - Two candidates: `<name>.md` (file, *single-file mode*, see "Object Format" below) and `<name>` (directory, *directory mode* — one object per file).
 - Both candidates exist → abort with an error (ambiguous; requires manual cleanup).
 - Exactly one candidate exists → use it, in the corresponding mode.
-- Neither exists (first invocation for this tool):
+- Neither exists (first invocation for this tool): only the **creating commands** — `add`, `add-<metagroup-type>` (and, outside the generic engine, `specctl init` and the taskctl side of `rulectl tasklist`) — may then create the store, as described below. Every other command aborts with an error, creating nothing (no empty store is left behind by a read, `set-*`, `delete`, `reindex`, …). An explicitly given `--root` that does not exist yet is still created by a creating command; only the implicit default `doc` is required to exist beforehand.
   - `path` (from step 1, before resolving to the shared directory) is itself exactly the file candidate → create and use it as a file.
   - `path` is itself exactly the directory candidate → create and use it as a directory.
   - Otherwise → the tool's own default mode (see its design document), creating `<name>.md` or `<name>`.
@@ -259,7 +259,7 @@ A pure performance cache, indexed by Object ID, listing only the **direct childr
 
 ## CLI Contract
 
-- `--root <path>`: resolved to this tool's file-or-directory target as described under "File and Directory Parameters" above. Required, single value — not repeatable.
+- `--root <path>`: resolved to this tool's file-or-directory target as described under "File and Directory Parameters" above. Optional (default `doc`, see "File and Directory Parameters"), single value — not repeatable. Agents and Skills always pass an absolute path, never rely on the default.
 - Subcommand style: `add`, `add-<metagroup-type> <name>`, `set-status`, `group-<metagroup-type>`, `info-<metainfo-type>`, `set-<user-content-block>`, `delete`, `annotate`, `next`, `show`, `show-metagroups`, `reindex`, `list`, …
 - **Three separate verb-prefix families, one per axis a `<type> <value>`-shaped update can target** — `group-<metagroup-type>` (Change metagroup), `info-<metainfo-type>` (Metainfo), `set-<user-content-block>` (Change content) — each a fixed part of the generic engine (`lib/cliapp.py`), not a per-tool choice, so the same three prefixes apply uniformly across taskctl/rulectl/adrctl. Splitting the update verb by axis, rather than a single shared `set-<type>` for all three, is what keeps the command namespace collision-free: since each tool independently declares its own metagroup-, metainfo-, and content-block type names, nothing stops two axes from picking the same bare name (design-decisions.md, "Amendments"). `add-<type> <name>` and `group-<type> <id> <value>` / `info-<type> <id> <value>` / `set-<type> <id> <value>` all share one uniform *shape* — a subcommand followed by positional value(s) — even though the verb differs per axis, e.g. `add-domain backend`, `group-domain backend`, `info-superseded-by <id> abc123`, `set-description <id> "..."` (nested metagroup types take a path-like name spanning their own ancestors).
 - `group-<metagroup-type> <id> <value>`: reassigns an object to a different, already-existing metagroup path — resolved the same way `--<metagroup-type>` is (see below). Rejects reassigning to the object's current path (no-op — use `reorder` for repositioning among unchanged siblings instead).

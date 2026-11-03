@@ -232,9 +232,10 @@ class TestListFilters(unittest.TestCase):
 
     def test_more_than_one_metagroup_filter_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = str(Path(tmp) / "rules")
+            root = Path(tmp) / "rules"
+            root.mkdir()
             code, _out, err = run_rulectl_like(
-                ["--root", root, "list", "--language", "Python", "--context", "Python/backend"]
+                ["--root", str(root), "list", "--language", "Python", "--context", "Python/backend"]
             )
             self.assertEqual(code, 1)
             self.assertIn("at most one", err)

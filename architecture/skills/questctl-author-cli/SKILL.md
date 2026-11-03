@@ -13,7 +13,8 @@ the calling Agent decides extraction, taxonomy confirmation and duplicates.
 
 ## Conventions and depth detection
 
-Use exactly the supplied `--root`; an absent store initializes on first use.
+Use exactly the supplied absolute `--root`, never omit it; only `add*` commands
+create an absent store, all others fail on it.
 Put `--json` before read commands whose output you parse, and do not scrape
 human-readable output. Exit code 0 means success; exit code 1 means an
 error reported on stderr; exit code 2 means malformed CLI usage. Judge

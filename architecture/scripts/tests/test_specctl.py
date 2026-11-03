@@ -89,14 +89,14 @@ class TestInitCommand(unittest.TestCase):
             content = (Path(tmp) / "spec.md").read_text(encoding="utf-8")
             self.assertIn("New intro.", content)
 
-    def test_list_and_render_tolerate_uninitialized_store(self):
+    def test_list_and_render_reject_missing_store_without_creating_it(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = str(Path(tmp) / "design.md")
-            code, out, _err = run(["--root", root, "list"])
-            self.assertEqual(code, 0)
-            self.assertEqual(out.strip(), "")
-            code, out, _err = run(["--root", root, "render"])
-            self.assertEqual(code, 0)
+            root = Path(tmp) / "design.md"
+            for command in ("list", "render"):
+                code, _out, err = run(["--root", str(root), command])
+                self.assertEqual(code, 1)
+                self.assertIn("init", err)
+            self.assertFalse(root.exists())
 
 
 class TestAddAndShow(unittest.TestCase):

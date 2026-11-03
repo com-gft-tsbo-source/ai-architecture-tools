@@ -37,9 +37,9 @@ this Skill never calls `set-status`.
 
 - `--root <path>`: always supplied by the caller (the `rulectl-author`
   Subagent receives it from whoever invoked it — user or orchestrating
-  Skill). Never hardcode or guess a root; `rulectl` auto-creates the store on
-  first use if it doesn't exist yet, so a not-yet-existing path is not an
-  error.
+  Skill). Always an absolute path; never hardcode, guess or omit the root
+  (omitting means the implicit default `doc`). Only `add*` commands create
+  a not-yet-existing store; every other command fails on it.
 - `--json`: always pass this flag when the output needs to be parsed
   programmatically (`list`, `show`, `show-metagroups`) — do not scrape the
   human-readable format.

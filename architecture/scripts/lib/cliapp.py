@@ -18,7 +18,9 @@ from typing import Callable, Optional
 from lib import render
 from lib.guards import APPROVAL_REQUIRED, GuardViolation
 from lib.model import ObjectRecord
-from lib.store import NoSuchObjectError, NoWorkAvailable, ReindexReport, Store, StoreError
+from lib.store import (
+    NoSuchObjectError, NoWorkAvailable, ReindexReport, Store, StoreError, resolve_root_argument,
+)
 from lib.toolspec import ToolSpec
 
 Handler = Callable[[Store, argparse.Namespace], object]
@@ -54,10 +56,11 @@ def _approval(args: argparse.Namespace) -> Optional[str]:
 def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._SubParsersAction"]:
     parser = argparse.ArgumentParser(prog=spec.name)
     parser.add_argument(
-        "--root", required=True,
+        "--root", default=None,
         help="A directory shared by all four tools, or any single tool's own file/directory within "
              "it -- resolved to this tool's <root_name>.md / <root_name> (design.md, "
-             "'File and Directory Parameters').",
+             "'File and Directory Parameters'). Default: the existing directory 'doc'. "
+             "Always pass an absolute path when called by an agent.",
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -384,7 +387,10 @@ def main(
     args = parser.parse_args(argv)
 
     try:
-        store = Store(spec=spec, root=Path(args.root))
+        # Only creating commands (add, add-<metagroup>) may create the store.
+        creates_store = args.command == "add" or args.command.startswith("add-")
+        args.root = resolve_root_argument(args.root)
+        store = Store(spec=spec, root=args.root, must_exist=not creates_store)
         _canonicalize_ids(spec, store, args)
         result = dispatch(spec, store, args, extra_handlers)
         if after_dispatch is not None:

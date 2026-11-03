@@ -11,7 +11,7 @@ contract; report uncovered operations as Skill gaps, never improvise.
 
 ## Inputs and sources
 
-Require an explicit `--root`, an invocation prompt and one or more sources.
+Require an explicit, absolute `--root` path (never omit it, never relative), an invocation prompt and one or more sources.
 Sources may be any mix of files, pasted text, URLs and directories. The prompt determines
 scope, repeated detail constraints and explicit extend/shrink intent;
 store content alone never selects a mode.

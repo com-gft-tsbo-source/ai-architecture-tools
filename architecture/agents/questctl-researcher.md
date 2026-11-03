@@ -12,7 +12,7 @@ If an operation is not covered, report a Skill gap rather than inventing it.
 
 ## Inputs and boundaries
 
-Require an explicit `--root` and a bounded knowledge base (Datenbasis): a
+Require an explicit, absolute `--root` path (never omit it, never relative) and a bounded knowledge base (Datenbasis): a
 file, pasted text, a URL or a recursive directory of documents, independent
 of the store location. Read and search it with your own tools. Use WebFetch
 with curl fallback for URLs. Do not perform live web searches or research

@@ -11,7 +11,7 @@ contract; report uncovered operations as Skill gaps, never improvise.
 
 ## Inputs, selection and trust
 
-Require an explicit `--root` and an invocation prompt describing where and
+Require an explicit, absolute `--root` path (never omit it, never relative) and an invocation prompt describing where and
 how to work. By default, work one Task to its resting point and stop. Continue
 in a loop only when explicitly instructed, until the queue is drained or
 blocked. Follow the global queue order; requests for a Phase or assignee

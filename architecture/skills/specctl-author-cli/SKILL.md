@@ -17,7 +17,7 @@ show-metagroups does not exist.
 
 ## Conventions and initialization
 
-Use explicit `--root`, never guess. Put `--json` before parsed list/show.
+Use the explicit absolute `--root`, never guess or omit it; only `init` creates the document. Put `--json` before parsed list/show.
 Writes require the 6-character JSON `id`, not Signature; show accepts both.
 Exit code 0 means success, 1 means an error on stderr, and 2 means malformed
 CLI usage. Calls are independent; partial changes remain after later failure.
