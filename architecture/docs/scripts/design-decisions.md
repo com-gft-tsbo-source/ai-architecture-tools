@@ -45,6 +45,7 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-11-02, no top-level `bin/` |  |
 | 2026-11-03, uniform object selector |  |
 | 2026-11-03, optional root `doc`, strict store existence |  |
+| 2026-11-04, `render` for the engine tools |  |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -1254,3 +1255,24 @@ required to optional and stops implicit store creation:
 - Implementation: `store.resolve_root_argument`, `Store`/`SpecStore`
   `must_exist`; tests in `test_cli_contract.py`, `test_rulectl.py`.
 - Plugin version `0.5.0`.
+
+## Amendments (2026-11-04, `render` for the engine tools)
+
+Requested by the user: specctl's `render` should exist in every tool with a
+comparable function.
+
+- **taskctl, questctl, rulectl, adrctl** get `render` generically in
+  `lib/cliapp.py` (one implementation, no per-tool code). Output: every
+  `list` line, followed by the object's Description indented by four spaces;
+  objects separated by a blank line (`lib/render.py`, `render_list`).
+- **Same filters as `list`** (`--status`, `--<metagroup-type>`,
+  `--<metainfo-type>`), shared through one parser/filter helper, so `render`
+  is `list` plus text rather than a second selection syntax.
+- **Only Description.** Other blocks (questctl `Answer`, rulectl `Procedure`,
+  …) stay with `show`; `render` is the readable overview, not a full dump.
+- **`--json`** returns the same records as `list --json` (they already carry
+  `content`); no separate JSON shape.
+- specctl keeps its own Markdown `render` (different format, design-specctl.md).
+- Not offered to the Skills: agents read objects through `show`/`--json`.
+- Plugin version `0.5.1`.
+

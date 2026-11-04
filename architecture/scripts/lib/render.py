@@ -40,6 +40,25 @@ def short_with_history(record: ObjectRecord) -> str:
     return "\n".join(lines)
 
 
+DESCRIPTION_INDENT = "    "
+
+
+def render_list(records: list[ObjectRecord]) -> str:
+    """The `render` command: each `list` line, followed by its Description
+    indented one level; entries are separated by a blank line. An object
+    without Description contributes its `list` line only."""
+    entries = []
+    for record in records:
+        lines = [short_line(record)]
+        description = record.content.get("Description", "")
+        lines += [
+            f"{DESCRIPTION_INDENT}{line}" if line.strip() else ""
+            for line in description.splitlines()
+        ]
+        entries.append("\n".join(lines))
+    return "\n\n".join(entries)
+
+
 def combined_history(records: list[ObjectRecord]) -> str:
     """The generic `history` command: every object's History entries, merged
     and sorted newest-first, each line prefixed with its object's Signature."""

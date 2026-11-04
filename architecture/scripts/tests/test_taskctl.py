@@ -16,6 +16,31 @@ def run(argv):
 
 
 class TestEndToEnd(unittest.TestCase):
+    def test_render_lists_tasks_with_description_and_honours_filters(self):
+        for store_name in ("tasks", "tasks.md"):
+            with self.subTest(store=store_name), tempfile.TemporaryDirectory() as tmp:
+                root = str(Path(tmp) / store_name)
+                self.assertEqual(run(["--root", root, "add-phase", "Setup"])[0], 0)
+                self.assertEqual(run(["--root", root, "add-phase", "Build"])[0], 0)
+                run(["--root", root, "add", "--phase", "Setup", "--name", "Create DB",
+                     "--description", "Start PostgreSQL.\nCreate schema."])
+                run(["--root", root, "add", "--phase", "Build", "--name", "No text"])
+                _c, list_out, _e = run(["--root", root, "list"])
+                code, out, err = run(["--root", root, "render"])
+                self.assertEqual((code, err), (0, ""))
+                first, second = list_out.splitlines()
+                self.assertEqual(
+                    out, f"{first}\n    Start PostgreSQL.\n    Create schema.\n\n{second}\n",
+                )
+                code, out, _e = run(["--root", root, "render", "--phase", "Build"])
+                self.assertEqual((code, out), (0, f"{second}\n"))
+                code, out, _e = run(["--root", root, "--json", "render", "--phase", "Setup"])
+                self.assertEqual(code, 0)
+                self.assertEqual(
+                    [r["content"]["Description"] for r in json.loads(out)],
+                    ["Start PostgreSQL.\nCreate schema."],
+                )
+
     def test_origin_cli_round_trip_and_assignment_independence(self):
         for store_name in ("tasks", "tasks.md"):
             with self.subTest(store=store_name), tempfile.TemporaryDirectory() as tmp:

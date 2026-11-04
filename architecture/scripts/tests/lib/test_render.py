@@ -3,7 +3,9 @@ import unittest
 
 from lib.history import HistoryEntry
 from lib.model import MetainfoEntry, ObjectRecord
-from lib.render import combined_history, full_display, short_line, short_with_history, to_json
+from lib.render import (
+    combined_history, full_display, render_list, short_line, short_with_history, to_json,
+)
 from lib.toolspec import MetagroupLevelSpec, MetainfoSpec, StatusSpec, ToolSpec
 
 SPEC = ToolSpec(
@@ -94,6 +96,27 @@ class TestToJson(unittest.TestCase):
         data = json.loads(to_json(records))
         self.assertEqual(len(data), 2)
         self.assertEqual({d["id"] for d in data}, {"aaaaaa", "bbbbbb"})
+
+
+class TestRenderList(unittest.TestCase):
+    def test_list_line_followed_by_indented_description(self):
+        record = make_record(content={"Description": "First line.\n\n- item", "Procedure": "Run ruff."})
+        self.assertEqual(
+            render_list([record]),
+            f"{short_line(record)}\n    First line.\n\n    - item",
+        )
+
+    def test_entries_separated_by_blank_line_and_other_blocks_omitted(self):
+        with_desc = make_record(object_id="aaaaaa")
+        without_desc = make_record(object_id="bbbbbb", number=2, content={"Procedure": "Run ruff."})
+        out = render_list([with_desc, without_desc])
+        self.assertEqual(
+            out, f"{short_line(with_desc)}\n    Explain the rule.\n\n{short_line(without_desc)}",
+        )
+        self.assertNotIn("Run ruff.", out)
+
+    def test_empty(self):
+        self.assertEqual(render_list([]), "")
 
 
 if __name__ == "__main__":

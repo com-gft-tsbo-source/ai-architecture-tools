@@ -139,19 +139,51 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
     subparsers.add_parser("history", help="Combined History of every object, newest first")
 
     list_parser = subparsers.add_parser("list", help="List objects")
-    list_parser.add_argument("--status", default=None)
-    for level in spec.metagroup_levels:
-        list_parser.add_argument(
-            f"--{_flag_name(level.type)}", dest=f"metagroup__{level.type}", default=None,
-            help=f"List only objects under this {level.type} metagroup path, including descendants",
-        )
-    for metainfo in spec.metainfo:
-        list_parser.add_argument(
-            f"--{_flag_name(metainfo.type)}", dest=f"metainfo__{metainfo.type}", default=None,
-            help=f"List only objects whose {metainfo.type} metainfo equals this value",
-        )
+    render_parser = subparsers.add_parser(
+        "render", help="List objects like 'list', each followed by its indented Description",
+    )
+    for filter_parser in (list_parser, render_parser):
+        _add_list_filters(spec, filter_parser)
 
     return parser, subparsers
+
+
+def _add_list_filters(spec: ToolSpec, parser: argparse.ArgumentParser) -> None:
+    """The filter flags shared by `list` and `render` (design.md, CLI Contract)."""
+    parser.add_argument("--status", default=None)
+    for level in spec.metagroup_levels:
+        parser.add_argument(
+            f"--{_flag_name(level.type)}", dest=f"metagroup__{level.type}", default=None,
+            help=f"Only objects under this {level.type} metagroup path, including descendants",
+        )
+    for metainfo in spec.metainfo:
+        parser.add_argument(
+            f"--{_flag_name(metainfo.type)}", dest=f"metainfo__{metainfo.type}", default=None,
+            help=f"Only objects whose {metainfo.type} metainfo equals this value",
+        )
+
+
+def _filtered_records(spec: ToolSpec, store: Store, args: argparse.Namespace) -> list[ObjectRecord]:
+    """Apply the `list`/`render` filters; metainfo flags combine with AND."""
+    records = store.list_all()
+    if args.status is not None:
+        records = [r for r in records if r.status == args.status]
+    supplied_metagroup = [
+        (level.type, getattr(args, f"metagroup__{level.type}"))
+        for level in spec.metagroup_levels
+        if getattr(args, f"metagroup__{level.type}") is not None
+    ]
+    if len(supplied_metagroup) > 1:
+        flags = ", ".join(f"--{_flag_name(l.type)}" for l in spec.metagroup_levels)
+        raise CliError(f"{args.command} accepts at most one of [{flags}] as a metagroup filter")
+    if supplied_metagroup:
+        segments = store.resolve_metagroup_path(supplied_metagroup[0][1].split("/"))
+        records = [r for r in records if list(r.metagroup_levels[:len(segments)]) == segments]
+    for metainfo in spec.metainfo:
+        value = getattr(args, f"metainfo__{metainfo.type}")
+        if value is not None:
+            records = [r for r in records if r.metainfo_value(metainfo.type) == value]
+    return records
 
 
 def _metagroup_path_for_add(spec: ToolSpec, args: argparse.Namespace) -> list[str]:
@@ -275,26 +307,8 @@ def dispatch(spec: ToolSpec, store: Store, args: argparse.Namespace, extra_handl
     if command == "history":
         return store.list_all()
 
-    if command == "list":
-        records = store.list_all()
-        if args.status is not None:
-            records = [r for r in records if r.status == args.status]
-        supplied_metagroup = [
-            (level.type, getattr(args, f"metagroup__{level.type}"))
-            for level in spec.metagroup_levels
-            if getattr(args, f"metagroup__{level.type}") is not None
-        ]
-        if len(supplied_metagroup) > 1:
-            flags = ", ".join(f"--{_flag_name(l.type)}" for l in spec.metagroup_levels)
-            raise CliError(f"list accepts at most one of [{flags}] as a metagroup filter")
-        if supplied_metagroup:
-            segments = store.resolve_metagroup_path(supplied_metagroup[0][1].split("/"))
-            records = [r for r in records if list(r.metagroup_levels[:len(segments)]) == segments]
-        for metainfo in spec.metainfo:
-            value = getattr(args, f"metainfo__{metainfo.type}")
-            if value is not None:
-                records = [r for r in records if r.metainfo_value(metainfo.type) == value]
-        return records
+    if command in ("list", "render"):
+        return _filtered_records(spec, store, args)
 
     raise CliError(f"unknown command: {command}")
 
@@ -360,6 +374,8 @@ def _print_result(spec: ToolSpec, args: argparse.Namespace, result: object) -> N
     elif isinstance(result, list) and result and isinstance(result[0], ObjectRecord):
         if args.command == "history":
             print(render.combined_history(result))
+        elif args.command == "render":
+            print(render.render_list(result))
         else:
             for record in result:
                 print(render.short_line(record))

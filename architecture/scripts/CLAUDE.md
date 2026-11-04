@@ -82,6 +82,9 @@ Single-File-Mode.
   (`sequential`|`none`): `rulectl tasklist` setzt `none`, damit
   `rulectl-checker` nach `[R]`/`[B]` weiterprüft; `next` überspringt solche
   Tasks in `[B]`/`[R]`/`[C]`.
+- **`render`** (generisch in `lib/cliapp.py`, alle Engine-Tools; specctl
+  eigenes Markdown-`render`): `list`-Ausgabe mit gleichen Filtern, je Zeile
+  darunter die eingerückte Description.
 - **questctl** `answer` schreibt `### Answer` per `Store.annotate_content`
   (History `T`); `ToolSpec.no_generic_setter` unterdrückt `set-answer`.
 - **Objekt-Selektor** (`lib/idmatch.py`): jedes ID-Argument akzeptiert rohe ID,
