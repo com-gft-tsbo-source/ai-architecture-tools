@@ -56,3 +56,26 @@ def check_adr_exists(shared_root: Path, adr_id: str) -> None:
             store.get(adr_id)
         except StoreError as exc:
             raise AdrLookupError(f"adr {adr_id!r}: {exc}") from exc
+
+
+def describe_adrs(shared_root: Path, adr_ids: set[str]) -> dict[str, str]:
+    """Map each ADR ID to its `<status> <signature>` list line, for
+    `specctl render --meta` (design-specctl.md, Operations). Read-only and
+    best-effort: an ID whose ADR -- or whose whole adrctl store -- is missing
+    maps to itself, and no store is ever created. One lock for all IDs."""
+    result = {adr_id: adr_id for adr_id in adr_ids}
+    spec = build_adrctl_spec()
+    resolved_root, mode = resolve_root(Path(shared_root), spec.root_name, spec.default_mode)
+    target_exists = resolved_root.is_dir() if mode == "directory" else resolved_root.is_file()
+    if not adr_ids or not target_exists:
+        return result
+    store = Store(spec=spec, root=Path(shared_root))
+    with store.lock():
+        for adr_id in adr_ids:
+            try:
+                record = store.get(adr_id)
+            except StoreError:
+                continue  # dangling reference: keep the raw ID
+            result[adr_id] = f"{record.status} {record.signature}"
+    return result
+

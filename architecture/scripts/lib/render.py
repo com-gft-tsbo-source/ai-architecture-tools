@@ -40,6 +40,43 @@ def short_with_history(record: ObjectRecord) -> str:
     return "\n".join(lines)
 
 
+DESCRIPTION_INDENT = "    "
+
+
+def _indent(text: str, levels: int = 1) -> list[str]:
+    """Indent every non-empty line; blank lines stay empty (no trailing spaces)."""
+    prefix = DESCRIPTION_INDENT * levels
+    return [f"{prefix}{line}" if line.strip() else "" for line in text.splitlines()]
+
+
+def render_entry(record: ObjectRecord, spec: ToolSpec, *, meta: bool = False, full: bool = False) -> str:
+    """One `render` entry (design.md, "Operations Across All Objects"): the
+    `list` line, then -- indented -- set Metainfo (`meta`), the Description
+    (unlabelled), or with `full` every non-empty content block labelled in
+    spec order, followed by the History."""
+    lines = [short_line(record)]
+    if meta:
+        lines += [f"{DESCRIPTION_INDENT}{e.type}: {e.value}" for e in record.metainfo if e.value]
+    if not full:
+        lines += _indent(record.content.get("Description", ""))
+        return "\n".join(lines)
+    for block in spec.user_content_blocks:
+        content = record.content.get(block, "")
+        if content:
+            lines += [f"{DESCRIPTION_INDENT}{block}:", *_indent(content, 2)]
+    if record.history:
+        lines += [f"{DESCRIPTION_INDENT}History:"]
+        lines += [f"{DESCRIPTION_INDENT * 2}{format_entry(entry)}" for entry in record.history]
+    return "\n".join(lines)
+
+
+def render_list(
+    records: list[ObjectRecord], spec: ToolSpec, *, meta: bool = False, full: bool = False,
+) -> str:
+    """The `render` command: one entry per record, separated by a blank line."""
+    return "\n\n".join(render_entry(r, spec, meta=meta, full=full) for r in records)
+
+
 def combined_history(records: list[ObjectRecord]) -> str:
     """The generic `history` command: every object's History entries, merged
     and sorted newest-first, each line prefixed with its object's Signature."""

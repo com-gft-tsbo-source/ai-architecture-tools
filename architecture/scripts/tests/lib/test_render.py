@@ -3,7 +3,9 @@ import unittest
 
 from lib.history import HistoryEntry
 from lib.model import MetainfoEntry, ObjectRecord
-from lib.render import combined_history, full_display, short_line, short_with_history, to_json
+from lib.render import (
+    combined_history, full_display, render_list, short_line, short_with_history, to_json,
+)
 from lib.toolspec import MetagroupLevelSpec, MetainfoSpec, StatusSpec, ToolSpec
 
 SPEC = ToolSpec(
@@ -94,6 +96,49 @@ class TestToJson(unittest.TestCase):
         data = json.loads(to_json(records))
         self.assertEqual(len(data), 2)
         self.assertEqual({d["id"] for d in data}, {"aaaaaa", "bbbbbb"})
+
+
+class TestRenderList(unittest.TestCase):
+    def test_list_line_followed_by_indented_description(self):
+        record = make_record(content={"Description": "First line.\n\n- item", "Procedure": "Run ruff."})
+        self.assertEqual(
+            render_list([record], SPEC),
+            f"{short_line(record)}\n    First line.\n\n    - item",
+        )
+
+    def test_entries_separated_by_blank_line_and_other_blocks_omitted(self):
+        with_desc = make_record(object_id="aaaaaa")
+        without_desc = make_record(object_id="bbbbbb", number=2, content={"Procedure": "Run ruff."})
+        out = render_list([with_desc, without_desc], SPEC)
+        self.assertEqual(
+            out, f"{short_line(with_desc)}\n    Explain the rule.\n\n{short_line(without_desc)}",
+        )
+        self.assertNotIn("Run ruff.", out)
+
+    def test_empty(self):
+        self.assertEqual(render_list([], SPEC), "")
+
+    def test_meta_shows_set_metainfo_before_description(self):
+        record = make_record(metainfo=[MetainfoEntry(type="weight", value="high"),
+                                       MetainfoEntry(type="tool", value="")])
+        self.assertEqual(
+            render_list([record], SPEC, meta=True),
+            f"{short_line(record)}\n    weight: high\n    Explain the rule.",
+        )
+
+    def test_full_labels_every_block_in_spec_order_and_adds_history(self):
+        entry = HistoryEntry(timestamp="2026-11-04T10:00:00", prefix="M", message="Object created")
+        record = make_record(history=[entry])
+        self.assertEqual(
+            render_list([record], SPEC, full=True),
+            f"{short_line(record)}\n"
+            "    Description:\n        Explain the rule.\n"
+            "    Procedure:\n        Run ruff.\n"
+            "    History:\n        - 2026-11-04T10:00:00: M | Object created",
+        )
+
+    def test_full_without_meta_omits_metainfo(self):
+        self.assertNotIn("weight: high", render_list([make_record()], SPEC, full=True))
 
 
 if __name__ == "__main__":

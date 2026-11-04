@@ -175,6 +175,19 @@ class CliContractTest(unittest.TestCase):
                 with self.assertRaises(json.JSONDecodeError):
                     json.loads(out)
 
+    def test_render_exists_in_all_tools_and_requires_the_store(self):
+        # design.md, "Operations Across All Objects": render is a read-only view.
+        for tool in TOOLS:
+            with self.subTest(tool=tool.name), tempfile.TemporaryDirectory() as tmp:
+                code, _out, _err = run(tool, ["--root", tmp, "render"])
+                self.assertEqual(code, 1)
+                self.assertEqual(os.listdir(tmp), [])
+                create_object(tool, tmp)
+                for options in ([], ["--meta"], ["--full"], ["--meta", "--full"]):
+                    code, out, err = run(tool, ["--root", tmp, "render", *options])
+                    self.assertEqual((code, err), (0, ""), options)
+                    self.assertTrue(out.strip())
+
     def test_all_tools_share_one_root_without_seeing_each_other(self):
         ids = {tool.name: create_object(tool, self.root) for tool in TOOLS}
         for tool in TOOLS:

@@ -19,6 +19,25 @@ def run(argv):
 
 
 class TestDepthZero(unittest.TestCase):
+    def test_render_full_shows_answer_and_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = str(Path(tmp) / "questions")
+            run(["--root", root, "add", "--name", "Which DB?", "--description", "Clarify.",
+                 "--assignee-type", "agent"])
+            run(["--root", root, "answer", "Which", "PostgreSQL", "--message", "client"])
+            _c, out, _e = run(["--root", root, "render"])
+            self.assertNotIn("PostgreSQL", out)
+            self.assertNotIn("assignee-type", out)
+            code, out, err = run(["--root", root, "render", "--full", "--meta"])
+            self.assertEqual((code, err), (0, ""))
+            lines = out.splitlines()
+            self.assertEqual(lines[1:6], [
+                "    assignee-type: agent", "    Description:", "        Clarify.",
+                "    Answer:", "        PostgreSQL",
+            ])
+            self.assertEqual(lines[6], "    History:")
+            self.assertTrue(lines[-1].endswith("| client"))
+
     def test_add_without_group_succeeds(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "questions")

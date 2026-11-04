@@ -165,7 +165,11 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("--adr", default=None, help="List only Sections governed by this ADR ID")
 
     subparsers.add_parser("history", help="Combined History of every Section, newest first")
-    subparsers.add_parser("render", help="Emit the document as plain, comment-stripped Markdown")
+    render_parser = subparsers.add_parser("render", help="Emit the document as plain, comment-stripped Markdown")
+    render_parser.add_argument("--meta", action="store_true", help="Also show each Section's status and ADR")
+    render_parser.add_argument(
+        "--full", action="store_true", help="Also show each Section's Open Questions and History",
+    )
 
     return parser
 
@@ -251,7 +255,7 @@ def dispatch(store: SpecStore, args: argparse.Namespace) -> object:
         return store.combined_history()
 
     if command == "render":
-        return store.render_plain()
+        return store.render_plain(meta=args.meta, full=args.full)
 
     raise CliError(f"unknown command: {command}")
 
