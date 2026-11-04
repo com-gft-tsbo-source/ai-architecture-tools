@@ -223,7 +223,7 @@ This is plain Markdown (same bullet-list style as `## Meta`), holds one line per
 - List objects with specific metainfo (`list --<metainfo-type> <value>`) — exact match.
 - List objects with a specific status (`list --status <value>`)
 - Historical overview: the combined history of all objects, newest first
-- Render (`render`): the `list` output (same filters, same order), each line followed by the object's Description, every line indented by four spaces; objects are separated by a blank line, an object without Description contributes its line only. Other user-content blocks are omitted. A read-only reading view; `--json` emits the same records as `list --json`. specctl's `render` (design-specctl.md, Operations) is that tool's equivalent for its own document format.
+- Render (`render`): the `list` output (same filters, same order), each line followed by the object's Description, every line indented by four spaces; objects are separated by a blank line, an object without Description contributes its line only. Other user-content blocks are omitted. Two independent, combinable options extend each entry: `--meta` inserts the object's set Metainfo (`<type>: <value>`, empty values omitted) right below its line; `--full` replaces the unlabelled Description by every non-empty user-content block in the tool's declared order, each as `<Block>:` with its content indented one level further, followed by `History:` and the object's History entries in chronological order (the line format of `show --history`). Order within an entry: line, Metainfo, content, History. A read-only reading view; `--json` emits the same records as `list --json`, unaffected by `--meta`/`--full`. specctl's `render` (design-specctl.md, Operations) is that tool's equivalent for its own document format.
 
 ## Index Files
 
@@ -269,7 +269,7 @@ A pure performance cache, indexed by Object ID, listing only the **direct childr
 - `--<metagroup-type> <value>` — whether inline on `add`, on `group-<metagroup-type>`, or anywhere else a metagroup path is referenced (not created) — resolves an *existing* path one `/`-separated segment at a time against that segment's siblings. Each segment may be given as the exact `<nr>-<name>` form, a bare number (`2`), or a bare name (`Implementation`). A segment matching more than one sibling (e.g. two same-named siblings with different numbers) aborts with an error rather than guessing.
 - `delete <id>`: removes the object outright (see "Object Operations" above).
 - `list [--status <value>] [--<metagroup-type> <path>] [--<metainfo-type> <value>]`: lists objects, optionally filtered. At most one `--<metagroup-type>` flag may be given (an object has exactly one metagroup path); it is resolved the same way as `--<metagroup-type>` above and matches that path plus everything below it. Every `--<metainfo-type>` flag given must match that Metainfo's value exactly; multiple such flags combine (AND).
-- `render [<same filters as list>]`: see "Operations Across All Objects" above.
+- `render [--meta] [--full] [<same filters as list>]`: see "Operations Across All Objects" above.
 - `--name "..."`: the object's Name.
 - `--description "..."`: the object's Description (always available under this fixed name).
 - `--<user-section> "..."`: content for any other tool-defined user-content block.

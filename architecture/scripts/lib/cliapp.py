@@ -142,6 +142,10 @@ def build_parser(spec: ToolSpec) -> tuple[argparse.ArgumentParser, "argparse._Su
     render_parser = subparsers.add_parser(
         "render", help="List objects like 'list', each followed by its indented Description",
     )
+    render_parser.add_argument("--meta", action="store_true", help="Also show set Metainfo")
+    render_parser.add_argument(
+        "--full", action="store_true", help="Show every content block, labelled, and the History",
+    )
     for filter_parser in (list_parser, render_parser):
         _add_list_filters(spec, filter_parser)
 
@@ -375,7 +379,7 @@ def _print_result(spec: ToolSpec, args: argparse.Namespace, result: object) -> N
         if args.command == "history":
             print(render.combined_history(result))
         elif args.command == "render":
-            print(render.render_list(result))
+            print(render.render_list(result, spec, meta=args.meta, full=args.full))
         else:
             for record in result:
                 print(render.short_line(record))

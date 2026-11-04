@@ -183,9 +183,10 @@ class CliContractTest(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertEqual(os.listdir(tmp), [])
                 create_object(tool, tmp)
-                code, out, err = run(tool, ["--root", tmp, "render"])
-                self.assertEqual((code, err), (0, ""))
-                self.assertTrue(out.strip())
+                for options in ([], ["--meta"], ["--full"], ["--meta", "--full"]):
+                    code, out, err = run(tool, ["--root", tmp, "render", *options])
+                    self.assertEqual((code, err), (0, ""), options)
+                    self.assertTrue(out.strip())
 
     def test_all_tools_share_one_root_without_seeing_each_other(self):
         ids = {tool.name: create_object(tool, self.root) for tool in TOOLS}

@@ -42,7 +42,7 @@ from lib import abbrev, adr_lookup, idmatch, locking, metagroup, numbering
 from lib import store as generic_store
 from lib.atomicio import atomic_write_text
 from lib.clock import now_iso
-from lib.history import HistoryEntry
+from lib.history import HistoryEntry, format_entry
 from lib.model import derive_id, validate_free_form_id
 from lib.spec_document import (
     SpecDocumentError,
@@ -529,15 +529,24 @@ class SpecStore:
         except idmatch.IdMatchError as exc:
             raise SpecStoreError(str(exc)) from None
 
-    def render_plain(self) -> str:
+    def render_plain(self, *, meta: bool = False, full: bool = False) -> str:
         """The `render` operation: comment-stripped Markdown, headings and
-        content only (design-specctl.md, Operations)."""
+        content only (design-specctl.md, Operations). `meta` and `full` add a
+        blockquote right below each heading: `meta` the Section's status and
+        ADR (resolved to its adrctl list line where possible), `full` its
+        Open Questions and History."""
         title, preamble, sections = self._read()
+        adr_lines: dict[str, str] = {}
+        if meta:
+            adr_lines = adr_lookup.describe_adrs(self.root.parent, {s.adr for s in sections if s.adr})
         parts = [f"# {title}"] if title else []
         if preamble.strip():
             parts.append(preamble)
         for s in sections:
             lines = [f"{s.heading_mark} {s.name}"]
+            quote = _render_annotation(s, adr_lines, meta=meta, full=full)
+            if quote:
+                lines += ["", quote]
             description = s.description()
             if description:
                 lines += ["", description]
@@ -839,3 +848,25 @@ class SpecStore:
 
             self._write(title, preamble, sections)
             return self._find_with_index(sections, object_id)[1]
+
+
+def _render_annotation(section: SpecSection, adr_lines: dict[str, str], *, meta: bool, full: bool) -> str:
+    """The `render --meta/--full` blockquote for one Section; empty when
+    there is nothing to show. Groups are separated by an empty quote line."""
+    groups: list[list[str]] = []
+    if meta:
+        group = [f"status: {section.status}"]
+        if section.adr:
+            group.append(f"adr: {adr_lines.get(section.adr, section.adr)}")
+        groups.append(group)
+    if full and section.open_questions:
+        groups.append(["Open Questions:", *section.open_questions.splitlines()])
+    if full and section.history:
+        groups.append(["History:", *(format_entry(entry) for entry in section.history)])
+    lines = []
+    for group in groups:
+        if lines:
+            lines.append("")
+        lines += group
+    return "\n".join(f"> {line}" if line else ">" for line in lines)
+

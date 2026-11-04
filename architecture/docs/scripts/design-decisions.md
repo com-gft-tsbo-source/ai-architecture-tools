@@ -45,7 +45,8 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-11-02, no top-level `bin/` |  |
 | 2026-11-03, uniform object selector |  |
 | 2026-11-03, optional root `doc`, strict store existence |  |
-| 2026-11-04, `render` for the engine tools |  |
+| 2026-11-04, `render` for the engine tools | `render` options `--meta`/`--full` added by 2026-11-04, `render --meta`/`--full` |
+| 2026-11-04, `render --meta`/`--full` |  |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -1275,4 +1276,33 @@ comparable function.
 - specctl keeps its own Markdown `render` (different format, design-specctl.md).
 - Not offered to the Skills: agents read objects through `show`/`--json`.
 - Plugin version `0.5.1`.
+
+## Amendments (2026-11-04, `render --meta`/`--full`)
+
+Settled with the user in a grilling session. Extends `render` in all five
+tools with two independent, combinable options:
+
+- **`--meta`** — set Metainfo below the `list` line (empty values omitted).
+  specctl: `status` and `adr`; status is added there because the Markdown
+  view shows it nowhere else. One rule for all tools: Metainfo is `--meta`,
+  content and History are `--full` — so specctl's ADR is `--meta`, not
+  `--full`.
+- **specctl's ADR is resolved** to the ADR's `<status> <signature>` via
+  `lib/adr_lookup.describe_adrs` (one adrctl lock for all IDs, read-only,
+  never creates a store); a missing ADR or store shows the raw ID. Rejected:
+  raw ID only — unreadable for a human reader.
+- **`--full`** — every non-empty content block labelled in spec order
+  (questctl `Answer`, rulectl `Procedure`, adrctl `Motivation`/`Rationale`,
+  specctl `Open Questions`) plus the History, chronological, in the
+  `show --history` line format. With `--full` the Description is labelled
+  too, so adrctl's Motivation does not sit unlabelled before it. Rejected:
+  tool-specific blocks always shown — `render` stays the short overview.
+- **Layout**: line, Metainfo, content, History (Metainfo first: short and
+  useful when scanning). specctl puts the additions in a blockquote right
+  below the heading, so the document stays valid Markdown and its heading
+  structure is untouched.
+- **`--json`** unchanged by both options (engine tools: `list --json`
+  already carries everything); specctl's `render` remains Markdown-only.
+- Skills unchanged; agents keep reading through `show`/`--json`.
+- Plugin version `0.5.2`.
 

@@ -368,6 +368,33 @@ class TestListAndRender(unittest.TestCase):
             self.assertIn("## Concurrency", out)
             self.assertIn("Intro.", out)
 
+    def test_render_meta_and_full_add_blockquote_below_heading(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_init(tmp)
+            run_adrctl(["--root", tmp, "add-domain", "Backend"])
+            _c, out, _e = run_adrctl(["--root", tmp, "--json", "add", "--name", "Use locks", "--domain", "Backend"])
+            adr = json.loads(out)
+            run(["--root", tmp, "add-part", "Intro", "--description", "Body.", "--open-questions", "Who?"])
+            run(["--root", tmp, "add-part", "Other"])
+            self.assertEqual(run(["--root", tmp, "set-adr", "Intro", adr["id"]])[0], 0)
+            self.assertEqual(run(["--root", tmp, "set-adr", "Other", "zzzzzz"])[0], 0)
+
+            _c, plain, _e = run(["--root", tmp, "render"])
+            self.assertNotIn(">", plain)
+
+            _c, out, _e = run(["--root", tmp, "render", "--meta"])
+            self.assertIn(
+                f"## Intro\n\n> status: draft\n> adr: {adr['status']} {adr['signature']}\n\nBody.", out,
+            )
+            self.assertIn("## Other\n\n> status: draft\n> adr: zzzzzz", out)
+            self.assertNotIn("History:", out)
+
+            _c, out, _e = run(["--root", tmp, "render", "--full"])
+            self.assertNotIn("status: draft", out)
+            self.assertRegex(
+                out, r"## Intro\n\n> Open Questions:\n> Who\?\n>\n> History:\n> - \S+: M \| [^\n]+\n\nBody\.",
+            )
+
     def test_list_under_includes_descendants_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = str(Path(tmp) / "design.md")

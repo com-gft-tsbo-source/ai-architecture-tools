@@ -3,9 +3,26 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib.adr_lookup import AdrLookupError, check_adr_exists
+from lib.adr_lookup import AdrLookupError, check_adr_exists, describe_adrs
 from lib.adrctl_spec import build_spec as build_adrctl_spec
 from lib.store import Store
+
+
+class TestDescribeAdrs(unittest.TestCase):
+    def test_known_adr_resolves_to_list_line_unknown_stays_raw(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(spec=build_adrctl_spec(), root=Path(tmp))
+            store.add_metagroup_path(["Backend"])
+            record = store.add(metagroup_path=["Backend"], name="Use locks")
+            self.assertEqual(
+                describe_adrs(Path(tmp), {record.object_id, "zzzzzz"}),
+                {record.object_id: f"{record.status} {record.signature}", "zzzzzz": "zzzzzz"},
+            )
+
+    def test_missing_store_keeps_raw_ids_and_creates_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(describe_adrs(Path(tmp), {"abc123"}), {"abc123": "abc123"})
+            self.assertEqual(list(Path(tmp).iterdir()), [])
 
 
 class TestCheckAdrExists(unittest.TestCase):
