@@ -133,6 +133,8 @@ Single-File-Mode.
 ## Konsistenz zwischen den Tools
 
 - Exit-Codes: `0` = ok, `1` = Fehler, `2` = Aufruffehler (argparse).
+- stdout/stderr immer UTF-8 (`lib/console.py`, zu Beginn jedes `main`) —
+  sonst scheitert z. B. unter Windows eine umgeleitete Ausgabe an cp1252.
 - Fehlermeldungen → stderr, reguläre Ausgabe → stdout. Einzige Ausnahme:
   `NoWorkAvailable` und `GuardViolation` geben bei `--json` ein Objekt mit
   `reason` auf stdout aus (weiterhin Exit `1`).
@@ -202,6 +204,7 @@ architecture/scripts/
     ├── locking, atomicio, clock, numbering, history, text, abbrev, metagroup
     │                      # geteilt zwischen allen fünf Tools
     ├── idmatch            # CLI-Objekt-Selektor (ID/Signatur/Teilstring)
+    ├── console            # stdout/stderr auf UTF-8 (alle fünf Tools)
     ├── model, objectfile, singlefile, store, toolspec, index, render, cliapp, guards
     │                      # generisches Objektformat: taskctl/questctl/rulectl/adrctl
     ├── taskctl_spec, questctl_spec, adrctl_spec
