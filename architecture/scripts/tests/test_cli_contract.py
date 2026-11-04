@@ -5,7 +5,8 @@ checked here once for all five tools instead of being kept in sync by hand:
 exit codes (0 ok, 1 error, 2 usage error from argparse), errors on stderr
 (except the machine-readable `reason` of NoWorkAvailable/GuardViolation
 under --json, tested per tool),
-valid JSON on stdout with --json, and one shared --root per project.
+valid JSON on stdout with --json, UTF-8 output regardless of the locale
+encoding, and one shared --root per project.
 A new tool is covered by adding it to TOOLS.
 """
 
@@ -13,9 +14,12 @@ import contextlib
 import io
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 import adrctl
@@ -187,6 +191,24 @@ class CliContractTest(unittest.TestCase):
                     code, out, err = run(tool, ["--root", tmp, "render", *options])
                     self.assertEqual((code, err), (0, ""), options)
                     self.assertTrue(out.strip())
+
+    def test_redirected_output_is_utf8_under_a_non_utf8_locale(self):
+        # Windows encodes a redirected stdout as cp1252 by default; the
+        # tools must emit UTF-8 anyway (`taskctl render > out.txt`).
+        scripts = Path(__file__).resolve().parent.parent
+        env = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+        text = "Größe → prüfen"
+        for tool in TOOLS:
+            with self.subTest(tool=tool.name), tempfile.TemporaryDirectory() as tmp:
+                object_id = create_object(tool, tmp)
+                code, _out, err = run(tool, ["--root", tmp, "set-description", object_id, text])
+                self.assertEqual(code, 0, err)
+                proc = subprocess.run(
+                    [sys.executable, str(scripts / f"{tool.name}.py"), "--root", tmp, "render"],
+                    capture_output=True, env=env, cwd=tmp,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8", "replace"))
+                self.assertIn(text, proc.stdout.decode("utf-8"))
 
     def test_all_tools_share_one_root_without_seeing_each_other(self):
         ids = {tool.name: create_object(tool, self.root) for tool in TOOLS}

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from lib import render
+from lib.console import use_utf8_streams
 from lib.guards import APPROVAL_REQUIRED, GuardViolation
 from lib.model import ObjectRecord
 from lib.store import (
@@ -398,6 +399,7 @@ def main(
     configure_parser: Optional[Callable[[argparse.ArgumentParser, "argparse._SubParsersAction"], None]] = None,
     after_dispatch: Optional[Callable[[ToolSpec, Store, argparse.Namespace, object], None]] = None,
 ) -> int:
+    use_utf8_streams()
     if extra_handlers is None:
         extra_handlers = {}
     parser, subparsers = build_parser(spec)

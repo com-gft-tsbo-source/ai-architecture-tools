@@ -36,6 +36,7 @@ import sys
 from pathlib import Path
 
 from lib import spec_render as render
+from lib.console import use_utf8_streams
 from lib.spec_model import LEVEL_TYPES, SpecSection
 from lib.spec_store import SpecStore, SpecStoreError
 from lib.store import StoreError, resolve_root_argument
@@ -308,6 +309,7 @@ def _print_result(args: argparse.Namespace, result: object) -> None:
 
 
 def main(argv: list[str]) -> int:
+    use_utf8_streams()
     parser = build_parser()
     args = parser.parse_args(argv)
 

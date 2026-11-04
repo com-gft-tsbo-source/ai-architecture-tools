@@ -47,6 +47,7 @@ marked inline as *(Superseded …)*. The second column lists only later changes 
 | 2026-11-03, optional root `doc`, strict store existence |  |
 | 2026-11-04, `render` for the engine tools | `render` options `--meta`/`--full` added by 2026-11-04, `render --meta`/`--full` |
 | 2026-11-04, `render --meta`/`--full` |  |
+| 2026-11-04, UTF-8 output on every platform |  |
 
 ## Scope
 `tasklist` (the rulectl/adrctl → taskctl export operation) is intentionally **out of scope** for this design pass. Both tool docs list it as an operation but mark its behavior as deferred. It will be designed once the core object model has stabilized in an implementation.
@@ -1305,4 +1306,25 @@ tools with two independent, combinable options:
   already carries everything); specctl's `render` remains Markdown-only.
 - Skills unchanged; agents keep reading through `show`/`--json`.
 - Plugin version `0.5.2`.
+
+## Amendments (2026-11-04, UTF-8 output on every platform)
+
+Reported by the user: `taskctl render > out.txt` on Windows crashed with
+`UnicodeEncodeError` (`'charmap' codec can't encode character '\u2192'`).
+
+- **Cause.** Python encodes a redirected stdout/stderr with the locale
+  encoding (Windows: cp1252). Store content is UTF-8 and contains characters
+  outside cp1252 (the History's `→`, arbitrary user text). Not specific to
+  `render`: every command printing such content was affected; file I/O was
+  already UTF-8 everywhere (`lib/atomicio.py`).
+- **Fix.** `lib/console.use_utf8_streams()` reconfigures stdout/stderr to
+  UTF-8 at the start of `cliapp.main` and `specctl.main`, so all five tools
+  behave alike. Streams without `reconfigure` (test `StringIO`) are left
+  alone.
+- Rejected: `PYTHONIOENCODING`/`PYTHONUTF8` in the sh-wrappers — they do not
+  cover direct `python3 <tool>.py` calls (Skills, Windows without sh);
+  `errors="replace"` on the locale encoding — silently corrupts output.
+- Test: `test_cli_contract.py` runs every tool as a subprocess with
+  `PYTHONIOENCODING=cp1252` and checks the UTF-8 output.
+- Plugin version `0.5.3`.
 
